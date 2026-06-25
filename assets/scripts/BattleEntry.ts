@@ -83,7 +83,45 @@ export class BattleEntry extends Component {
         // dt 兜底，防止切后台回来一帧巨大导致瞬移
         this._mgr.tick(Math.min(dt, 0.05));
         this._render();
+        this._renderFloats();
         this._updateLabels();
+    }
+
+    // —— 战斗飘字（用 Label 池，按需复用）——
+    private _floats: Label[] = [];
+    private _getFloat(i: number): Label {
+        while (i >= this._floats.length) {
+            const node = new Node('Float');
+            node.layer = this.node.layer;
+            node.addComponent(UITransform);
+            const lb = node.addComponent(Label);
+            this.node.addChild(node);
+            this._floats.push(lb);
+        }
+        return this._floats[i];
+    }
+
+    private _renderFloats() {
+        const list = this._mgr.floatTexts;
+        for (let i = 0; i < list.length; i++) {
+            const ft = list[i];
+            const lb = this._getFloat(i);
+            lb.node.active = true;
+            lb.node.setPosition(ft.x, ft.y, 0);
+            lb.string = ft.text;
+            const a = Math.max(0, Math.min(1, ft.ttl / ft.maxTtl)) * 255;
+            switch (ft.kind) {
+                case 'crit':  lb.fontSize = 42; lb.color = new Color(255, 180, 40, a); break;
+                case 'block': lb.fontSize = 28; lb.color = new Color(120, 200, 255, a); break;
+                case 'dodge': lb.fontSize = 28; lb.color = new Color(210, 210, 210, a); break;
+                default:      lb.fontSize = 30; lb.color = new Color(255, 255, 255, a); break;
+            }
+            lb.lineHeight = lb.fontSize + 4;
+        }
+        // 多余的 Label 隐藏
+        for (let i = list.length; i < this._floats.length; i++) {
+            this._floats[i].node.active = false;
+        }
     }
 
     // —— 把所有单位画成色块 ——

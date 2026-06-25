@@ -3,7 +3,7 @@
 // 定位：只负责临时调整。调好后点「导出 JSON」把数值复制出来，后续由 Excel 统一管理。
 // 注意：用的是 HTML DOM，只在网页预览里出现；微信小游戏构建里不会显示（也不该带它上线）。
 
-import { BattleConfig } from '../config/BattleConfig';
+import { BattleConfig, CombatStats, UnitKind } from '../config/BattleConfig';
 
 // 一个可调字段的描述
 interface Field {
@@ -16,36 +16,65 @@ interface Field {
     set: (v: number) => void;
 }
 
+// 统一属性表的每个属性怎么显示（标签 + 滑块范围）。加新属性只在这里补一行。
+const STAT_META: { key: keyof CombatStats; label: string; min: number; max: number; step: number }[] = [
+    { key: 'hp',         label: '血量',     min: 0,   max: 1200, step: 10 },
+    { key: 'atk',        label: '攻击',     min: 0,   max: 120,  step: 1 },
+    { key: 'def',        label: '防御',     min: 0,   max: 100,  step: 1 },
+    { key: 'attackSpeed', label: '攻速',    min: 0.2, max: 3,    step: 0.1 },
+    { key: 'critRate',   label: '暴击率',   min: 0,   max: 1,    step: 0.05 },
+    { key: 'critDmg',    label: '暴击伤害', min: 0,   max: 3,    step: 0.1 },
+    { key: 'dodgeRate',  label: '闪避率',   min: 0,   max: 1,    step: 0.05 },
+    { key: 'blockRate',  label: '格挡率',   min: 0,   max: 1,    step: 0.05 },
+    { key: 'blockRatio', label: '格挡减伤', min: 0,   max: 1,    step: 0.05 },
+    { key: 'dmgBonus',   label: '伤害加成', min: 0,   max: 2,    step: 0.05 },
+    { key: 'dmgReduce',  label: '伤害减免', min: 0,   max: 0.9,  step: 0.05 },
+];
+
+// 单位类型 → 分组标题
+const UNIT_TITLE: Record<UnitKind, string> = {
+    tank: '🛡 坦克', dps: '🔫 输出', healer: '💚 治疗', enemy: '👾 敌人',
+};
+
 function buildFields(): Field[] {
     const C = BattleConfig;
     const f = (group: string, label: string, min: number, max: number, step: number,
                get: () => number, set: (v: number) => void): Field =>
         ({ group, label, min, max, step, get, set });
 
-    const fields: Field[] = [
-        // 坦克
-        f('🛡 坦克', '血量', 50, 1200, 10, () => C.classes.tank.hp, v => C.classes.tank.hp = v),
-        f('🛡 坦克', '伤害', 1, 120, 1, () => C.classes.tank.damage, v => C.classes.tank.damage = v),
-        f('🛡 坦克', '攻击间隔', 0.1, 2, 0.05, () => C.classes.tank.fireInterval, v => C.classes.tank.fireInterval = v),
-        f('🛡 坦克', '射程', 30, 300, 5, () => C.classes.tank.range, v => C.classes.tank.range = v),
-        f('🛡 坦克', '移速', 0, 600, 20, () => C.classes.tank.moveSpeed, v => C.classes.tank.moveSpeed = v),
-        f('🛡 坦克', '前压上限', 0, 400, 10, () => C.classes.tank.advanceLimit, v => C.classes.tank.advanceLimit = v),
-        // 输出
-        f('🔫 输出', '血量', 20, 600, 10, () => C.classes.dps.hp, v => C.classes.dps.hp = v),
-        f('🔫 输出', '伤害', 1, 120, 1, () => C.classes.dps.damage, v => C.classes.dps.damage = v),
-        f('🔫 输出', '攻击间隔', 0.05, 2, 0.02, () => C.classes.dps.fireInterval, v => C.classes.dps.fireInterval = v),
-        f('🔫 输出', '射程', 100, 900, 10, () => C.classes.dps.range, v => C.classes.dps.range = v),
-        // 治疗
-        f('💚 治疗', '血量', 20, 600, 10, () => C.classes.healer.hp, v => C.classes.healer.hp = v),
-        f('💚 治疗', '每秒治疗', 0, 80, 2, () => C.classes.healer.healPerSec, v => C.classes.healer.healPerSec = v),
-        // 敌人
-        f('👾 敌人', '移速', 20, 320, 10, () => C.enemy.speed, v => C.enemy.speed = v),
-        f('👾 敌人', '伤害', 1, 120, 1, () => C.enemy.damage, v => C.enemy.damage = v),
-        f('👾 敌人', '攻击间隔', 0.2, 3, 0.1, () => C.enemy.attackInterval, v => C.enemy.attackInterval = v),
-        f('👾 敌人', '停靠距离', 60, 320, 10, () => C.enemy.contactGap, v => C.enemy.contactGap = v),
-    ];
+    const fields: Field[] = [];
 
-    // 波次（按当前波数动态生成）
+    // —— 每个单位：先统一属性表的属性，再接该单位的行为字段（同组连续）——
+    (['tank', 'dps', 'healer', 'enemy'] as UnitKind[]).forEach(kind => {
+        const title = UNIT_TITLE[kind];
+        const st = C.stats[kind];
+        for (const m of STAT_META) {
+            if (kind === 'enemy' && m.key === 'hp') continue; // 敌人血量由波次控制
+            fields.push(f(title, m.label, m.min, m.max, m.step,
+                () => st[m.key], v => { st[m.key] = v; }));
+        }
+        // 行为字段（非战斗属性）
+        if (kind === 'tank') {
+            const b = C.classes.tank;
+            fields.push(f(title, '攻击间隔', 0.1, 2, 0.05, () => b.fireInterval, v => b.fireInterval = v));
+            fields.push(f(title, '射程', 30, 300, 5, () => b.range, v => b.range = v));
+            fields.push(f(title, '移速', 0, 600, 20, () => b.moveSpeed, v => b.moveSpeed = v));
+            fields.push(f(title, '前压上限', 0, 400, 10, () => b.advanceLimit, v => b.advanceLimit = v));
+        } else if (kind === 'dps') {
+            const b = C.classes.dps;
+            fields.push(f(title, '攻击间隔', 0.05, 2, 0.02, () => b.fireInterval, v => b.fireInterval = v));
+            fields.push(f(title, '射程', 100, 900, 10, () => b.range, v => b.range = v));
+        } else if (kind === 'healer') {
+            fields.push(f(title, '每秒治疗', 0, 80, 2, () => C.classes.healer.healPerSec, v => C.classes.healer.healPerSec = v));
+        } else if (kind === 'enemy') {
+            fields.push(f(title, '移速', 20, 320, 10, () => C.enemy.speed, v => C.enemy.speed = v));
+            fields.push(f(title, '攻击间隔', 0.2, 3, 0.1, () => C.enemy.attackInterval, v => C.enemy.attackInterval = v));
+            fields.push(f(title, '停靠距离', 60, 320, 10, () => C.enemy.contactGap, v => C.enemy.contactGap = v));
+        }
+    });
+
+    // —— 公式 / 波次 / 节奏 ——
+    fields.push(f('📐 公式', '伤害保底比例', 0, 1, 0.05, () => C.combat.minDamageRate, v => C.combat.minDamageRate = v));
     C.waves.forEach((w, i) => {
         const g = `🌊 第${i + 1}波`;
         fields.push(f(g, '数量', 1, 40, 1, () => C.waves[i].count, v => C.waves[i].count = v));
@@ -169,6 +198,8 @@ export function mountConfigPanel(onRestart: () => void) {
 // 导出当前配置为 JSON：复制到剪贴板 + 打印控制台 + 弹出可复制文本框
 function exportConfig(doc: any) {
     const json = JSON.stringify({
+        stats: BattleConfig.stats,
+        combat: BattleConfig.combat,
         classes: BattleConfig.classes,
         roster: BattleConfig.roster,
         layout: BattleConfig.layout,

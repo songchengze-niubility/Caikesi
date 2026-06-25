@@ -3,20 +3,21 @@
 //      敌人推进到防线后贴身缠斗、治疗奶血、胜负判定。
 // 只算数据，怎么画交给 BattleEntry。
 
-import { BattleConfig, SoldierClass, AttackType } from '../config/BattleConfig';
+import { BattleConfig, SoldierClass, AttackType, CombatStats } from '../config/BattleConfig';
+import { calcDamage, DamageResult } from './CombatFormula';
 
-// 一名士兵
+// 一名士兵（战斗属性走统一 stats，行为字段从职业配置拷来）
 export interface Soldier {
     cls: SoldierClass;
     attackType: AttackType; // 近战 / 远程 / 治疗
+    stats: CombatStats;     // 统一战斗属性（引用配置，便于实时调参）
     x: number;            // 当前位置（近战会冲出去）
     y: number;
     homeX: number;        // 原始站位（防线、退守都用它）
     homeY: number;
-    hp: number;
+    hp: number;           // 当前血量
     maxHp: number;
-    damage: number;       // 单次伤害（治疗为 0）
-    fireInterval: number; // 攻击间隔（治疗为 0）
+    fireInterval: number; // 基础攻击间隔（治疗为 0）
     range: number;        // 攻击距离
     moveSpeed: number;    // 移动速度（0=不动）
     advanceLimit: number; // 离原站位最多前压多远
@@ -27,6 +28,7 @@ export interface Soldier {
 
 // 一只敌人
 export interface Enemy {
+    stats: CombatStats;   // 统一战斗属性（引用 stats.enemy）
     x: number;
     y: number;
     hp: number;
@@ -35,14 +37,25 @@ export interface Enemy {
     alive: boolean;
 }
 
-// 一颗子弹
+// 一颗子弹（携带开火者的属性引用，命中时结算）
 export interface Bullet {
     x: number;
     y: number;
     vx: number;
     vy: number;
-    damage: number;
+    stats: CombatStats;   // 开火者的攻击属性
     alive: boolean;
+}
+
+// 战斗飘字（伤害数字 / 暴击 / 格挡 / 闪避），纯展示
+export interface FloatText {
+    x: number;
+    y: number;
+    vy: number;
+    ttl: number;
+    maxTtl: number;
+    text: string;
+    kind: 'normal' | 'crit' | 'block' | 'dodge';
 }
 
 // 治疗光束（仅供界面画反馈，逻辑不依赖）
@@ -62,6 +75,7 @@ export class BattleManager {
     bullets: Bullet[] = [];
     healBeams: HealBeam[] = [];
     meleeBeams: HealBeam[] = [];   // 近战正在劈的连线（仅供界面画反馈）
+    floatTexts: FloatText[] = [];  // 战斗飘字
 
     phase: BattlePhase = 'spawning';
     waveIndex = 0;
@@ -80,24 +94,25 @@ export class BattleManager {
         const L = BattleConfig.layout;
         const frontX = -this.halfW + L.frontMargin;
         BattleConfig.roster.forEach((cls, i) => {
-            const def = BattleConfig.classes[cls];
+            const cdef = BattleConfig.classes[cls];   // 职业行为配置
+            const st = BattleConfig.stats[cls];       // 职业战斗属性（统一表）
             const hx = frontX - i * L.spacing;   // 越靠后（i 越大）越靠左
             this.soldiers.push({
                 cls,
-                attackType: def.attackType,
+                attackType: cdef.attackType,
+                stats: st,
                 x: hx,
                 y: 0,
                 homeX: hx,
                 homeY: 0,
-                hp: def.hp,
-                maxHp: def.hp,
-                damage: def.damage,
-                fireInterval: def.fireInterval,
-                range: def.range,
-                moveSpeed: def.moveSpeed,
-                advanceLimit: def.advanceLimit,
-                healPerSec: def.healPerSec,
-                cd: Math.random() * Math.max(def.fireInterval, 0.3),
+                hp: st.hp,
+                maxHp: st.hp,
+                fireInterval: cdef.fireInterval,
+                range: cdef.range,
+                moveSpeed: cdef.moveSpeed,
+                advanceLimit: cdef.advanceLimit,
+                healPerSec: cdef.healPerSec,
+                cd: Math.random() * Math.max(cdef.fireInterval, 0.3),
                 alive: true,
             });
         });
@@ -122,6 +137,7 @@ export class BattleManager {
         this._updateBullets(dt);
         this._updateEnemies(dt);
         this._updateHealing(dt);
+        this._updateFloats(dt);
         this._checkWinLose();
     }
 
@@ -144,8 +160,9 @@ export class BattleManager {
     }
 
     private _spawnEnemy(hp: number) {
-        // 从右边进场，同样站在 y=0 这条线上，单列排队
+        // 从右边进场，同样站在 y=0 这条线上。战斗属性引用统一表 stats.enemy，hp 用波次值
         this.enemies.push({
+            stats: BattleConfig.stats.enemy,
             x: this.halfW, y: 0, hp, maxHp: hp,
             atkCd: BattleConfig.enemy.attackInterval * 0.5,
             alive: true,
@@ -195,7 +212,7 @@ export class BattleManager {
     private _updateFiring(dt: number) {
         this.meleeBeams = [];
         for (const s of this.soldiers) {
-            if (!s.alive || s.attackType === 'heal' || s.damage <= 0) continue;
+            if (!s.alive || s.attackType === 'heal' || s.stats.atk <= 0) continue;
 
             // 近战盯最前面的怪（守线）；远程打最近的
             const target = s.attackType === 'melee'
@@ -215,13 +232,12 @@ export class BattleManager {
 
             s.cd -= dt;
             if (s.cd > 0) continue;
-            s.cd = s.fireInterval;
+            s.cd = s.fireInterval / Math.max(0.01, s.stats.attackSpeed);  // 攻速缩短间隔
 
             if (s.attackType === 'melee') {
-                target.hp -= s.damage;          // 近战：瞬间伤害
-                if (target.hp <= 0) target.alive = false;
+                this._applyDamage(s.stats, target);   // 近战：走完整公式
             } else {
-                this._fireBullet(s, target);    // 远程：发子弹
+                this._fireBullet(s, target);    // 远程：发子弹（命中再结算）
             }
         }
     }
@@ -257,7 +273,7 @@ export class BattleManager {
             x: s.x, y: s.y,
             vx: (dx / len) * speed,
             vy: (dy / len) * speed,
-            damage: s.damage,
+            stats: s.stats,   // 携带开火者攻击属性
             alive: true,
         });
     }
@@ -280,9 +296,8 @@ export class BattleManager {
                 if (!e.alive) continue;
                 const dx = e.x - b.x, dy = e.y - b.y;
                 if (dx * dx + dy * dy <= hitDist) {
-                    e.hp -= b.damage;
+                    this._applyDamage(b.stats, e);   // 命中：走完整公式
                     b.alive = false;
-                    if (e.hp <= 0) e.alive = false;
                     break;
                 }
             }
@@ -305,7 +320,7 @@ export class BattleManager {
                 // 到达防线：贴身攻击。所有到达的怪都各自攻击，可叠在一起一起打
                 e.atkCd -= dt;
                 if (e.atkCd <= 0) {
-                    e.atkCd = BattleConfig.enemy.attackInterval;
+                    e.atkCd = BattleConfig.enemy.attackInterval / Math.max(0.01, e.stats.attackSpeed);
                     this._enemyAttack(e);
                 }
             }
@@ -324,8 +339,44 @@ export class BattleManager {
             const d = dx * dx + dy * dy;
             if (d < bestD) { bestD = d; target = s; }
         }
-        target.hp -= BattleConfig.enemy.damage;
-        if (target.hp <= 0) target.alive = false;
+        this._applyDamage(e.stats, target);   // 走完整公式
+    }
+
+    // —— 统一伤害结算：算伤害 → 扣血 → 飘字 → 判死 ——
+    private _applyDamage(att: CombatStats, defender: { stats: CombatStats; x: number; y: number; hp: number; alive: boolean }) {
+        const r = calcDamage(att, defender.stats);
+        defender.hp -= r.damage;
+        this._spawnFloat(defender.x, defender.y, r);
+        if (defender.hp <= 0) defender.alive = false;
+    }
+
+    // 生成一条战斗飘字
+    private _spawnFloat(x: number, y: number, r: DamageResult) {
+        let text: string;
+        let kind: FloatText['kind'];
+        if (r.dodged) { text = '闪避'; kind = 'dodge'; }
+        else {
+            text = String(r.damage);
+            kind = r.crit ? 'crit' : (r.blocked ? 'block' : 'normal');
+        }
+        // 限制数量，防刷屏
+        if (this.floatTexts.length > 60) this.floatTexts.shift();
+        this.floatTexts.push({
+            x: x + (Math.random() * 2 - 1) * 18,
+            y: y + 20,
+            vy: 70,
+            ttl: 0.7,
+            maxTtl: 0.7,
+            text, kind,
+        });
+    }
+
+    private _updateFloats(dt: number) {
+        for (const ft of this.floatTexts) {
+            ft.y += ft.vy * dt;
+            ft.ttl -= dt;
+        }
+        this.floatTexts = this.floatTexts.filter(ft => ft.ttl > 0);
     }
 
     // —— 治疗：每帧奶「血量百分比最低」的受伤队友 ——
