@@ -1,0 +1,177 @@
+// 战斗入口（BattleEntry）—— 挂到场景节点上的唯一脚本
+// 作用：建战场、驱动 BattleManager、用 Graphics 把所有单位画成色块（占位）、显示文字、处理重开。
+// 第一版没有美术：士兵=蓝色方块，敌人=红色圆，子弹=黄色点。验证战斗循环用。
+
+import { _decorator, Component, Node, Graphics, Color, UITransform, Label, view } from 'cc';
+import { BattleManager } from './combat/BattleManager';
+import { BattleConfig, SoldierClass } from './config/BattleConfig';
+
+const { ccclass } = _decorator;
+
+@ccclass('BattleEntry')
+export class BattleEntry extends Component {
+    private _gfx: Graphics = null!;
+    private _waveLabel: Label = null!;
+    private _hpLabel: Label = null!;
+    private _statusLabel: Label = null!;
+
+    private _mgr: BattleManager = null!;
+    private _halfW = 0;
+    private _halfH = 0;
+
+    // 颜色（占位）—— 按职业区分
+    private _cClass: Record<SoldierClass, Color> = {
+        tank: new Color(70, 170, 200),    // 坦克：青蓝
+        dps: new Color(255, 150, 60),     // 输出：橙
+        healer: new Color(90, 220, 120),  // 治疗：绿
+    };
+    private _cSoldierHurt = new Color(110, 110, 120); // 残血变灰
+    private _cEnemy = new Color(230, 70, 70);
+    private _cEnemyHpBg = new Color(60, 30, 30);
+    private _cEnemyHp = new Color(90, 220, 120);
+    private _cBullet = new Color(255, 220, 60);
+    private _cHealBeam = new Color(120, 255, 160, 160);
+
+    onLoad() {
+        const vs = view.getVisibleSize();
+        this._halfW = vs.width / 2;
+        this._halfH = vs.height / 2;
+
+        // 让本节点铺满全屏，方便接收点击（重开用）
+        const ut = this.getComponent(UITransform) || this.addComponent(UITransform);
+        ut.setContentSize(vs.width, vs.height);
+
+        // 画布：一个居中的子节点，本地坐标 (0,0) 即屏幕中心
+        const gfxNode = new Node('Gfx');
+        gfxNode.layer = this.node.layer;
+        gfxNode.addComponent(UITransform);
+        this._gfx = gfxNode.addComponent(Graphics);
+        this.node.addChild(gfxNode);
+        gfxNode.setPosition(0, 0, 0);
+
+        // 文字
+        this._waveLabel = this._makeLabel('', 0, this._halfH - 80, 40);
+        this._hpLabel = this._makeLabel('', 0, this._halfH - 130, 30);
+        this._statusLabel = this._makeLabel('', 0, 0, 56);
+        this._statusLabel.color = new Color(255, 230, 120);
+
+        // 点击重开
+        this.node.on(Node.EventType.TOUCH_END, this._onTap, this);
+
+        this._startBattle();
+    }
+
+    private _startBattle() {
+        this._mgr = new BattleManager(this._halfW, this._halfH);
+        this._statusLabel.string = '';
+    }
+
+    private _onTap() {
+        // 仅在分出胜负后，点击重开
+        if (this._mgr.phase === 'won' || this._mgr.phase === 'lost') {
+            this._startBattle();
+        }
+    }
+
+    update(dt: number) {
+        if (!this._mgr) return;
+        // dt 兜底，防止切后台回来一帧巨大导致瞬移
+        this._mgr.tick(Math.min(dt, 0.05));
+        this._render();
+        this._updateLabels();
+    }
+
+    // —— 把所有单位画成色块 ——
+    private _render() {
+        const g = this._gfx;
+        g.clear();
+
+        // 子弹
+        const br = BattleConfig.bullet.radius;
+        g.fillColor = this._cBullet;
+        for (const b of this._mgr.bullets) {
+            g.circle(b.x, b.y, br);
+        }
+        g.fill();
+
+        // 敌人（红圆 + 头顶血条）
+        const er = BattleConfig.enemy.radius;
+        for (const e of this._mgr.enemies) {
+            g.fillColor = this._cEnemy;
+            g.circle(e.x, e.y, er);
+            g.fill();
+
+            // 血条
+            const w = er * 2;
+            const ratio = Math.max(0, e.hp / e.maxHp);
+            const by = e.y + er + 8;
+            g.fillColor = this._cEnemyHpBg;
+            g.rect(e.x - er, by, w, 6);
+            g.fill();
+            g.fillColor = this._cEnemyHp;
+            g.rect(e.x - er, by, w * ratio, 6);
+            g.fill();
+        }
+
+        // 治疗光束（绿色细线，治疗→被奶的队友）
+        g.strokeColor = this._cHealBeam;
+        g.lineWidth = 4;
+        for (const hb of this._mgr.healBeams) {
+            g.moveTo(hb.fromX, hb.fromY);
+            g.lineTo(hb.toX, hb.toY);
+        }
+        g.stroke();
+
+        // 士兵（按职业上色的方块，受伤变灰；坦克更大）
+        for (const sol of this._mgr.soldiers) {
+            if (!sol.alive) continue;
+            const size = BattleConfig.classes[sol.cls].size;
+            const ratio = sol.hp / sol.maxHp;
+            g.fillColor = ratio > 0.35 ? this._cClass[sol.cls] : this._cSoldierHurt;
+            g.rect(sol.x - size / 2, sol.y - size / 2, size, size);
+            g.fill();
+
+            // 士兵头顶血条
+            const w = size;
+            const by = sol.y + size / 2 + 6;
+            g.fillColor = this._cEnemyHpBg;
+            g.rect(sol.x - w / 2, by, w, 5);
+            g.fill();
+            g.fillColor = this._cEnemyHp;
+            g.rect(sol.x - w / 2, by, w * ratio, 5);
+            g.fill();
+        }
+    }
+
+    private _updateLabels() {
+        const m = this._mgr;
+        const totalWaves = BattleConfig.waves.length;
+        this._waveLabel.string = `第 ${m.waveIndex + 1}/${totalWaves} 波`;
+        this._hpLabel.string = `小队血量: ${Math.ceil(m.squadHpTotal)}/${m.squadHpMax}`;
+
+        if (m.phase === 'won') {
+            this._statusLabel.string = '🎉 通关！点击重开';
+        } else if (m.phase === 'lost') {
+            this._statusLabel.string = '💀 小队全灭  点击重开';
+        } else {
+            this._statusLabel.string = '';
+        }
+    }
+
+    private _makeLabel(text: string, x: number, y: number, size: number): Label {
+        const node = new Node('Label');
+        node.layer = this.node.layer;
+        node.addComponent(UITransform);
+        const label = node.addComponent(Label);
+        label.string = text;
+        label.fontSize = size;
+        label.lineHeight = size + 6;
+        this.node.addChild(node);
+        node.setPosition(x, y, 0);
+        return label;
+    }
+
+    onDestroy() {
+        this.node.off(Node.EventType.TOUCH_END, this._onTap, this);
+    }
+}
