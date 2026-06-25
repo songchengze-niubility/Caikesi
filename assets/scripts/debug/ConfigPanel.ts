@@ -3,7 +3,7 @@
 // 定位：只负责临时调整。调好后点「导出 JSON」把数值复制出来，后续由 Excel 统一管理。
 // 注意：用的是 HTML DOM，只在网页预览里出现；微信小游戏构建里不会显示（也不该带它上线）。
 
-import { BattleConfig, CombatStats, UnitKind } from '../config/BattleConfig';
+import { BattleConfig, CombatStats, SoldierClass } from '../config/BattleConfig';
 
 // 一个可调字段的描述
 interface Field {
@@ -31,10 +31,8 @@ const STAT_META: { key: keyof CombatStats; label: string; min: number; max: numb
     { key: 'dmgReduce',  label: '伤害减免', min: 0,   max: 0.9,  step: 0.05 },
 ];
 
-// 单位类型 → 分组标题
-const UNIT_TITLE: Record<UnitKind, string> = {
-    tank: '🛡 坦克', dps: '🔫 输出', healer: '💚 治疗', enemy: '👾 敌人',
-};
+// 职业 → 分组标题
+const SOLDIER_TITLE: Record<SoldierClass, string> = { tank: '🛡 坦克', dps: '🔫 输出', healer: '💚 治疗' };
 
 function buildFields(): Field[] {
     const C = BattleConfig;
@@ -44,44 +42,56 @@ function buildFields(): Field[] {
 
     const fields: Field[] = [];
 
-    // —— 每个单位：先统一属性表的属性，再接该单位的行为字段（同组连续）——
-    (['tank', 'dps', 'healer', 'enemy'] as UnitKind[]).forEach(kind => {
-        const title = UNIT_TITLE[kind];
-        const st = C.stats[kind];
+    // —— 小队：每个职业的统一属性 + 行为字段 ——
+    (['tank', 'dps', 'healer'] as SoldierClass[]).forEach(cls => {
+        const title = SOLDIER_TITLE[cls];
+        const st = C.stats[cls];
         for (const m of STAT_META) {
-            if (kind === 'enemy' && m.key === 'hp') continue; // 敌人血量由波次控制
-            fields.push(f(title, m.label, m.min, m.max, m.step,
-                () => st[m.key], v => { st[m.key] = v; }));
+            fields.push(f(title, m.label, m.min, m.max, m.step, () => st[m.key], v => { st[m.key] = v; }));
         }
-        // 行为字段（非战斗属性）
-        if (kind === 'tank') {
-            const b = C.classes.tank;
-            fields.push(f(title, '攻击间隔', 0.1, 2, 0.05, () => b.fireInterval, v => b.fireInterval = v));
-            fields.push(f(title, '射程', 30, 300, 5, () => b.range, v => b.range = v));
-            fields.push(f(title, '移速', 0, 600, 20, () => b.moveSpeed, v => b.moveSpeed = v));
-            fields.push(f(title, '前压上限', 0, 400, 10, () => b.advanceLimit, v => b.advanceLimit = v));
-        } else if (kind === 'dps') {
-            const b = C.classes.dps;
+        const b = C.classes[cls];
+        if (cls === 'healer') {
+            fields.push(f(title, '每秒治疗', 0, 80, 2, () => b.healPerSec, v => b.healPerSec = v));
+        } else {
             fields.push(f(title, '攻击间隔', 0.05, 2, 0.02, () => b.fireInterval, v => b.fireInterval = v));
-            fields.push(f(title, '射程', 100, 900, 10, () => b.range, v => b.range = v));
-        } else if (kind === 'healer') {
-            fields.push(f(title, '每秒治疗', 0, 80, 2, () => C.classes.healer.healPerSec, v => C.classes.healer.healPerSec = v));
-        } else if (kind === 'enemy') {
-            fields.push(f(title, '移速', 20, 320, 10, () => C.enemy.speed, v => C.enemy.speed = v));
-            fields.push(f(title, '攻击间隔', 0.2, 3, 0.1, () => C.enemy.attackInterval, v => C.enemy.attackInterval = v));
-            fields.push(f(title, '停靠距离', 60, 320, 10, () => C.enemy.contactGap, v => C.enemy.contactGap = v));
+            fields.push(f(title, '射程', 30, 900, 5, () => b.range, v => b.range = v));
+            if (cls === 'tank') {
+                fields.push(f(title, '移速', 0, 600, 20, () => b.moveSpeed, v => b.moveSpeed = v));
+                fields.push(f(title, '前压上限', 0, 400, 10, () => b.advanceLimit, v => b.advanceLimit = v));
+            }
         }
     });
 
-    // —— 公式 / 波次 / 节奏 ——
-    fields.push(f('📐 公式', '伤害保底比例', 0, 1, 0.05, () => C.combat.minDamageRate, v => C.combat.minDamageRate = v));
-    C.waves.forEach((w, i) => {
-        const g = `🌊 第${i + 1}波`;
-        fields.push(f(g, '数量', 1, 40, 1, () => C.waves[i].count, v => C.waves[i].count = v));
-        fields.push(f(g, '每只血量', 20, 1000, 10, () => C.waves[i].hp, v => C.waves[i].hp = v));
-        fields.push(f(g, '出怪间隔', 0.1, 2, 0.05, () => C.waves[i].interval, v => C.waves[i].interval = v));
+    // —— 怪物类型表：每种怪的属性 + 移动/体型 ——
+    Object.keys(C.enemyTypes).forEach(key => {
+        const t = C.enemyTypes[key];
+        const title = `👾 ${t.name}`;
+        for (const m of STAT_META) {
+            fields.push(f(title, m.label, m.min, m.max, m.step, () => t.stats[m.key], v => { t.stats[m.key] = v; }));
+        }
+        fields.push(f(title, '移速', 20, 320, 10, () => t.speed, v => t.speed = v));
+        fields.push(f(title, '体型', 10, 60, 2, () => t.radius, v => t.radius = v));
+        fields.push(f(title, '攻击间隔', 0.2, 3, 0.1, () => t.attackInterval, v => t.attackInterval = v));
     });
-    fields.push(f('⏱ 节奏', '波次间隔', 0, 6, 0.5, () => C.waveGap, v => C.waveGap = v));
+
+    // —— 全局 ——
+    fields.push(f('⚙ 全局', '关卡(改后重开)', 0, Math.max(0, C.levels.length - 1), 1, () => C.startLevel, v => C.startLevel = v));
+    fields.push(f('⚙ 全局', '贴脸距离', 60, 320, 10, () => C.formation.contactGap, v => C.formation.contactGap = v));
+    fields.push(f('⚙ 全局', '伤害保底比例', 0, 1, 0.05, () => C.combat.minDamageRate, v => C.combat.minDamageRate = v));
+
+    // —— 关卡：每关波次间隔 + 每波每个刷怪组的数量/间隔 ——
+    C.levels.forEach((lv) => {
+        const lt = `🗺 ${lv.name}`;
+        fields.push(f(lt, '波次间隔', 0, 6, 0.5, () => lv.waveGap, v => lv.waveGap = v));
+        lv.waves.forEach((w, wi) => {
+            const g = `${lt}·波${wi + 1}`;
+            w.spawns.forEach((sp) => {
+                const nm = C.enemyTypes[sp.type]?.name || sp.type;
+                fields.push(f(g, `${nm}·数量`, 0, 40, 1, () => sp.count, v => sp.count = v));
+                fields.push(f(g, `${nm}·间隔`, 0.1, 2, 0.05, () => sp.interval, v => sp.interval = v));
+            });
+        });
+    });
 
     return fields;
 }
@@ -199,14 +209,15 @@ export function mountConfigPanel(onRestart: () => void) {
 function exportConfig(doc: any) {
     const json = JSON.stringify({
         stats: BattleConfig.stats,
+        enemyTypes: BattleConfig.enemyTypes,
+        levels: BattleConfig.levels,
+        startLevel: BattleConfig.startLevel,
         combat: BattleConfig.combat,
         classes: BattleConfig.classes,
         roster: BattleConfig.roster,
         layout: BattleConfig.layout,
         bullet: BattleConfig.bullet,
-        enemy: BattleConfig.enemy,
-        waves: BattleConfig.waves,
-        waveGap: BattleConfig.waveGap,
+        formation: BattleConfig.formation,
     }, null, 2);
 
     console.log('[战斗配置导出]\n' + json);

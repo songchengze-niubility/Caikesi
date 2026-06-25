@@ -137,10 +137,10 @@ export class BattleEntry extends Component {
         }
         g.fill();
 
-        // 敌人（红圆 + 头顶血条）
-        const er = BattleConfig.enemy.radius;
+        // 敌人（按类型上色的圆 + 头顶血条；体型/颜色随怪类型）
         for (const e of this._mgr.enemies) {
-            g.fillColor = this._cEnemy;
+            const er = e.radius;
+            g.fillColor = new Color(e.color[0], e.color[1], e.color[2], 200);
             g.circle(e.x, e.y, er);
             g.fill();
 
@@ -197,8 +197,7 @@ export class BattleEntry extends Component {
 
     private _updateLabels() {
         const m = this._mgr;
-        const totalWaves = BattleConfig.waves.length;
-        this._waveLabel.string = `第 ${m.waveIndex + 1}/${totalWaves} 波`;
+        this._waveLabel.string = `${m.levelName}   第 ${m.waveIndex + 1}/${m.totalWaves} 波`;
         this._hpLabel.string = `小队血量: ${Math.ceil(m.squadHpTotal)}/${m.squadHpMax}`;
 
         if (m.phase === 'won') {

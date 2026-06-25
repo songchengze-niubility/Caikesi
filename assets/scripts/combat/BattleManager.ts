@@ -26,9 +26,14 @@ export interface Soldier {
     alive: boolean;
 }
 
-// 一只敌人
+// 一只敌人（属性/移动/外观来自其怪物类型 EnemyType）
 export interface Enemy {
-    stats: CombatStats;   // 统一战斗属性（引用 stats.enemy）
+    typeName: string;     // 怪物类型名（飘字/调试）
+    stats: CombatStats;   // 战斗属性（引用该类型的 stats）
+    speed: number;        // 推进速度
+    radius: number;       // 体型 + 命中半径
+    attackInterval: number;
+    color: [number, number, number];
     x: number;
     y: number;
     hp: number;
@@ -78,16 +83,23 @@ export class BattleManager {
     floatTexts: FloatText[] = [];  // 战斗飘字
 
     phase: BattlePhase = 'spawning';
+    levelIndex = 0;
     waveIndex = 0;
-    private spawnedInWave = 0;
-    private spawnTimer = 0;
     private gapTimer = 0;
+    // 当前波每个刷怪组的运行时状态
+    private _groups: { type: string; count: number; interval: number; hp?: number; spawned: number; timer: number }[] = [];
 
-    constructor(halfW: number, halfH: number) {
+    constructor(halfW: number, halfH: number, levelIndex = BattleConfig.startLevel) {
         this.halfW = halfW;
         this.halfH = halfH;
+        this.levelIndex = Math.max(0, Math.min(levelIndex, BattleConfig.levels.length - 1));
         this._setupSquad();
+        this._startWave(0);
     }
+
+    get level() { return BattleConfig.levels[this.levelIndex]; }
+    get levelName(): string { return this.level.name; }
+    get totalWaves(): number { return this.level.waves.length; }
 
     // —— 布阵（单排一字阵）：全员同一条横线 y=0，按 roster 顺序从前到后沿 x 排开 ——
     private _setupSquad() {
@@ -141,30 +153,54 @@ export class BattleManager {
         this._checkWinLose();
     }
 
+    // 进入第 index 波：把该波的刷怪组展开成运行时状态
+    private _startWave(index: number) {
+        this.waveIndex = index;
+        const wave = this.level.waves[index];
+        this._groups = wave.spawns.map(s => ({
+            type: s.type, count: s.count, interval: s.interval, hp: s.hp,
+            spawned: 0, timer: 0,
+        }));
+        this.phase = 'spawning';
+    }
+
+    // 本波是否已全部刷完
+    private get _waveFullySpawned(): boolean {
+        return this._groups.every(g => g.spawned >= g.count);
+    }
+
     // —— 刷怪 ——
     private _updateSpawning(dt: number) {
-        const wave = BattleConfig.waves[this.waveIndex];
         if (this.phase === 'gap') {
             this.gapTimer -= dt;
-            if (this.gapTimer <= 0) this.phase = 'spawning';
+            if (this.gapTimer <= 0) this._startWave(this.waveIndex + 1);
             return;
         }
-        if (this.spawnedInWave < wave.count) {
-            this.spawnTimer -= dt;
-            if (this.spawnTimer <= 0) {
-                this.spawnTimer = wave.interval;
-                this._spawnEnemy(wave.hp);
-                this.spawnedInWave++;
+        // spawning：各刷怪组各自按间隔出怪
+        for (const g of this._groups) {
+            if (g.spawned >= g.count) continue;
+            g.timer -= dt;
+            if (g.timer <= 0) {
+                g.timer = g.interval;
+                this._spawnEnemyOfType(g.type, g.hp);
+                g.spawned++;
             }
         }
     }
 
-    private _spawnEnemy(hp: number) {
-        // 从右边进场，同样站在 y=0 这条线上。战斗属性引用统一表 stats.enemy，hp 用波次值
+    private _spawnEnemyOfType(type: string, hpOverride?: number) {
+        const t = BattleConfig.enemyTypes[type];
+        if (!t) return;
+        const hp = hpOverride ?? t.stats.hp;
         this.enemies.push({
-            stats: BattleConfig.stats.enemy,
+            typeName: t.name,
+            stats: t.stats,
+            speed: t.speed,
+            radius: t.radius,
+            attackInterval: t.attackInterval,
+            color: t.color,
             x: this.halfW, y: 0, hp, maxHp: hp,
-            atkCd: BattleConfig.enemy.attackInterval * 0.5,
+            atkCd: t.attackInterval * 0.5,
             alive: true,
         });
     }
@@ -193,7 +229,7 @@ export class BattleManager {
                 let nx = s.x + (dx / d) * step;
                 const ny = s.y + (dy / d) * step;
                 // 前压上限；且硬保险——绝不越过「怪停靠线 − 射程」，保证怪永远在坦克前方
-                const lineLimit = this.defenseLineX + BattleConfig.enemy.contactGap - s.range;
+                const lineLimit = this.defenseLineX + BattleConfig.formation.contactGap - s.range;
                 const limitX = Math.min(s.homeX + s.advanceLimit, lineLimit);
                 if (nx > limitX) nx = limitX;
                 s.x = nx; s.y = ny;
@@ -281,8 +317,6 @@ export class BattleManager {
     // —— 子弹飞行 + 命中 ——
     private _updateBullets(dt: number) {
         const br = BattleConfig.bullet.radius;
-        const er = BattleConfig.enemy.radius;
-        const hitDist = (br + er) * (br + er);
 
         for (const b of this.bullets) {
             if (!b.alive) continue;
@@ -294,8 +328,9 @@ export class BattleManager {
             }
             for (const e of this.enemies) {
                 if (!e.alive) continue;
+                const hit = br + e.radius;   // 命中半径随怪体型
                 const dx = e.x - b.x, dy = e.y - b.y;
-                if (dx * dx + dy * dy <= hitDist) {
+                if (dx * dx + dy * dy <= hit * hit) {
                     this._applyDamage(b.stats, e);   // 命中：走完整公式
                     b.alive = false;
                     break;
@@ -307,20 +342,19 @@ export class BattleManager {
 
     // —— 敌人推进（向左）：无碰撞，全部冲到防线叠在一起，各自一起攻击（群殴） ——
     private _updateEnemies(dt: number) {
-        const speed = BattleConfig.enemy.speed;
-        const front = this.defenseLineX + BattleConfig.enemy.contactGap;
+        const front = this.defenseLineX + BattleConfig.formation.contactGap;
 
         for (const e of this.enemies) {
             if (!e.alive) continue;
 
             if (e.x > front) {
-                e.x -= speed * dt;                 // 向左推进
+                e.x -= e.speed * dt;               // 各怪按自己的速度向左推进
                 if (e.x < front) e.x = front;
             } else {
                 // 到达防线：贴身攻击。所有到达的怪都各自攻击，可叠在一起一起打
                 e.atkCd -= dt;
                 if (e.atkCd <= 0) {
-                    e.atkCd = BattleConfig.enemy.attackInterval / Math.max(0.01, e.stats.attackSpeed);
+                    e.atkCd = e.attackInterval / Math.max(0.01, e.stats.attackSpeed);
                     this._enemyAttack(e);
                 }
             }
@@ -406,17 +440,13 @@ export class BattleManager {
     private _checkWinLose() {
         if (this.aliveSoldiers.length === 0) { this.phase = 'lost'; return; }
 
-        const wave = BattleConfig.waves[this.waveIndex];
-        const waveCleared = this.spawnedInWave >= wave.count && this.enemies.length === 0;
+        const waveCleared = this._waveFullySpawned && this.enemies.length === 0;
         if (!waveCleared) return;
 
-        if (this.waveIndex >= BattleConfig.waves.length - 1) {
-            this.phase = 'won';
+        if (this.waveIndex >= this.level.waves.length - 1) {
+            this.phase = 'won';                  // 通关本关
         } else if (this.phase !== 'gap') {
-            this.waveIndex++;
-            this.spawnedInWave = 0;
-            this.spawnTimer = 0;
-            this.gapTimer = BattleConfig.waveGap;
+            this.gapTimer = this.level.waveGap;  // 进入波次间隔，结束后开下一波
             this.phase = 'gap';
         }
     }
