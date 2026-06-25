@@ -3,19 +3,25 @@
 //      敌人推进到防线后贴身缠斗、治疗奶血、胜负判定。
 // 只算数据，怎么画交给 BattleEntry。
 
-import { BattleConfig, SoldierClass } from '../config/BattleConfig';
+import { BattleConfig, SoldierClass, AttackType } from '../config/BattleConfig';
 
 // 一名士兵
 export interface Soldier {
     cls: SoldierClass;
-    x: number;
+    attackType: AttackType; // 近战 / 远程 / 治疗
+    x: number;            // 当前位置（近战会冲出去）
     y: number;
+    homeX: number;        // 原始站位（防线、退守都用它）
+    homeY: number;
     hp: number;
     maxHp: number;
-    damage: number;       // 单发伤害（治疗为 0）
-    fireInterval: number; // 开火间隔（治疗为 0）
+    damage: number;       // 单次伤害（治疗为 0）
+    fireInterval: number; // 攻击间隔（治疗为 0）
+    range: number;        // 攻击距离
+    moveSpeed: number;    // 移动速度（0=不动）
+    advanceLimit: number; // 离原站位最多前压多远
     healPerSec: number;   // 每秒治疗量（非治疗为 0）
-    cd: number;           // 开火冷却
+    cd: number;           // 攻击冷却
     alive: boolean;
 }
 
@@ -55,6 +61,7 @@ export class BattleManager {
     enemies: Enemy[] = [];
     bullets: Bullet[] = [];
     healBeams: HealBeam[] = [];
+    meleeBeams: HealBeam[] = [];   // 近战正在劈的连线（仅供界面画反馈）
 
     phase: BattlePhase = 'spawning';
     waveIndex = 0;
@@ -74,14 +81,21 @@ export class BattleManager {
         const frontX = -this.halfW + L.frontMargin;
         BattleConfig.roster.forEach((cls, i) => {
             const def = BattleConfig.classes[cls];
+            const hx = frontX - i * L.spacing;   // 越靠后（i 越大）越靠左
             this.soldiers.push({
                 cls,
-                x: frontX - i * L.spacing,   // 越靠后（i 越大）越靠左
+                attackType: def.attackType,
+                x: hx,
                 y: 0,
+                homeX: hx,
+                homeY: 0,
                 hp: def.hp,
                 maxHp: def.hp,
                 damage: def.damage,
                 fireInterval: def.fireInterval,
+                range: def.range,
+                moveSpeed: def.moveSpeed,
+                advanceLimit: def.advanceLimit,
                 healPerSec: def.healPerSec,
                 cd: Math.random() * Math.max(def.fireInterval, 0.3),
                 alive: true,
@@ -93,16 +107,17 @@ export class BattleManager {
         return this.soldiers.filter(s => s.alive);
     }
 
-    // 当前防线位置 = 最前面（x 最大、最靠右）还活着的单位那条竖线；没人活着则 -Infinity
+    // 防线 = 最前面还活着单位的【原始站位】（用 homeX，不随近战冲出去而漂移）
     private get defenseLineX(): number {
         let x = -Infinity;
-        for (const s of this.soldiers) if (s.alive && s.x > x) x = s.x;
+        for (const s of this.soldiers) if (s.alive && s.homeX > x) x = s.homeX;
         return x;
     }
 
     tick(dt: number) {
         if (this.phase === 'won' || this.phase === 'lost') return;
         this._updateSpawning(dt);
+        this._updateMovement(dt);
         this._updateFiring(dt);
         this._updateBullets(dt);
         this._updateEnemies(dt);
@@ -137,16 +152,77 @@ export class BattleManager {
         });
     }
 
-    // —— 自动开火：坦克/输出瞄准最近敌人；治疗不开火 ——
-    private _updateFiring(dt: number) {
+    // —— 移动：近战冲向最近的怪贴脸，没怪了退回站位；远程/治疗守在原位 ——
+    private _updateMovement(dt: number) {
         for (const s of this.soldiers) {
-            if (!s.alive || s.damage <= 0 || s.fireInterval <= 0) continue;
+            if (!s.alive) continue;
+
+            if (s.attackType !== 'melee' || s.moveSpeed <= 0) {
+                s.x = s.homeX; s.y = s.homeY;   // 远程/治疗：钉在站位
+                continue;
+            }
+
+            const target = this._frontmostEnemy();   // 盯最前面那只，守住阵线不追后排
+            if (!target) {
+                this._moveToward(s, s.homeX, s.homeY, s.moveSpeed * dt);  // 没怪：退守
+                continue;
+            }
+
+            const dx = target.x - s.x, dy = target.y - s.y;
+            const d = Math.hypot(dx, dy) || 1;
+            if (d > s.range) {
+                // 冲上去，但停在 range 内
+                const step = Math.min(s.moveSpeed * dt, d - s.range * 0.85);
+                let nx = s.x + (dx / d) * step;
+                const ny = s.y + (dy / d) * step;
+                // 前压上限；且硬保险——绝不越过「怪停靠线 − 射程」，保证怪永远在坦克前方
+                const lineLimit = this.defenseLineX + BattleConfig.enemy.contactGap - s.range;
+                const limitX = Math.min(s.homeX + s.advanceLimit, lineLimit);
+                if (nx > limitX) nx = limitX;
+                s.x = nx; s.y = ny;
+            }
+        }
+    }
+
+    private _moveToward(s: Soldier, tx: number, ty: number, step: number) {
+        const dx = tx - s.x, dy = ty - s.y;
+        const d = Math.hypot(dx, dy);
+        if (d <= step || d === 0) { s.x = tx; s.y = ty; return; }
+        s.x += (dx / d) * step; s.y += (dy / d) * step;
+    }
+
+    // —— 自动攻击：近战贴身劈、远程发子弹（都瞄最近敌人，受 range 限制）；治疗不攻击 ——
+    private _updateFiring(dt: number) {
+        this.meleeBeams = [];
+        for (const s of this.soldiers) {
+            if (!s.alive || s.attackType === 'heal' || s.damage <= 0) continue;
+
+            // 近战盯最前面的怪（守线）；远程打最近的
+            const target = s.attackType === 'melee'
+                ? this._frontmostEnemy()
+                : this._nearestEnemy(s.x, s.y);
+            if (!target) continue;
+
+            // 够不够得着
+            const dx = target.x - s.x, dy = target.y - s.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist > s.range) continue;   // 不够近就不打，也不进冷却，靠近即出手
+
+            // 近战：持续画一条「正在劈」的连线
+            if (s.attackType === 'melee') {
+                this.meleeBeams.push({ fromX: s.x, fromY: s.y, toX: target.x, toY: target.y });
+            }
+
             s.cd -= dt;
             if (s.cd > 0) continue;
-            const target = this._nearestEnemy(s.x, s.y);
-            if (!target) continue;
             s.cd = s.fireInterval;
-            this._fireBullet(s, target);
+
+            if (s.attackType === 'melee') {
+                target.hp -= s.damage;          // 近战：瞬间伤害
+                if (target.hp <= 0) target.alive = false;
+            } else {
+                this._fireBullet(s, target);    // 远程：发子弹
+            }
         }
     }
 
@@ -158,6 +234,17 @@ export class BattleManager {
             const dx = e.x - x, dy = e.y - y;
             const d = dx * dx + dy * dy;
             if (d < bestD) { bestD = d; best = e; }
+        }
+        return best;
+    }
+
+    // 最前面（x 最小、最靠左、离小队最近的推进者）的怪
+    private _frontmostEnemy(): Enemy | null {
+        let best: Enemy | null = null;
+        let bestX = Infinity;
+        for (const e of this.enemies) {
+            if (!e.alive) continue;
+            if (e.x < bestX) { bestX = e.x; best = e; }
         }
         return best;
     }
@@ -203,37 +290,25 @@ export class BattleManager {
         this.bullets = this.bullets.filter(b => b.alive);
     }
 
-    // —— 敌人推进（向左）：单列前后排队，最前的顶在防线打，后面的依次等位 ——
-    //   没有碰撞物理：每只怪只是停在「防线前」或「前一只怪身后」，互不推挤。
+    // —— 敌人推进（向左）：无碰撞，全部冲到防线叠在一起，各自一起攻击（群殴） ——
     private _updateEnemies(dt: number) {
         const speed = BattleConfig.enemy.speed;
-        const qs = BattleConfig.enemy.queueSpacing;
-        const contact = BattleConfig.enemy.contactGap;
-        const front = this.defenseLineX + contact;  // 最前怪贴防线时的位置
+        const front = this.defenseLineX + BattleConfig.enemy.contactGap;
 
         for (const e of this.enemies) {
             if (!e.alive) continue;
 
-            // 正前方（x 更小）最近的同伴，决定我能停到哪
-            let stopX = front;
-            for (const o of this.enemies) {
-                if (o.alive && o !== e && o.x < e.x) {
-                    stopX = Math.max(stopX, o.x + qs);
-                }
-            }
-
-            if (e.x > stopX + 0.5) {
-                e.x -= speed * dt;                 // 还没到位：继续向左压
-                if (e.x < stopX) e.x = stopX;
-            } else if (e.x <= front + 1) {
-                // 排在最前、贴着防线：定期攻击最近的士兵
+            if (e.x > front) {
+                e.x -= speed * dt;                 // 向左推进
+                if (e.x < front) e.x = front;
+            } else {
+                // 到达防线：贴身攻击。所有到达的怪都各自攻击，可叠在一起一起打
                 e.atkCd -= dt;
                 if (e.atkCd <= 0) {
                     e.atkCd = BattleConfig.enemy.attackInterval;
                     this._enemyAttack(e);
                 }
             }
-            // 否则：在队伍中段等位，不动也不打
         }
         this.enemies = this.enemies.filter(e => e.alive);
     }

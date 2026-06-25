@@ -6,15 +6,18 @@
 //   职业分前后「列」：坦克在前列（靠右迎敌）当肉墙，输出/治疗在后列（靠左）。
 
 export type SoldierClass = 'tank' | 'dps' | 'healer';
+// 攻击方式：melee 近战(贴身劈) / ranged 远程(发子弹) / heal 治疗(奶血不攻击)
+export type AttackType = 'melee' | 'ranged' | 'heal';
 
 export const BattleConfig = {
     // —— 三种职业的数值 ——
-    // damage=0 表示不开火；healPerSec>0 表示是治疗，每秒奶这么多血。
+    // attackType: 近战/远程/治疗；range: 攻击距离（近战=够得着才劈；远程很大≈全场）。
+    // moveSpeed: 移动速度（近战冲上去贴脸，0=守在原位）；advanceLimit: 离原站位最多前压多远。
     classes: {
-        tank:   { hp: 360, damage: 9,  fireInterval: 0.6,  healPerSec: 0,  size: 74 },
-        dps:    { hp: 90,  damage: 28, fireInterval: 0.33, healPerSec: 0,  size: 52 },
-        healer: { hp: 120, damage: 0,  fireInterval: 0,    healPerSec: 16, size: 52 },
-    } as Record<SoldierClass, { hp: number; damage: number; fireInterval: number; healPerSec: number; size: number }>,
+        tank:   { attackType: 'melee'  as AttackType, hp: 360, damage: 14, fireInterval: 0.5,  range: 90,   moveSpeed: 300, advanceLimit: 80,  healPerSec: 0,  size: 74 },
+        dps:    { attackType: 'ranged' as AttackType, hp: 90,  damage: 28, fireInterval: 0.33, range: 320,  moveSpeed: 0,   advanceLimit: 0,   healPerSec: 0,  size: 52 },
+        healer: { attackType: 'heal'   as AttackType, hp: 120, damage: 0,  fireInterval: 0,    range: 0,    moveSpeed: 0,   advanceLimit: 0,   healPerSec: 16, size: 52 },
+    } as Record<SoldierClass, { attackType: AttackType; hp: number; damage: number; fireInterval: number; range: number; moveSpeed: number; advanceLimit: number; healPerSec: number; size: number }>,
 
     // —— 小队阵容 —— 数组顺序就是从前到后的站位顺序（第一个最靠前迎敌）。
     roster: ['tank', 'dps', 'healer'] as SoldierClass[],
@@ -37,15 +40,14 @@ export const BattleConfig = {
         radius: 28,            // 体型 + 命中半径
         damage: 18,            // 贴身每次攻击的伤害
         attackInterval: 0.8,   // 贴身攻击间隔（秒）
-        contactGap: 64,        // 最前的怪与我方防线之间留的间距（贴脸但不重叠）
-        queueSpacing: 66,      // 后面排队的怪之间的间距（避免重叠）
+        contactGap: 150,       // 怪冲到防线前多远停下（必须 > 坦克 advanceLimit，怪才会停在坦克前方）
     },
 
     // —— 波次：数组长度=总波数，打完最后一波即胜利 ——
     waves: [
-        { count: 6,  hp: 44,  interval: 0.7 },
-        { count: 10, hp: 66,  interval: 0.55 },
-        { count: 14, hp: 95,  interval: 0.45 },
+        { count: 6,  hp: 120, interval: 0.7 },
+        { count: 10, hp: 180, interval: 0.55 },
+        { count: 14, hp: 260, interval: 0.45 },
     ],
 
     waveGap: 2.0,              // 波次间隔（秒）

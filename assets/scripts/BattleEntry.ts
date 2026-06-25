@@ -5,6 +5,7 @@
 import { _decorator, Component, Node, Graphics, Color, UITransform, Label, view } from 'cc';
 import { BattleManager } from './combat/BattleManager';
 import { BattleConfig, SoldierClass } from './config/BattleConfig';
+import { mountConfigPanel } from './debug/ConfigPanel';
 
 const { ccclass } = _decorator;
 
@@ -26,11 +27,12 @@ export class BattleEntry extends Component {
         healer: new Color(90, 220, 120),  // 治疗：绿
     };
     private _cSoldierHurt = new Color(110, 110, 120); // 残血变灰
-    private _cEnemy = new Color(230, 70, 70);
+    private _cEnemy = new Color(230, 70, 70, 170);  // 半透明：怪叠越厚红越深
     private _cEnemyHpBg = new Color(60, 30, 30);
     private _cEnemyHp = new Color(90, 220, 120);
     private _cBullet = new Color(255, 220, 60);
     private _cHealBeam = new Color(120, 255, 160, 160);
+    private _cMeleeBeam = new Color(255, 255, 255, 210);
 
     onLoad() {
         const vs = view.getVisibleSize();
@@ -59,6 +61,9 @@ export class BattleEntry extends Component {
         this.node.on(Node.EventType.TOUCH_END, this._onTap, this);
 
         this._startBattle();
+
+        // 挂载游戏内实时调参面板（仅网页预览生效；点「重开战斗」重置局内数值）
+        mountConfigPanel(() => this._startBattle());
     }
 
     private _startBattle() {
@@ -112,6 +117,15 @@ export class BattleEntry extends Component {
             g.rect(e.x - er, by, w * ratio, 6);
             g.fill();
         }
+
+        // 近战劈砍连线（白色粗线，近战单位→正在劈的怪）
+        g.strokeColor = this._cMeleeBeam;
+        g.lineWidth = 7;
+        for (const mb of this._mgr.meleeBeams) {
+            g.moveTo(mb.fromX, mb.fromY);
+            g.lineTo(mb.toX, mb.toY);
+        }
+        g.stroke();
 
         // 治疗光束（绿色细线，治疗→被奶的队友）
         g.strokeColor = this._cHealBeam;
