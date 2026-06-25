@@ -4,6 +4,7 @@
 
 import { _decorator, Component, Node, Graphics, Color, UITransform, Label, view } from 'cc';
 import { BattleManager } from './combat/BattleManager';
+import { Background } from './combat/Background';
 import { BattleConfig, SoldierClass } from './config/BattleConfig';
 import { mountConfigPanel } from './debug/ConfigPanel';
 
@@ -17,6 +18,7 @@ export class BattleEntry extends Component {
     private _statusLabel: Label = null!;
 
     private _mgr: BattleManager = null!;
+    private _bg: Background = null!;
     private _halfW = 0;
     private _halfH = 0;
 
@@ -42,6 +44,16 @@ export class BattleEntry extends Component {
         // 让本节点铺满全屏，方便接收点击（重开用）
         const ut = this.getComponent(UITransform) || this.addComponent(UITransform);
         ut.setContentSize(vs.width, vs.height);
+
+        // 背景节点：最先加入 → 渲染在最底层（蓝天白云 + 地面）。
+        // 【替换真实背景】：给这个 bgNode 加 Sprite 指定图片即可，无需改战斗代码。
+        const bgNode = new Node('Bg');
+        bgNode.layer = this.node.layer;
+        bgNode.addComponent(UITransform);
+        const bgGfx = bgNode.addComponent(Graphics);
+        this.node.addChild(bgNode);
+        bgNode.setPosition(0, 0, 0);
+        this._bg = new Background(bgGfx, this._halfW, this._halfH);
 
         // 画布：一个居中的子节点，本地坐标 (0,0) 即屏幕中心
         const gfxNode = new Node('Gfx');
@@ -80,6 +92,7 @@ export class BattleEntry extends Component {
 
     update(dt: number) {
         if (!this._mgr) return;
+        this._bg.update(dt);   // 背景（云飘动）
         // dt 兜底，防止切后台回来一帧巨大导致瞬移
         this._mgr.tick(Math.min(dt, 0.05));
         this._render();
