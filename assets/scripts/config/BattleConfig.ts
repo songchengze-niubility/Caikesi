@@ -12,6 +12,7 @@ export interface CombatStats {
     hp: number;          // 生命
     atk: number;         // 攻击力
     def: number;         // 防御力
+    range: number;       // 攻击距离（远程=开火距离；近战=贴脸距离；可被装备/Buff 加成）
     attackSpeed: number; // 攻速倍率（实际攻击间隔 = 基础间隔 / attackSpeed）
     critRate: number;    // 暴击率
     critDmg: number;     // 暴击伤害加成（0.5 = 暴击多打 50%，即 1.5 倍）
@@ -52,21 +53,21 @@ export const BattleConfig = {
     // ========== 小队统一属性表 ==========
     // 一行一个职业，一列一个属性。
     stats: {
-        //         hp    atk  def  攻速   暴击率 暴伤  闪避   格挡率 格挡减伤 伤害加成 伤害减免
-        tank:   { hp: 360, atk: 14, def: 10, attackSpeed: 1.0, critRate: 0.05, critDmg: 0.5, dodgeRate: 0.0,  blockRate: 0.30, blockRatio: 0.5, dmgBonus: 0.0,  dmgReduce: 0.10 },
-        dps:    { hp: 90,  atk: 28, def: 2,  attackSpeed: 1.3, critRate: 0.25, critDmg: 1.0, dodgeRate: 0.05, blockRate: 0.0,  blockRatio: 0.0, dmgBonus: 0.10, dmgReduce: 0.0 },
-        healer: { hp: 120, atk: 0,  def: 4,  attackSpeed: 1.0, critRate: 0.0,  critDmg: 0.5, dodgeRate: 0.10, blockRate: 0.0,  blockRatio: 0.0, dmgBonus: 0.0,  dmgReduce: 0.0 },
+        //         hp    atk  def  射程  攻速   暴击率 暴伤  闪避   格挡率 格挡减伤 伤害加成 伤害减免
+        tank:   { hp: 360, atk: 14, def: 10, range: 90,  attackSpeed: 1.0, critRate: 0.05, critDmg: 0.5, dodgeRate: 0.0,  blockRate: 0.30, blockRatio: 0.5, dmgBonus: 0.0,  dmgReduce: 0.10 },
+        dps:    { hp: 90,  atk: 28, def: 2,  range: 320, attackSpeed: 1.3, critRate: 0.25, critDmg: 1.0, dodgeRate: 0.05, blockRate: 0.0,  blockRatio: 0.0, dmgBonus: 0.10, dmgReduce: 0.0 },
+        healer: { hp: 120, atk: 0,  def: 4,  range: 0,   attackSpeed: 1.0, critRate: 0.0,  critDmg: 0.5, dodgeRate: 0.10, blockRate: 0.0,  blockRatio: 0.0, dmgBonus: 0.0,  dmgReduce: 0.0 },
     } as Record<SoldierClass, CombatStats>,
 
     // ========== 怪物类型表（图鉴）==========
     // 每种怪一套属性 + 移动/体型/颜色。关卡里按 key 引用。
     enemyTypes: {
         zombie: { name: '丧尸', speed: 90,  radius: 28, attackInterval: 0.8, color: [230, 70, 70],
-                  stats: { hp: 120, atk: 18, def: 4,  attackSpeed: 1.0, critRate: 0.05, critDmg: 0.5, dodgeRate: 0.05, blockRate: 0.0, blockRatio: 0.0, dmgBonus: 0.0, dmgReduce: 0.0 } },
+                  stats: { hp: 120, atk: 18, def: 4,  range: 0, attackSpeed: 1.0, critRate: 0.05, critDmg: 0.5, dodgeRate: 0.05, blockRate: 0.0, blockRatio: 0.0, dmgBonus: 0.0, dmgReduce: 0.0 } },
         runner: { name: '疾行者', speed: 175, radius: 22, attackInterval: 0.6, color: [240, 150, 60],
-                  stats: { hp: 70,  atk: 14, def: 2,  attackSpeed: 1.4, critRate: 0.05, critDmg: 0.5, dodgeRate: 0.15, blockRate: 0.0, blockRatio: 0.0, dmgBonus: 0.0, dmgReduce: 0.0 } },
+                  stats: { hp: 70,  atk: 14, def: 2,  range: 0, attackSpeed: 1.4, critRate: 0.05, critDmg: 0.5, dodgeRate: 0.15, blockRate: 0.0, blockRatio: 0.0, dmgBonus: 0.0, dmgReduce: 0.0 } },
         brute:  { name: '重装', speed: 55,  radius: 40, attackInterval: 1.2, color: [170, 80, 200],
-                  stats: { hp: 360, atk: 30, def: 12, attackSpeed: 0.8, critRate: 0.05, critDmg: 0.5, dodgeRate: 0.0,  blockRate: 0.0, blockRatio: 0.0, dmgBonus: 0.0, dmgReduce: 0.15 } },
+                  stats: { hp: 360, atk: 30, def: 12, range: 0, attackSpeed: 0.8, critRate: 0.05, critDmg: 0.5, dodgeRate: 0.0,  blockRate: 0.0, blockRatio: 0.0, dmgBonus: 0.0, dmgReduce: 0.15 } },
     } as Record<string, EnemyType>,
 
     // ========== 关卡表 ==========
@@ -100,12 +101,12 @@ export const BattleConfig = {
         minDamageRate: 0.1,  // 减法保底：最终伤害至少为攻击力的此比例
     },
 
-    // ========== 职业行为（非战斗属性）==========
+    // ========== 职业行为（非战斗属性；射程已移入 stats 表）==========
     classes: {
-        tank:   { attackType: 'melee'  as AttackType, fireInterval: 0.5,  range: 90,  moveSpeed: 300, advanceLimit: 80, healPerSec: 0,  size: 74 },
-        dps:    { attackType: 'ranged' as AttackType, fireInterval: 0.33, range: 320, moveSpeed: 0,   advanceLimit: 0,  healPerSec: 0,  size: 52 },
-        healer: { attackType: 'heal'   as AttackType, fireInterval: 0,    range: 0,   moveSpeed: 0,   advanceLimit: 0,  healPerSec: 16, size: 52 },
-    } as Record<SoldierClass, { attackType: AttackType; fireInterval: number; range: number; moveSpeed: number; advanceLimit: number; healPerSec: number; size: number }>,
+        tank:   { attackType: 'melee'  as AttackType, fireInterval: 0.5,  moveSpeed: 300, advanceLimit: 80, healPerSec: 0,  size: 74 },
+        dps:    { attackType: 'ranged' as AttackType, fireInterval: 0.33, moveSpeed: 0,   advanceLimit: 0,  healPerSec: 0,  size: 52 },
+        healer: { attackType: 'heal'   as AttackType, fireInterval: 0,    moveSpeed: 0,   advanceLimit: 0,  healPerSec: 16, size: 52 },
+    } as Record<SoldierClass, { attackType: AttackType; fireInterval: number; moveSpeed: number; advanceLimit: number; healPerSec: number; size: number }>,
 
     // —— 小队阵容（从前到后的站位顺序）——
     roster: ['tank', 'dps', 'healer'] as SoldierClass[],

@@ -18,7 +18,6 @@ export interface Soldier {
     hp: number;           // 当前血量
     maxHp: number;
     fireInterval: number; // 基础攻击间隔（治疗为 0）
-    range: number;        // 攻击距离
     moveSpeed: number;    // 移动速度（0=不动）
     advanceLimit: number; // 离原站位最多前压多远
     healPerSec: number;   // 每秒治疗量（非治疗为 0）
@@ -120,7 +119,6 @@ export class BattleManager {
                 hp: st.hp,
                 maxHp: st.hp,
                 fireInterval: cdef.fireInterval,
-                range: cdef.range,
                 moveSpeed: cdef.moveSpeed,
                 advanceLimit: cdef.advanceLimit,
                 healPerSec: cdef.healPerSec,
@@ -223,13 +221,13 @@ export class BattleManager {
 
             const dx = target.x - s.x, dy = target.y - s.y;
             const d = Math.hypot(dx, dy) || 1;
-            if (d > s.range) {
+            if (d > s.stats.range) {
                 // 冲上去，但停在 range 内
-                const step = Math.min(s.moveSpeed * dt, d - s.range * 0.85);
+                const step = Math.min(s.moveSpeed * dt, d - s.stats.range * 0.85);
                 let nx = s.x + (dx / d) * step;
                 const ny = s.y + (dy / d) * step;
                 // 前压上限；且硬保险——绝不越过「怪停靠线 − 射程」，保证怪永远在坦克前方
-                const lineLimit = this.defenseLineX + BattleConfig.formation.contactGap - s.range;
+                const lineLimit = this.defenseLineX + BattleConfig.formation.contactGap - s.stats.range;
                 const limitX = Math.min(s.homeX + s.advanceLimit, lineLimit);
                 if (nx > limitX) nx = limitX;
                 s.x = nx; s.y = ny;
@@ -259,7 +257,7 @@ export class BattleManager {
             // 够不够得着
             const dx = target.x - s.x, dy = target.y - s.y;
             const dist = Math.hypot(dx, dy);
-            if (dist > s.range) continue;   // 不够近就不打，也不进冷却，靠近即出手
+            if (dist > s.stats.range) continue;   // 不够近就不打，也不进冷却，靠近即出手
 
             // 近战：持续画一条「正在劈」的连线
             if (s.attackType === 'melee') {

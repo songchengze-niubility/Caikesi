@@ -21,6 +21,7 @@ const STAT_META: { key: keyof CombatStats; label: string; min: number; max: numb
     { key: 'hp',         label: '血量',     min: 0,   max: 1200, step: 10 },
     { key: 'atk',        label: '攻击',     min: 0,   max: 120,  step: 1 },
     { key: 'def',        label: '防御',     min: 0,   max: 100,  step: 1 },
+    { key: 'range',      label: '射程',     min: 0,   max: 900,  step: 10 },
     { key: 'attackSpeed', label: '攻速',    min: 0.2, max: 3,    step: 0.1 },
     { key: 'critRate',   label: '暴击率',   min: 0,   max: 1,    step: 0.05 },
     { key: 'critDmg',    label: '暴击伤害', min: 0,   max: 3,    step: 0.1 },
@@ -54,7 +55,6 @@ function buildFields(): Field[] {
             fields.push(f(title, '每秒治疗', 0, 80, 2, () => b.healPerSec, v => b.healPerSec = v));
         } else {
             fields.push(f(title, '攻击间隔', 0.05, 2, 0.02, () => b.fireInterval, v => b.fireInterval = v));
-            fields.push(f(title, '射程', 30, 900, 5, () => b.range, v => b.range = v));
             if (cls === 'tank') {
                 fields.push(f(title, '移速', 0, 600, 20, () => b.moveSpeed, v => b.moveSpeed = v));
                 fields.push(f(title, '前压上限', 0, 400, 10, () => b.advanceLimit, v => b.advanceLimit = v));
