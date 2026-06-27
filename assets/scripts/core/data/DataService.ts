@@ -6,12 +6,14 @@
 // 注意：接口故意设计成"异步"（Promise），因为网络请求天生异步，现在就异步以后才不用返工。
 
 import { sys } from 'cc';
+import type { InventorySave } from '../../inventory/InventoryModel';
 
 // 玩家存档的数据结构（数据模型）。以后加背包、关卡进度等就往这里加字段。
 export interface PlayerData {
     gold: number;          // 金币
     power: number;         // 战力
     lastSaveTime: number;  // 上次存档的时间戳（毫秒）——离线收益靠它计算
+    inventory?: InventorySave;  // 装备存储（背包/仓库/装备栏）；老存档缺它，由默认值兜底
 }
 
 function defaultData(): PlayerData {
