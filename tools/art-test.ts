@@ -5,9 +5,9 @@ import { frameAt } from '../assets/scripts/art/FrameClock';
 import { ArtRegistry } from '../assets/scripts/art/ArtRegistry';
 
 let pass = 0, fail = 0;
-function test(name: string, fn: () => void) {
-    try { fn(); pass++; console.log('  ✓ ' + name); }
-    catch (e) { fail++; console.error('  ✗ ' + name + ' — ' + (e as Error).message); }
+const tests: { name: string; fn: () => void | Promise<void> }[] = [];
+function test(name: string, fn: () => void | Promise<void>) {
+    tests.push({ name, fn });
 }
 
 test('entryFiles：sprite 返回单路径', () => {
@@ -78,5 +78,11 @@ test('ArtRegistry：缓存——同路径只 load 一次', async () => {
     assert.equal(calls(), 4);   // 4 帧各一次，第二次 preload 全命中缓存
 });
 
-console.log(`\n资源管线测试：${pass} 通过，${fail} 失败`);
-process.exit(fail ? 1 : 0);
+(async () => {
+    for (const t of tests) {
+        try { await t.fn(); pass++; console.log('  ✓ ' + t.name); }
+        catch (e) { fail++; console.error('  ✗ ' + t.name + ' — ' + (e as Error).message); }
+    }
+    console.log(`\n资源管线测试：${pass} 通过，${fail} 失败`);
+    process.exit(fail ? 1 : 0);
+})();
