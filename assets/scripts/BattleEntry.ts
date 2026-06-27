@@ -10,6 +10,9 @@ import { mountConfigPanel } from './debug/ConfigPanel';
 import { createArtRegistry } from './art/CocosArtLoader';
 import { ArtRegistry } from './art/ArtRegistry';
 import { FrameAnimPlayer } from './art/FrameAnim';
+import { InventoryModel } from './inventory/InventoryModel';
+import { InventoryView } from './inventory/InventoryView';
+import { loadInventory, saveInventory } from './inventory/InventoryPersistence';
 
 const { ccclass } = _decorator;
 
@@ -23,6 +26,8 @@ export class BattleEntry extends Component {
     private _mgr: BattleManager = null!;
     private _bg: Background = null!;
     private _art: ArtRegistry<SpriteFrame> = null!;
+    private _inv: InventoryModel = null!;
+    private _invView: InventoryView = null!;
     private _halfW = 0;
     private _halfH = 0;
     private _solSprite: Partial<Record<SoldierClass, { node: Node; anim: FrameAnimPlayer }>> = {};
@@ -109,6 +114,21 @@ export class BattleEntry extends Component {
 
         this._startBattle();
 
+        // —— 装备背包（独立子系统，不影响战斗）——
+        this._inv = new InventoryModel();
+        this._invView = new InventoryView(this.node, this._halfW, this._halfH, this._inv, () => {
+            void saveInventory(this._inv);   // 任何成功操作后存盘
+        });
+        void loadInventory(this._inv).then(() => { this._invView.refresh(); });
+
+        // 「背包」「掉落」两个按钮（占位 Label，点了切换面板 / 调试掉落）
+        this._makeButton('背包', -this._halfW + 70, -this._halfH + 40, () => this._invView.toggle());
+        this._makeButton('掉落', -this._halfW + 180, -this._halfH + 40, () => {
+            const r = this._inv.dropRandom();
+            if (r.ok) void saveInventory(this._inv);
+            this._invView.refresh();   // 面板打开时即时刷新（关着则无副作用）
+        });
+
         // 挂载游戏内实时调参面板（仅网页预览生效；点「重开战斗」重置局内数值）
         mountConfigPanel(() => this._startBattle());
     }
@@ -119,6 +139,7 @@ export class BattleEntry extends Component {
     }
 
     private _onTap() {
+        if (this._invView && this._invView.isOpen()) return;  // 面板打开时，点击交给面板，不重开战斗
         // 仅在分出胜负后，点击重开
         if (this._mgr.phase === 'won' || this._mgr.phase === 'lost') {
             this._startBattle();
@@ -134,6 +155,7 @@ export class BattleEntry extends Component {
         this._renderFloats();
         for (const k in this._solSprite) this._solSprite[k as SoldierClass]!.anim.update(Math.min(dt, 0.05));
         this._updateLabels();
+        this._invView.update(dt);
     }
 
     // —— 战斗飘字（用 Label 池，按需复用）——
@@ -276,6 +298,19 @@ export class BattleEntry extends Component {
         label.lineHeight = size + 6;
         this.node.addChild(node);
         node.setPosition(x, y, 0);
+        return label;
+    }
+
+    private _makeButton(text: string, x: number, y: number, onClick: () => void): Label {
+        const node = new Node('Btn');
+        node.layer = this.node.layer;
+        const ut = node.addComponent(UITransform);
+        ut.setContentSize(100, 44);
+        const label = node.addComponent(Label);
+        label.string = text; label.fontSize = 22; label.lineHeight = 26;
+        this.node.addChild(node);
+        node.setPosition(x, y, 0);
+        node.on(Node.EventType.TOUCH_END, (e: any) => { e.propagationStopped = true; onClick(); }, this);
         return label;
     }
 
