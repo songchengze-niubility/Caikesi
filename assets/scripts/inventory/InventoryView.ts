@@ -1,7 +1,7 @@
 // 装备背包占位 UI（覆盖层）：顶部 5 装备栏 + 左背包 + 右仓库 + 底部按钮。
 // 色块格子（品质上色）+ Label 名字。点击命中用热区 hit-test。接美术时换 Sprite。
 
-import { Node, Graphics, Label, UITransform, Color, Vec3, EventTouch, color } from 'cc';
+import { Node, Graphics, Label, UITransform, Color, Vec3, EventTouch } from 'cc';
 import { InventoryModel } from './InventoryModel';
 import { SLOTS, SLOT_LABEL, QUALITY_COLOR, EquipSlot, EquipItem } from './EquipDefs';
 
@@ -41,6 +41,7 @@ export class InventoryView {
 
     isOpen(): boolean { return this.root.active; }
     toggle(): void { this.root.active = !this.root.active; if (this.root.active) { this.sel = null; this.render(); } }
+    refresh(): void { if (this.root.active) this.render(); }
 
     private setToast(s: string) { this.toast = s; this.toastT = 1.5; }
 
@@ -88,8 +89,8 @@ export class InventoryView {
 
         // —— 中部：左背包 / 右仓库 ——
         const midTop = topY - 70;
-        this.drawGrid(g, lbl, 'backpack', -this.halfW + 30, midTop, `背包 ${this.model.backpack.length}/${(this.model as any).backpackCap ?? ''}`, this.model.backpack);
-        this.drawGrid(g, lbl, 'warehouse', 30, midTop, `仓库 ${this.model.warehouse.length}/${(this.model as any).warehouseCap ?? ''}`, this.model.warehouse);
+        this.drawGrid(g, lbl, 'backpack', -this.halfW + 30, midTop, `背包 ${this.model.backpack.length}/${this.model.maxBackpack}`, this.model.backpack);
+        this.drawGrid(g, lbl, 'warehouse', 30, midTop, `仓库 ${this.model.warehouse.length}/${this.model.maxWarehouse}`, this.model.warehouse);
 
         // —— 底部按钮 ——
         const by = -this.halfH + 50;

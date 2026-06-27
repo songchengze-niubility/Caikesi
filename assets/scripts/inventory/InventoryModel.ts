@@ -32,6 +32,8 @@ export class InventoryModel {
 
     get backpackFull(): boolean { return this.backpack.length >= this.backpackCap; }
     get warehouseFull(): boolean { return this.warehouse.length >= this.warehouseCap; }
+    get maxBackpack(): number { return this.backpackCap; }
+    get maxWarehouse(): number { return this.warehouseCap; }
 
     // 调试掉落：随机生成一件 → 背包
     dropRandom(): OpResult {
@@ -84,7 +86,9 @@ export class InventoryModel {
         return {
             backpack: this.backpack.map(it => ({ ...it })),
             warehouse: this.warehouse.map(it => ({ ...it })),
-            equipped: { ...this.equipped },
+            equipped: Object.fromEntries(
+                SLOTS.map(s => [s, this.equipped[s] ? { ...this.equipped[s]! } : null]),
+            ) as Record<EquipSlot, EquipItem | null>,
         };
     }
 

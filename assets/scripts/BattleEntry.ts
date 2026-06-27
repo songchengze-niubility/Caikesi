@@ -84,7 +84,7 @@ export class BattleEntry extends Component {
         this._invView = new InventoryView(this.node, this._halfW, this._halfH, this._inv, () => {
             void saveInventory(this._inv);   // 任何成功操作后存盘
         });
-        void loadInventory(this._inv).then(() => { if (this._invView.isOpen()) this._invView['render'](); });
+        void loadInventory(this._inv).then(() => { this._invView.refresh(); });
 
         // 「背包」「掉落」两个按钮（占位 Label，点了切换面板 / 调试掉落）
         this._makeButton('背包', -this._halfW + 70, -this._halfH + 40, () => this._invView.toggle());
