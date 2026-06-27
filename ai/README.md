@@ -22,7 +22,7 @@ ai/
 | `skills/工作流程.md` | 每次开工与提交前 | 读取顺序、更新记忆、预览验证、提交规范、边界 |
 | `skills/战斗框架.md` | 改战斗逻辑/属性/公式时 | 架构分工、统一 stats、伤害公式、加新维度流程、不变量 |
 | `skills/渲染与美术替换.md` | 改渲染/背景/接美术时 | 色块占位、背景视差、换 Sprite/动画/特效、性能 |
-| `skills/配置与关卡.md` | 改数值/加怪/编关卡时 | BattleConfig 结构、怪物类型、关卡、调参面板 |
+| `skills/配置与关卡.md` | 改数值/加怪/编关卡/改导表时 | **数值由 Excel 管理**（编辑 xlsx→`npm run config`）、配置块结构、怪物类型、关卡、调参面板 |
 | `skills/性能约束.md` | 新增系统、写每帧逻辑、铺量、接美术、做性能评审时 | 微信小游戏/Cocos 性能底线：热路径、池化、渲染、资源、UI、真机验证 |
 | `skills/开发收尾.md` | 开发告一段落/交接/提交前 | 更新记忆、归档设计日志、刷新交接摘要、提交 |
 
@@ -37,7 +37,8 @@ ai/
 
 | 想知道 | 看哪 |
 |--------|------|
-| 数值/字段含义 | `assets/scripts/config/BattleConfig.ts` 注释 |
+| 数值（改/看值） | `tools/config-xlsx/battle.xlsx`（真源）→ `npm run config` 生成产物 |
+| 字段含义/类型 | `assets/scripts/config/BattleConfig.ts` 注释（只剩类型定义） |
 | 改了什么、何时 | git 提交记录 |
 | 为什么这么设计 | `ai/memory/设计日志.md` |
 | 当前进度/待办 | `ai/memory/项目状态.md` |

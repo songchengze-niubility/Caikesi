@@ -1,0 +1,316 @@
+// Excel → 战斗配置导出脚本
+// 读 tools/config-xlsx/battle.xlsx（6 sheet）→ 生成 assets/scripts/config/battle.config.generated.ts
+// 产物结构与 assets/scripts/config/BattleConfig.ts 的 BattleConfig 对象完全一致，
+// 保证 BattleManager 的引用、ConfigPanel 的 setter 不受影响。
+//
+// 用法：npm run config   （或 npx tsx tools/excel-to-config.ts）
+// 改完 Excel 必须跑这个脚本，生成的 .generated.ts 才会更新。
+
+import * as XLSX from 'xlsx';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const XLSX_PATH = resolve(__dirname, 'config-xlsx/battle.xlsx');
+const OUT_PATH = resolve(__dirname, '../assets/scripts/config/battle.config.generated.ts');
+
+// ============ 校验错误/警告收集（跑完统一处理，定位全部问题）============
+// err   = 会让产物坏掉的硬错误（缺字段、引用不存在、键不一致）→ 阻断导出。
+// warn  = 数值越界等可疑但不一定致命的问题（如概率 > 1、count = 0）→ 只提示，不阻断。
+const errors: string[] = [];
+const warnings: string[] = [];
+function err(msg: string) { errors.push(msg); }
+function warn(msg: string) { warnings.push(msg); }
+// 跑完所有解析后调用：有错误则打印全部并退出；无错则把警告打出来后继续。
+function checkErrors(): void {
+    if (warnings.length > 0) {
+        console.warn('\n⚠️  ' + warnings.length + ' 个数值警告（不阻断，建议核对）：');
+        for (const w of warnings) console.warn('  - ' + w);
+    }
+    if (errors.length === 0) return;
+    console.error('\n❌ 配置导出失败，共 ' + errors.length + ' 个问题：');
+    for (const e of errors) console.error('  - ' + e);
+    process.exit(1);
+}
+
+// —— 数值范围兜底（呼应 ai/skills/性能约束.md 的「极端值兜底」）——
+// 概率/比例类必须落在 [0,1]；critDmg/dmgBonus 是「加成倍率」可超过 1，故只查非负。
+function checkStatRanges(st: Record<string, number>, where: string) {
+    const prob01 = ['critRate', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgReduce'];
+    for (const k of prob01) {
+        const v = st[k];
+        if (v < 0 || v > 1) warn(`${where}.${k} = ${v} 超出 [0,1]（概率/比例应在 0~1）`);
+    }
+    const nonNeg = ['hp', 'atk', 'def', 'range', 'attackSpeed', 'critDmg', 'dmgBonus'];
+    for (const k of nonNeg) {
+        if (st[k] < 0) warn(`${where}.${k} = ${st[k]} 为负`);
+    }
+    if (st['attackSpeed'] <= 0) warn(`${where}.attackSpeed = ${st['attackSpeed']} 必须 > 0（否则攻击间隔除零）`);
+}
+
+// ============ 小工具 ============
+type Cell = unknown;
+
+// 把单元格转成数字；空/非法 → null
+function num(c: Cell): number | null {
+    if (c === '' || c === null || c === undefined) return null;
+    const n = Number(c);
+    if (!Number.isFinite(n)) return null;
+    return n;
+}
+function reqNum(c: Cell, where: string): number {
+    const n = num(c);
+    if (n === null) err(`${where}: 不是合法数字（得到 ${JSON.stringify(c)}）`);
+    return n ?? 0;
+}
+function reqStr(c: Cell, where: string): string {
+    if (c === '' || c === null || c === undefined) {
+        err(`${where}: 缺少必填字符串`);
+        return '';
+    }
+    return String(c);
+}
+// "r,g,b" → [r,g,b]
+function parseColor(c: Cell, where: string): [number, number, number] {
+    const s = String(c ?? '').trim();
+    const parts = s.split(',').map(p => Number(p.trim()));
+    if (parts.length !== 3 || parts.some(n => !Number.isFinite(n))) {
+        err(`${where}: 颜色格式应为 "r,g,b"（得到 ${JSON.stringify(c)}）`);
+        return [0, 0, 0];
+    }
+    if (parts.some(n => n < 0 || n > 255)) {
+        warn(`${where}: 颜色分量应在 0~255（得到 ${parts.join(',')}）`);
+    }
+    return [parts[0], parts[1], parts[2]];
+}
+
+// 读某 sheet 成「表头行 + 数据行」的二维数组（首行表头）
+function sheetToRows(wb: XLSX.WorkBook, name: string): { header: string[]; rows: Record<string, Cell>[] } {
+    const ws = wb.Sheets[name];
+    if (!ws) {
+        err(`缺少 sheet: ${name}`);
+        return { header: [], rows: [] };
+    }
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false }) as Cell[][];
+    if (aoa.length === 0) {
+        err(`sheet ${name} 为空`);
+        return { header: [], rows: [] };
+    }
+    const header = (aoa[0] as unknown[]).map(h => String(h));
+    const rows: Record<string, Cell>[] = [];
+    for (let i = 1; i < aoa.length; i++) {
+        const raw = aoa[i] as unknown[];
+        // 整行空 → 跳过
+        if (!raw || raw.every(c => c === '' || c === null || c === undefined)) continue;
+        const row: Record<string, Cell> = {};
+        header.forEach((h, idx) => { row[h] = raw[idx]; });
+        rows.push(row);
+    }
+    return { header, rows };
+}
+
+// ============ 主流程 ============
+function main() {
+    const wb = XLSX.read(readFileSync(XLSX_PATH));
+
+    // —— Stats ——
+    const { rows: statsRows } = sheetToRows(wb, 'Stats');
+    const stats: Record<string, Record<string, number>> = {};
+    const STAT_KEYS = ['hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce'];
+    for (const r of statsRows) {
+        const cls = reqStr(r['class'], `Stats`);
+        if (cls in stats) err(`Stats: class "${cls}" 重复定义`);
+        const obj: Record<string, number> = {};
+        for (const k of STAT_KEYS) obj[k] = reqNum(r[k], `Stats[${cls}].${k}`);
+        checkStatRanges(obj, `Stats[${cls}]`);
+        stats[cls] = obj;
+    }
+
+    // —— EnemyTypes ——
+    const { rows: enemyRows } = sheetToRows(wb, 'EnemyTypes');
+    const enemyTypes: Record<string, unknown> = {};
+    const knownEnemyTypes = new Set<string>();
+    for (const r of enemyRows) {
+        const type = reqStr(r['type'], `EnemyTypes`);
+        if (knownEnemyTypes.has(type)) err(`EnemyTypes: type "${type}" 重复定义`);
+        knownEnemyTypes.add(type);
+        const eStats: Record<string, number> = {};
+        for (const k of STAT_KEYS) eStats[k] = reqNum(r[k], `EnemyTypes[${type}].stats.${k}`);
+        checkStatRanges(eStats, `EnemyTypes[${type}].stats`);
+        enemyTypes[type] = {
+            name: reqStr(r['name'], `EnemyTypes[${type}].name`),
+            speed: reqNum(r['speed'], `EnemyTypes[${type}].speed`),
+            radius: reqNum(r['radius'], `EnemyTypes[${type}].radius`),
+            attackInterval: reqNum(r['attackInterval'], `EnemyTypes[${type}].attackInterval`),
+            color: parseColor(r['color'], `EnemyTypes[${type}].color`),
+            stats: eStats,
+        };
+    }
+
+    // —— Classes ——
+    const { rows: classRows } = sheetToRows(wb, 'Classes');
+    const classes: Record<string, unknown> = {};
+    const VALID_ATTACK = new Set(['melee', 'ranged', 'heal']);
+    for (const r of classRows) {
+        const cls = reqStr(r['class'], `Classes`);
+        if (cls in classes) err(`Classes: class "${cls}" 重复定义`);
+        const at = reqStr(r['attackType'], `Classes[${cls}].attackType`);
+        if (!VALID_ATTACK.has(at)) err(`Classes[${cls}].attackType 必须是 melee/ranged/heal（得到 ${at}）`);
+        classes[cls] = {
+            attackType: at,
+            fireInterval: reqNum(r['fireInterval'], `Classes[${cls}].fireInterval`),
+            moveSpeed: reqNum(r['moveSpeed'], `Classes[${cls}].moveSpeed`),
+            advanceLimit: reqNum(r['advanceLimit'], `Classes[${cls}].advanceLimit`),
+            healPerSec: reqNum(r['healPerSec'], `Classes[${cls}].healPerSec`),
+            size: reqNum(r['size'], `Classes[${cls}].size`),
+        };
+    }
+
+    // —— Levels（拍平行 → 嵌套 Level[]）——
+    const { rows: lvlRows } = sheetToRows(wb, 'Levels');
+    // 先按 levelIndex 聚合（同时校验同关 waveGap/levelName 一致）
+    const levelMap = new Map<number, { name: string; waveGap: number; waves: Map<number, { spawns: unknown[] }> }>();
+    for (const r of lvlRows) {
+        const li = reqNum(r['levelIndex'], `Levels.levelIndex`);
+        const name = reqStr(r['levelName'], `Levels@level${li}.levelName`);
+        const waveGap = reqNum(r['waveGap'], `Levels@level${li}.waveGap`);
+        const wi = reqNum(r['waveIndex'], `Levels@level${li} wave${r['waveIndex']}.waveIndex`);
+        const type = reqStr(r['type'], `Levels@level${li} wave${wi}.type`);
+        const count = reqNum(r['count'], `Levels@level${li} wave${wi}.count`);
+        const interval = reqNum(r['interval'], `Levels@level${li} wave${wi}.interval`);
+        if (!knownEnemyTypes.has(type)) err(`Levels@level${li} wave${wi}: type "${type}" 在 EnemyTypes 里不存在`);
+        if (count < 1) warn(`Levels@level${li} wave${wi}: count = ${count}（应 ≥ 1，否则该组不出怪）`);
+        if (interval <= 0) warn(`Levels@level${li} wave${wi}: interval = ${interval}（应 > 0，否则每帧出怪）`);
+        const hpCell = num(r['hp']);
+
+        let lvl = levelMap.get(li);
+        if (!lvl) {
+            lvl = { name, waveGap, waves: new Map() };
+            levelMap.set(li, lvl);
+        } else {
+            // 同关一致性
+            if (lvl.name !== name) err(`Levels: level${li} 的 levelName 不一致（${lvl.name} vs ${name}）`);
+            if (lvl.waveGap !== waveGap) err(`Levels: level${li} 的 waveGap 不一致（${lvl.waveGap} vs ${waveGap}）`);
+        }
+        let wv = lvl.waves.get(wi);
+        if (!wv) { wv = { spawns: [] }; lvl.waves.set(wi, wv); }
+        const group: Record<string, unknown> = { type, count, interval };
+        if (hpCell !== null) group.hp = hpCell;   // 空 → 不带 hp 字段
+        wv.spawns.push(group);
+    }
+    // 按 levelIndex 数值排序（不靠 Excel 行顺序），并校验从 0 连续递增——
+    // 因为 BattleManager 是按数组下标取关（levels[levelIndex]），跳号/乱序会让选关错位。
+    const sortedLi = [...levelMap.keys()].sort((a, b) => a - b);
+    sortedLi.forEach((li, idx) => {
+        if (li !== idx) err(`Levels: levelIndex 必须从 0 连续递增（期望 ${idx}，得到 ${li}）`);
+    });
+    const levels = sortedLi.map(li => {
+        const lvl = levelMap.get(li)!;
+        // wave 同样按 waveIndex 排序 + 校验连续
+        const wiSorted = [...lvl.waves.keys()].sort((a, b) => a - b);
+        wiSorted.forEach((wi, idx) => {
+            if (wi !== idx) err(`Levels@level${li}: waveIndex 必须从 0 连续递增（期望 ${idx}，得到 ${wi}）`);
+        });
+        const waves = wiSorted.map(wi => ({ spawns: lvl.waves.get(wi)!.spawns }));
+        return { name: lvl.name, waveGap: lvl.waveGap, waves };
+    });
+    if (levels.length === 0) err('Levels: 没有任何关卡');
+
+    // —— Misc（点分 key → 嵌套）——
+    const { rows: miscRows } = sheetToRows(wb, 'Misc');
+    function setPath(root: Record<string, unknown>, dotted: string, value: unknown) {
+        const parts = dotted.split('.');
+        let cur = root;
+        for (let i = 0; i < parts.length - 1; i++) {
+            const k = parts[i];
+            if (cur[k] === undefined) cur[k] = {};
+            cur = cur[k] as Record<string, unknown>;
+        }
+        cur[parts[parts.length - 1]] = value;
+    }
+    const misc: Record<string, unknown> = {};
+    const miscKeys = new Set<string>();
+    for (const r of miscRows) {
+        const key = reqStr(r['key'], `Misc.key`);
+        if (miscKeys.has(key)) err(`Misc: key "${key}" 重复定义`);
+        miscKeys.add(key);
+        const v = r['value'];
+        const n = num(v);
+        setPath(misc, key, n !== null ? n : v);   // 是数字就用数字，否则原样（字符串）
+    }
+    // 必填键校验：缺了会让游戏代码读到 undefined（如 combat.minDamageRate 缺失 → 伤害 NaN）
+    const MISC_REQUIRED = ['startLevel', 'combat.minDamageRate', 'layout.frontMargin',
+        'layout.spacing', 'bullet.speed', 'bullet.radius', 'formation.contactGap'];
+    for (const k of MISC_REQUIRED) if (!miscKeys.has(k)) err(`Misc: 缺少必填 key "${k}"`);
+
+    // —— Scene（点分 key → 嵌套；颜色列自动判定：值是 "r,g,b" 字符串就转数组）——
+    const { rows: sceneRows } = sheetToRows(wb, 'Scene');
+    const scene: Record<string, unknown> = {};
+    const sceneKeys = new Set<string>();
+    for (const r of sceneRows) {
+        const key = reqStr(r['key'], `Scene.key`);
+        if (sceneKeys.has(key)) err(`Scene: key "${key}" 重复定义`);
+        sceneKeys.add(key);
+        const v = r['value'];
+        const s = String(v ?? '');
+        // 颜色判定：形如 "数字,数字,数字"
+        if (/^\s*\d+\s*,\s*\d+\s*,\s*\d+\s*$/.test(s)) {
+            setPath(scene, key, parseColor(v, `Scene.${key}`));
+        } else {
+            const n = num(v);
+            setPath(scene, key, n !== null ? n : reqStr(v, `Scene.${key}`));
+        }
+    }
+    const SCENE_REQUIRED = ['horizonY', 'skyTop', 'skyBottom', 'groundTop', 'groundBottom',
+        'cloud.count', 'cloud.color', 'cloud.speed', 'hill.color', 'hill.speed', 'groundScroll'];
+    for (const k of SCENE_REQUIRED) if (!sceneKeys.has(k)) err(`Scene: 缺少必填 key "${k}"`);
+
+    // —— roster：用 Stats 表的行顺序（前到后），保证阵型顺序语义 ——
+    const roster = statsRows.map(r => reqStr(r['class'], `Stats(用于 roster)`));
+
+    // —— 引用完整性：roster 里每个职业都必须在 Stats 和 Classes 同时有定义 ——
+    // （_setupSquad 同时读 stats[cls] 和 classes[cls]，缺一边会运行时崩）
+    const statsKeys = new Set(Object.keys(stats));
+    const classKeys = new Set(Object.keys(classes));
+    for (const cls of roster) {
+        if (!classKeys.has(cls)) err(`一致性: 职业 "${cls}" 在 Stats 有、Classes 缺失`);
+    }
+    for (const cls of classKeys) {
+        if (!statsKeys.has(cls)) err(`一致性: 职业 "${cls}" 在 Classes 有、Stats 缺失`);
+    }
+
+    // —— 校验通过检查 ——
+    checkErrors();   // 若有 errors 在此打印全部并退出；无错则继续
+
+    // —— 组装最终对象 ——
+    const config = {
+        stats,
+        enemyTypes,
+        levels,
+        startLevel: misc['startLevel'] ?? 0,
+        combat: misc['combat'] ?? {},
+        classes,
+        roster,
+        layout: misc['layout'] ?? {},
+        bullet: misc['bullet'] ?? {},
+        formation: misc['formation'] ?? {},
+        scene,
+    };
+
+    const now = new Date().toISOString();
+    const code = `// ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
+// 改数值请编辑 tools/config-xlsx/battle.xlsx，然后跑：npm run config
+// 源文件：tools/config-xlsx/battle.xlsx
+// 生成时间：${now}
+
+/* eslint-disable */
+// @ts-nocheck
+export const generatedBattleConfig = ${JSON.stringify(config, null, 4)};
+`;
+
+    writeFileSync(OUT_PATH, code, 'utf-8');
+    console.log(`✓ 已生成 ${OUT_PATH}`);
+    console.log(`  stats=${Object.keys(stats).length} enemyTypes=${Object.keys(enemyTypes).length} ` +
+        `classes=${Object.keys(classes).length} levels=${levels.length} roster=${roster.length}`);
+}
+
+main();
