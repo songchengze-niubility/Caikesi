@@ -91,6 +91,7 @@ export class BattleEntry extends Component {
         this._makeButton('掉落', -this._halfW + 180, -this._halfH + 40, () => {
             const r = this._inv.dropRandom();
             if (r.ok) void saveInventory(this._inv);
+            this._invView.refresh();   // 面板打开时即时刷新（关着则无副作用）
         });
 
         // 挂载游戏内实时调参面板（仅网页预览生效；点「重开战斗」重置局内数值）
