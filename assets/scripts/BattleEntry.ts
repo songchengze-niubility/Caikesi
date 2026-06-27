@@ -9,6 +9,7 @@ import { BattleConfig, SoldierClass } from './config/BattleConfig';
 import { mountConfigPanel } from './debug/ConfigPanel';
 import { createArtRegistry } from './art/CocosArtLoader';
 import { ArtRegistry } from './art/ArtRegistry';
+import { FrameAnimPlayer } from './art/FrameAnim';
 
 const { ccclass } = _decorator;
 
@@ -24,6 +25,7 @@ export class BattleEntry extends Component {
     private _art: ArtRegistry<SpriteFrame> = null!;
     private _halfW = 0;
     private _halfH = 0;
+    private _solSprite: Partial<Record<SoldierClass, { node: Node; anim: FrameAnimPlayer }>> = {};
 
     // 颜色（占位）—— 按职业区分
     private _cClass: Record<SoldierClass, Color> = {
@@ -68,6 +70,24 @@ export class BattleEntry extends Component {
                 bgNode.getComponent(UITransform)!.setContentSize(this._halfW * 2, this._halfH * 2);
                 this._bg.setUsingSprite(true);   // 停掉渐变重画
             }
+
+            // 角色序列帧 Sprite（有帧则建节点，无帧保留色块）
+            for (const cls of BattleConfig.roster) {
+                const fr = this._art.getFrames(`char/${cls}/idle`);
+                if (!fr) continue;
+                const n = new Node('Sol_' + cls);
+                n.layer = this.node.layer;
+                const ut = n.addComponent(UITransform);
+                const size = BattleConfig.classes[cls].size;
+                ut.setContentSize(size, size);
+                const sp2 = n.addComponent(Sprite);
+                this.node.addChild(n);
+                this._solSprite[cls] = { node: n, anim: new FrameAnimPlayer(sp2, fr.frames, fr.fps, fr.loop) };
+            }
+
+            // 缺失键调试浮层
+            const miss = this._art.missingKeys();
+            if (miss.length) this._makeLabel('缺图: ' + miss.join(', '), 0, -this._halfH + 110, 18);
         });
 
         // 画布：一个居中的子节点，本地坐标 (0,0) 即屏幕中心
@@ -112,6 +132,7 @@ export class BattleEntry extends Component {
         this._mgr.tick(Math.min(dt, 0.05));
         this._render();
         this._renderFloats();
+        for (const k in this._solSprite) this._solSprite[k as SoldierClass]!.anim.update(Math.min(dt, 0.05));
         this._updateLabels();
     }
 
@@ -207,9 +228,17 @@ export class BattleEntry extends Component {
             if (!sol.alive) continue;
             const size = BattleConfig.classes[sol.cls].size;
             const ratio = sol.hp / sol.maxHp;
-            g.fillColor = ratio > 0.35 ? this._cClass[sol.cls] : this._cSoldierHurt;
-            g.rect(sol.x - size / 2, sol.y - size / 2, size, size);
-            g.fill();
+
+            const art = this._solSprite[sol.cls];
+            if (art) {
+                art.node.active = true;
+                art.node.setPosition(sol.x, sol.y, 0);
+            }
+            if (!art) {
+                g.fillColor = ratio > 0.35 ? this._cClass[sol.cls] : this._cSoldierHurt;
+                g.rect(sol.x - size / 2, sol.y - size / 2, size, size);
+                g.fill();
+            }
 
             // 士兵头顶血条
             const w = size;
