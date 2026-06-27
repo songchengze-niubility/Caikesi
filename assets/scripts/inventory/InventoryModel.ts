@@ -57,4 +57,26 @@ export class InventoryModel {
         this.backpack.push(this.warehouse.splice(i, 1)[0]);
         return OK;
     }
+
+    // 背包某件 → 对应部位装备栏；该部位原有装备退回背包。
+    // 净背包数 = -1(移出该件) +(0或1)(退回旧件) ≤ 原数 → 永不超上限，无需判满/回滚。
+    equip(id: string): OpResult {
+        const i = this.backpack.findIndex(it => it.id === id);
+        if (i < 0) return fail('装备不在背包');
+        const item = this.backpack.splice(i, 1)[0];
+        const prev = this.equipped[item.slot];
+        this.equipped[item.slot] = item;
+        if (prev) this.backpack.push(prev);
+        return OK;
+    }
+
+    // 装备栏 → 背包（背包 +1，需判满）
+    unequip(slot: EquipSlot): OpResult {
+        const item = this.equipped[slot];
+        if (!item) return fail('该装备栏为空');
+        if (this.backpackFull) return fail('背包已满');
+        this.equipped[slot] = null;
+        this.backpack.push(item);
+        return OK;
+    }
 }

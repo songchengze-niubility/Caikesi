@@ -69,5 +69,45 @@ test('toBackpack：仓库→背包；背包满则失败', () => {
     assert.equal(r.reason, '背包已满');
 });
 
+test('equip：背包→对应部位；同部位旧装备退回背包', () => {
+    const m = new InventoryModel(5, 5);
+    const a: any = { id: 'a', slot: 'weapon', name: '剑A', quality: 'common' };
+    const b: any = { id: 'b', slot: 'weapon', name: '剑B', quality: 'rare' };
+    m.backpack.push(a, b);
+    assert.equal(m.equip('a').ok, true);
+    assert.equal(m.equipped.weapon!.id, 'a');
+    assert.equal(m.backpack.length, 1);          // 只剩 b
+    assert.equal(m.equip('b').ok, true);         // 换装：b 上，a 退回
+    assert.equal(m.equipped.weapon!.id, 'b');
+    assert.deepEqual(m.backpack.map(i => i.id), ['a']);
+    assert.equal(m.equip('不存在').ok, false);
+});
+
+test('equip：背包满时换装仍成功（净背包数不增）', () => {
+    const m = new InventoryModel(2, 5);
+    const a: any = { id: 'a', slot: 'helmet', name: '盔A', quality: 'common' };
+    const b: any = { id: 'b', slot: 'helmet', name: '盔B', quality: 'epic' };
+    m.backpack.push(a, b);                        // 背包满(2/2)
+    m.equip('a');                                // a 上, 背包剩 [b] (1/2)
+    assert.equal(m.equip('b').ok, true);         // b 上, a 退回 → [a] (1/2)
+    assert.equal(m.equipped.helmet!.id, 'b');
+    assert.deepEqual(m.backpack.map(i => i.id), ['a']);
+});
+
+test('unequip：装备栏→背包；空栏/背包满则失败', () => {
+    const m = new InventoryModel(1, 5);
+    const a: any = { id: 'a', slot: 'shoes', name: '靴', quality: 'fine' };
+    m.backpack.push(a);
+    m.equip('a');                                // 背包空，shoes=a
+    assert.equal(m.unequip('shoes').ok, true);
+    assert.deepEqual(m.backpack.map(i => i.id), ['a']);
+    assert.equal(m.unequip('shoes').reason, '该装备栏为空');
+    const b: any = { id: 'b', slot: 'chest', name: '甲', quality: 'common' };
+    m.equipped.chest = b;                        // 直接塞一件已装备
+    const r = m.unequip('chest');               // 背包满(1/1)
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, '背包已满');
+});
+
 console.log(`\n装备测试：${pass} 通过，${fail} 失败`);
 process.exit(fail ? 1 : 0);
