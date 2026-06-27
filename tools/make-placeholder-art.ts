@@ -43,9 +43,10 @@ let count = 0;
 for (const [key, entry] of Object.entries(ArtManifest)) {
     const [r, g, b] = BASE[key] ?? [200, 200, 200];
     const files = entryFiles(entry);
-    files.forEach((p, i) => {
-        const k = files.length > 1 ? 0.7 + 0.3 * (i / (files.length - 1)) : 1; // 逐帧变亮
-        write(p, solidPng(64, 64, Math.round(r * k), Math.round(g * k), Math.round(b * k)));
+    // 所有帧同色（占位不闪烁）；序列帧动画照常播放，只是各帧看起来一样。
+    // 真实美术替换各帧后才有动画表现。
+    files.forEach((p) => {
+        write(p, solidPng(64, 64, r, g, b));
         count++;
     });
 }
