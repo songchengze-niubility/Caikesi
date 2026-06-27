@@ -1,6 +1,7 @@
 // 资源管线纯逻辑单测（tsx）。art 下的 Manifest/Registry/FrameClock 不依赖 cc，可直接 import。
 import * as assert from 'node:assert/strict';
 import { entryFiles, ArtEntry } from '../assets/scripts/art/ArtManifest';
+import { frameAt } from '../assets/scripts/art/FrameClock';
 
 let pass = 0, fail = 0;
 function test(name: string, fn: () => void) {
@@ -16,6 +17,20 @@ test('entryFiles：sprite 返回单路径', () => {
 test('entryFiles：frames 返回编号帧路径', () => {
     const e: ArtEntry = { type: 'frames', dir: 'art/char/tank/idle', frames: 3, fps: 6, loop: true };
     assert.deepEqual(entryFiles(e), ['art/char/tank/idle/idle_0', 'art/char/tank/idle/idle_1', 'art/char/tank/idle/idle_2']);
+});
+
+test('frameAt：loop 循环回绕', () => {
+    assert.equal(frameAt(0, 6, 4, true), 0);
+    assert.equal(frameAt(0.5, 6, 4, true), 3);   // floor(0.5*6)=3
+    assert.equal(frameAt(1.0, 6, 4, true), 2);   // floor(6)=6, 6%4=2
+});
+
+test('frameAt：不循环则停在末帧', () => {
+    assert.equal(frameAt(10, 6, 4, false), 3);   // 钳到 count-1
+});
+
+test('frameAt：count<=0 安全返回 0', () => {
+    assert.equal(frameAt(1, 6, 0, true), 0);
 });
 
 console.log(`\n资源管线测试：${pass} 通过，${fail} 失败`);
