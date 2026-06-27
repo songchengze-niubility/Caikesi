@@ -16,6 +16,14 @@ export const SLOT_LABEL: Record<EquipSlot, string> = {
     weapon: '武器', helmet: '头盔', chest: '胸甲', pants: '裤子', shoes: '鞋子',
 };
 
+// 角色：每个角色各有一套 5 装备栏。id 与战斗职业一致（tank/dps/healer），
+// 但这里独立定义，不耦合 BattleConfig——存储层不需要知道战斗数值。
+export type CharacterId = 'tank' | 'dps' | 'healer';
+export const CHARACTERS: CharacterId[] = ['tank', 'dps', 'healer'];
+export const CHARACTER_LABEL: Record<CharacterId, string> = {
+    tank: '坦克', dps: '输出', healer: '治疗',
+};
+
 export const QUALITIES: Quality[] = ['common', 'fine', 'rare', 'epic', 'legend'];
 export const QUALITY_LABEL: Record<Quality, string> = {
     common: '普通', fine: '优秀', rare: '精良', epic: '史诗', legend: '传说',

@@ -1,6 +1,6 @@
 // 装备存储系统单测（纯逻辑，tsx 运行）。assets 下的 Model/Defs 不依赖 cc，故可直接 import。
 import * as assert from 'node:assert/strict';
-import { randomItem, SLOTS, QUALITIES, makeId } from '../assets/scripts/inventory/EquipDefs';
+import { randomItem, SLOTS, QUALITIES, makeId, CHARACTERS } from '../assets/scripts/inventory/EquipDefs';
 import { InventoryModel } from '../assets/scripts/inventory/InventoryModel';
 
 let pass = 0, fail = 0;
@@ -24,11 +24,11 @@ test('makeId 连续调用唯一', () => {
     assert.equal(ids.size, 1000);
 });
 
-test('新建模型：背包/仓库空，5 装备栏均 null', () => {
+test('新建模型：背包/仓库空，每个角色 5 装备栏均 null', () => {
     const m = new InventoryModel();
     assert.equal(m.backpack.length, 0);
     assert.equal(m.warehouse.length, 0);
-    for (const s of SLOTS) assert.equal(m.equipped[s], null);
+    for (const c of CHARACTERS) for (const s of SLOTS) assert.equal(m.equipped[c][s], null);
 });
 
 test('dropRandom 进背包；背包满则失败', () => {
@@ -69,18 +69,31 @@ test('toBackpack：仓库→背包；背包满则失败', () => {
     assert.equal(r.reason, '背包已满');
 });
 
-test('equip：背包→对应部位；同部位旧装备退回背包', () => {
+test('equip(角色)：背包→该角色对应部位；同部位旧装备退回背包', () => {
     const m = new InventoryModel(5, 5);
     const a: any = { id: 'a', slot: 'weapon', name: '剑A', quality: 'common' };
     const b: any = { id: 'b', slot: 'weapon', name: '剑B', quality: 'rare' };
     m.backpack.push(a, b);
-    assert.equal(m.equip('a').ok, true);
-    assert.equal(m.equipped.weapon!.id, 'a');
+    assert.equal(m.equip('a', 'tank').ok, true);
+    assert.equal(m.equipped.tank.weapon!.id, 'a');
     assert.equal(m.backpack.length, 1);          // 只剩 b
-    assert.equal(m.equip('b').ok, true);         // 换装：b 上，a 退回
-    assert.equal(m.equipped.weapon!.id, 'b');
+    assert.equal(m.equip('b', 'tank').ok, true); // 换装：b 上，a 退回
+    assert.equal(m.equipped.tank.weapon!.id, 'b');
     assert.deepEqual(m.backpack.map(i => i.id), ['a']);
-    assert.equal(m.equip('不存在').ok, false);
+    assert.equal(m.equip('不存在', 'tank').ok, false);
+    assert.equal(m.equip('a', 'badchar' as any).ok, false);  // 非法角色
+});
+
+test('equip：不同角色装备栏互相独立', () => {
+    const m = new InventoryModel(5, 5);
+    const a: any = { id: 'a', slot: 'weapon', name: '剑A', quality: 'common' };
+    const b: any = { id: 'b', slot: 'weapon', name: '剑B', quality: 'rare' };
+    m.backpack.push(a, b);
+    m.equip('a', 'tank');
+    m.equip('b', 'dps');
+    assert.equal(m.equipped.tank.weapon!.id, 'a');
+    assert.equal(m.equipped.dps.weapon!.id, 'b');
+    assert.equal(m.equipped.healer.weapon, null);
 });
 
 test('equip：背包满时换装仍成功（净背包数不增）', () => {
@@ -88,23 +101,23 @@ test('equip：背包满时换装仍成功（净背包数不增）', () => {
     const a: any = { id: 'a', slot: 'helmet', name: '盔A', quality: 'common' };
     const b: any = { id: 'b', slot: 'helmet', name: '盔B', quality: 'epic' };
     m.backpack.push(a, b);                        // 背包满(2/2)
-    m.equip('a');                                // a 上, 背包剩 [b] (1/2)
-    assert.equal(m.equip('b').ok, true);         // b 上, a 退回 → [a] (1/2)
-    assert.equal(m.equipped.helmet!.id, 'b');
+    m.equip('a', 'tank');                        // a 上, 背包剩 [b] (1/2)
+    assert.equal(m.equip('b', 'tank').ok, true); // b 上, a 退回 → [a] (1/2)
+    assert.equal(m.equipped.tank.helmet!.id, 'b');
     assert.deepEqual(m.backpack.map(i => i.id), ['a']);
 });
 
-test('unequip：装备栏→背包；空栏/背包满则失败', () => {
+test('unequip(角色)：装备栏→背包；空栏/背包满则失败', () => {
     const m = new InventoryModel(1, 5);
     const a: any = { id: 'a', slot: 'shoes', name: '靴', quality: 'fine' };
     m.backpack.push(a);
-    m.equip('a');                                // 背包空，shoes=a
-    assert.equal(m.unequip('shoes').ok, true);
+    m.equip('a', 'tank');                        // 背包空，tank.shoes=a
+    assert.equal(m.unequip('tank', 'shoes').ok, true);
     assert.deepEqual(m.backpack.map(i => i.id), ['a']);
-    assert.equal(m.unequip('shoes').reason, '该装备栏为空');
+    assert.equal(m.unequip('tank', 'shoes').reason, '该装备栏为空');
     const b: any = { id: 'b', slot: 'chest', name: '甲', quality: 'common' };
-    m.equipped.chest = b;                        // 直接塞一件已装备
-    const r = m.unequip('chest');               // 背包满(1/1)
+    m.equipped.dps.chest = b;                    // 直接塞一件已装备到 dps
+    const r = m.unequip('dps', 'chest');        // 背包满(1/1)
     assert.equal(r.ok, false);
     assert.equal(r.reason, '背包已满');
 });
@@ -112,7 +125,7 @@ test('unequip：装备栏→背包；空栏/背包满则失败', () => {
 test('serialize/deserialize 往返一致 + 深拷贝', () => {
     const m = new InventoryModel(5, 5);
     m.dropRandom();
-    m.equip(m.backpack[0].id);
+    m.equip(m.backpack[0].id, 'dps');
     m.dropRandom();
     const save = m.serialize();
     const m2 = new InventoryModel(5, 5);
@@ -128,11 +141,11 @@ test('deserialize：undefined / 缺字段 → 空兜底', () => {
     m.deserialize(undefined);
     assert.equal(m.backpack.length, 0);
     assert.equal(m.warehouse.length, 0);
-    for (const s of SLOTS) assert.equal(m.equipped[s], null);
+    for (const c of CHARACTERS) for (const s of SLOTS) assert.equal(m.equipped[c][s], null);
     m.deserialize({ backpack: [{ id: 'a', slot: 'weapon', name: 'n', quality: 'common' }] });
     assert.equal(m.backpack.length, 1);
-    assert.equal(m.warehouse.length, 0);   // 缺 warehouse 兜底为空
-    assert.equal(m.equipped.weapon, null); // 缺 equipped 兜底为 null
+    assert.equal(m.warehouse.length, 0);          // 缺 warehouse 兜底为空
+    assert.equal(m.equipped.tank.weapon, null);   // 缺 equipped 兜底为 null（每角色每栏）
 });
 
 console.log(`\n装备测试：${pass} 通过，${fail} 失败`);

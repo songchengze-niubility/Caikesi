@@ -3,10 +3,10 @@
 
 import { Node, Graphics, Label, UITransform, Color, Vec3, EventTouch } from 'cc';
 import { InventoryModel } from './InventoryModel';
-import { SLOTS, SLOT_LABEL, QUALITY_COLOR, EquipSlot, EquipItem } from './EquipDefs';
+import { SLOTS, SLOT_LABEL, QUALITY_COLOR, EquipSlot, EquipItem, CharacterId, CHARACTERS, CHARACTER_LABEL } from './EquipDefs';
 
 type Zone = 'backpack' | 'warehouse' | 'equipped';
-interface Hot { x: number; y: number; w: number; h: number; kind: string; zone?: Zone; id?: string; slot?: EquipSlot; }
+interface Hot { x: number; y: number; w: number; h: number; kind: string; zone?: Zone; id?: string; slot?: EquipSlot; char?: CharacterId; }
 
 const CELL = 92, GAP = 8, COLS = 4;
 
@@ -16,6 +16,7 @@ export class InventoryView {
     private labelPool: Label[] = [];
     private hots: Hot[] = [];
     private sel: { zone: Zone; id?: string; slot?: EquipSlot } | null = null;
+    private activeChar: CharacterId = CHARACTERS[0];   // 当前选中的角色（装备栏归它）
     private toast = '';
     private toastT = 0;
 
@@ -73,13 +74,28 @@ export class InventoryView {
         g.fillColor = new Color(18, 20, 26, 235);
         g.rect(-this.halfW, -this.halfH, this.halfW * 2, this.halfH * 2); g.fill();
 
-        // —— 顶部：装备栏 ——
-        const topY = this.halfH - 70;
-        lbl(0, topY + 44, '装备栏', 22, new Color(255, 220, 120));
+        // —— 顶部：角色切换按钮（一行）——
+        const charY = this.halfH - 56;   // 按钮区 [charY, charY+40]
+        lbl(-this.halfW + 90, charY + 20, '角色', 22, new Color(255, 220, 120));
+        let cx = -this.halfW + 150;
+        for (const c of CHARACTERS) {
+            const on = c === this.activeChar;
+            g.fillColor = on ? new Color(90, 120, 160) : new Color(55, 60, 72);
+            g.roundRect(cx, charY, 96, 40, 6); g.fill();
+            if (on) { g.strokeColor = new Color(255, 230, 120); g.lineWidth = 3; g.roundRect(cx, charY, 96, 40, 6); g.stroke(); }
+            lbl(cx + 48, charY + 20, CHARACTER_LABEL[c], 18);
+            this.hots.push({ x: cx, y: charY, w: 96, h: 40, kind: 'char', char: c });
+            cx += 104;
+        }
+
+        // —— 当前角色的 5 装备栏（在角色行下方）——
+        lbl(0, this.halfH - 86, `${CHARACTER_LABEL[this.activeChar]} 的装备栏`, 20, new Color(220, 220, 235));
+        const topY = this.halfH - 100 - CELL;   // 装备格区 [topY, topY+CELL]，整体在标题/角色行之下
+        const eq = this.model.equipped[this.activeChar];
         const ew = SLOTS.length * (CELL + GAP) - GAP;
         let ex = -ew / 2;
         for (const slot of SLOTS) {
-            const it = this.model.equipped[slot];
+            const it = eq[slot];
             this.drawCell(g, ex, topY, it, this.sel?.zone === 'equipped' && this.sel.slot === slot);
             lbl(ex + CELL / 2, topY + CELL + 2, SLOT_LABEL[slot], 14, new Color(170, 170, 180));
             if (it) lbl(ex + CELL / 2, topY + CELL / 2, it.name, 16);
@@ -88,7 +104,7 @@ export class InventoryView {
         }
 
         // —— 中部：左背包 / 右仓库 ——
-        const midTop = topY - 70;
+        const midTop = topY - 60;
         this.drawGrid(g, lbl, 'backpack', -this.halfW + 30, midTop, `背包 ${this.model.backpack.length}/${this.model.maxBackpack}`, this.model.backpack);
         this.drawGrid(g, lbl, 'warehouse', 30, midTop, `仓库 ${this.model.warehouse.length}/${this.model.maxWarehouse}`, this.model.warehouse);
 
@@ -138,6 +154,11 @@ export class InventoryView {
         const p = this.root.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
         const hit = this.hots.find(h => p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h);
         if (!hit) return;
+        if (hit.kind === 'char') {
+            this.activeChar = hit.char!;
+            this.sel = null;        // 切角色清掉选中（装备栏选中归属变了）
+            this.render(); return;
+        }
         if (hit.kind === 'cell') {
             this.sel = { zone: hit.zone!, id: hit.id, slot: hit.slot };
             this.render(); return;
@@ -157,10 +178,10 @@ export class InventoryView {
                 break;
             case 'equip':
                 if (!this.sel || this.sel.zone !== 'backpack' || !this.sel.id) { this.setToast('先在背包选要穿的装备'); this.render(); return; }
-                r = m.equip(this.sel.id); break;
+                r = m.equip(this.sel.id, this.activeChar); break;
             case 'unequip':
                 if (!this.sel || this.sel.zone !== 'equipped' || !this.sel.slot) { this.setToast('先选装备栏里的装备'); this.render(); return; }
-                r = m.unequip(this.sel.slot); break;
+                r = m.unequip(this.activeChar, this.sel.slot); break;
         }
         if (!r.ok) { this.setToast(r.reason || '操作失败'); }
         else { this.sel = null; this.onChanged(); }
