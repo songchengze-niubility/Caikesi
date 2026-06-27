@@ -79,4 +79,26 @@ export class InventoryModel {
         this.backpack.push(item);
         return OK;
     }
+
+    serialize(): InventorySave {
+        return {
+            backpack: this.backpack.map(it => ({ ...it })),
+            warehouse: this.warehouse.map(it => ({ ...it })),
+            equipped: { ...this.equipped },
+        };
+    }
+
+    // 缺字段/undefined 用空兜底（老存档加了新系统也不报错）
+    deserialize(save: Partial<InventorySave> | undefined): void {
+        this.backpack = (save?.backpack ?? []).map(it => ({ ...it }));
+        this.warehouse = (save?.warehouse ?? []).map(it => ({ ...it }));
+        const e = emptyEquipped();
+        if (save?.equipped) {
+            for (const s of SLOTS) {
+                const it = save.equipped[s];
+                e[s] = it ? { ...it } : null;
+            }
+        }
+        this.equipped = e;
+    }
 }

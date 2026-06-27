@@ -109,5 +109,31 @@ test('unequip：装备栏→背包；空栏/背包满则失败', () => {
     assert.equal(r.reason, '背包已满');
 });
 
+test('serialize/deserialize 往返一致 + 深拷贝', () => {
+    const m = new InventoryModel(5, 5);
+    m.dropRandom();
+    m.equip(m.backpack[0].id);
+    m.dropRandom();
+    const save = m.serialize();
+    const m2 = new InventoryModel(5, 5);
+    m2.deserialize(save);
+    assert.deepEqual(m2.serialize(), save);
+    // 深拷贝：改 m2 不影响 save
+    m2.backpack.push({ id: 'z', slot: 'weapon', name: 'x', quality: 'common' });
+    assert.notEqual(m2.backpack.length, save.backpack.length);
+});
+
+test('deserialize：undefined / 缺字段 → 空兜底', () => {
+    const m = new InventoryModel();
+    m.deserialize(undefined);
+    assert.equal(m.backpack.length, 0);
+    assert.equal(m.warehouse.length, 0);
+    for (const s of SLOTS) assert.equal(m.equipped[s], null);
+    m.deserialize({ backpack: [{ id: 'a', slot: 'weapon', name: 'n', quality: 'common' }] });
+    assert.equal(m.backpack.length, 1);
+    assert.equal(m.warehouse.length, 0);   // 缺 warehouse 兜底为空
+    assert.equal(m.equipped.weapon, null); // 缺 equipped 兜底为 null
+});
+
 console.log(`\n装备测试：${pass} 通过，${fail} 失败`);
 process.exit(fail ? 1 : 0);
