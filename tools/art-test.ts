@@ -2,6 +2,7 @@
 import * as assert from 'node:assert/strict';
 import { entryFiles, ArtEntry } from '../assets/scripts/art/ArtManifest';
 import { frameAt } from '../assets/scripts/art/FrameClock';
+import { ArtRegistry } from '../assets/scripts/art/ArtRegistry';
 
 let pass = 0, fail = 0;
 function test(name: string, fn: () => void) {
@@ -31,6 +32,50 @@ test('frameAt：不循环则停在末帧', () => {
 
 test('frameAt：count<=0 安全返回 0', () => {
     assert.equal(frameAt(1, 6, 0, true), 0);
+});
+
+// 假 loader：把 path 当资源本身返回；fakeMissing 集合里的返回 null（模拟缺图）
+function fakeReg(missingPaths: string[] = []) {
+    const miss = new Set(missingPaths);
+    let calls = 0;
+    const reg = new ArtRegistry<string>(async (p) => { calls++; return miss.has(p) ? null : `asset:${p}`; });
+    return { reg, calls: () => calls };
+}
+
+test('ArtRegistry：preload 后 getSprite 命中', async () => {
+    const { reg } = fakeReg();
+    await reg.preload(['bg/main']);
+    assert.equal(reg.getSprite('bg/main'), 'asset:art/bg/main');
+});
+
+test('ArtRegistry：getFrames 返回全部帧 + fps/loop', async () => {
+    const { reg } = fakeReg();
+    await reg.preload(['char/tank/idle']);
+    const r = reg.getFrames('char/tank/idle')!;
+    assert.equal(r.frames.length, 4);
+    assert.equal(r.fps, 6);
+    assert.equal(r.loop, true);
+});
+
+test('ArtRegistry：未登记键 → null 且记入 missing', async () => {
+    const { reg } = fakeReg();
+    await reg.preload(['没这个键']);
+    assert.equal(reg.getSprite('没这个键'), null);
+    assert.ok(reg.missingKeys().includes('没这个键'));
+});
+
+test('ArtRegistry：序列帧任一帧缺 → 整体 null', async () => {
+    const { reg } = fakeReg(['art/char/dps/idle/idle_2']);
+    await reg.preload(['char/dps/idle']);
+    assert.equal(reg.getFrames('char/dps/idle'), null);
+    assert.ok(reg.missingKeys().includes('char/dps/idle'));
+});
+
+test('ArtRegistry：缓存——同路径只 load 一次', async () => {
+    const { reg, calls } = fakeReg();
+    await reg.preload(['char/tank/idle']);
+    await reg.preload(['char/tank/idle']);
+    assert.equal(calls(), 4);   // 4 帧各一次，第二次 preload 全命中缓存
 });
 
 console.log(`\n资源管线测试：${pass} 通过，${fail} 失败`);
