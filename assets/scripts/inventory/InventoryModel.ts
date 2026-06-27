@@ -39,4 +39,22 @@ export class InventoryModel {
         this.backpack.push(randomItem());
         return OK;
     }
+
+    // 背包 → 仓库
+    toWarehouse(id: string): OpResult {
+        const i = this.backpack.findIndex(it => it.id === id);
+        if (i < 0) return fail('装备不在背包');
+        if (this.warehouseFull) return fail('仓库已满');
+        this.warehouse.push(this.backpack.splice(i, 1)[0]);
+        return OK;
+    }
+
+    // 仓库 → 背包
+    toBackpack(id: string): OpResult {
+        const i = this.warehouse.findIndex(it => it.id === id);
+        if (i < 0) return fail('装备不在仓库');
+        if (this.backpackFull) return fail('背包已满');
+        this.backpack.push(this.warehouse.splice(i, 1)[0]);
+        return OK;
+    }
 }

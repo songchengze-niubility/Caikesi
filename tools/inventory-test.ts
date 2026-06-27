@@ -42,5 +42,32 @@ test('dropRandom 进背包；背包满则失败', () => {
     assert.equal(m.backpack.length, 2);
 });
 
+test('toWarehouse：背包→仓库；id 不存在/仓库满则失败', () => {
+    const m = new InventoryModel(5, 1);
+    m.dropRandom();
+    const id = m.backpack[0].id;
+    assert.equal(m.toWarehouse(id).ok, true);
+    assert.equal(m.backpack.length, 0);
+    assert.equal(m.warehouse.length, 1);
+    assert.equal(m.toWarehouse('不存在').ok, false);
+    m.dropRandom();
+    const r = m.toWarehouse(m.backpack[0].id); // 仓库满
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, '仓库已满');
+});
+
+test('toBackpack：仓库→背包；背包满则失败', () => {
+    const m = new InventoryModel(1, 5);
+    m.dropRandom();
+    const id = m.backpack[0].id;
+    m.toWarehouse(id);              // 背包空、仓库 1
+    assert.equal(m.toBackpack(id).ok, true);
+    assert.equal(m.backpack.length, 1);
+    m.warehouse.push({ id: 'x', slot: 'weapon', name: '测试', quality: 'common' });
+    const r = m.toBackpack('x');   // 背包满
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, '背包已满');
+});
+
 console.log(`\n装备测试：${pass} 通过，${fail} 失败`);
 process.exit(fail ? 1 : 0);
