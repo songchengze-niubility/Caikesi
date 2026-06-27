@@ -18,6 +18,7 @@ export class Background {
     private clouds: Cloud[] = [];
     private hillX = 0;   // 山丘滚动累计
     private t = 0;       // 总时间（地面纹理滚动用）
+    private _useSprite = false;
 
     constructor(g: Graphics, halfW: number, halfH: number) {
         this.g = g;
@@ -38,7 +39,10 @@ export class Background {
         }
     }
 
+    setUsingSprite(v: boolean) { this._useSprite = v; }
+
     update(dt: number) {
+        if (this._useSprite) return;
         const S = BattleConfig.scene;
         this.t += dt;
         this.hillX += S.hill.speed * dt;

@@ -2,11 +2,13 @@
 // 作用：建战场、驱动 BattleManager、用 Graphics 把所有单位画成色块（占位）、显示文字、处理重开。
 // 第一版没有美术：士兵=蓝色方块，敌人=红色圆，子弹=黄色点。验证战斗循环用。
 
-import { _decorator, Component, Node, Graphics, Color, UITransform, Label, view } from 'cc';
+import { _decorator, Component, Node, Graphics, Color, UITransform, Label, view, Sprite, SpriteFrame } from 'cc';
 import { BattleManager } from './combat/BattleManager';
 import { Background } from './combat/Background';
 import { BattleConfig, SoldierClass } from './config/BattleConfig';
 import { mountConfigPanel } from './debug/ConfigPanel';
+import { createArtRegistry } from './art/CocosArtLoader';
+import { ArtRegistry } from './art/ArtRegistry';
 
 const { ccclass } = _decorator;
 
@@ -19,6 +21,7 @@ export class BattleEntry extends Component {
 
     private _mgr: BattleManager = null!;
     private _bg: Background = null!;
+    private _art: ArtRegistry<SpriteFrame> = null!;
     private _halfW = 0;
     private _halfH = 0;
 
@@ -54,6 +57,18 @@ export class BattleEntry extends Component {
         this.node.addChild(bgNode);
         bgNode.setPosition(0, 0, 0);
         this._bg = new Background(bgGfx, this._halfW, this._halfH);
+
+        // —— 美术资源：预载 → 有图用 Sprite，无图回退色块 ——
+        this._art = createArtRegistry();
+        void this._art.preload(['bg/main', 'char/tank/idle', 'char/dps/idle', 'char/healer/idle']).then(() => {
+            const bgSf = this._art.getSprite('bg/main');
+            if (bgSf) {
+                const sp = bgNode.addComponent(Sprite);
+                sp.spriteFrame = bgSf;
+                bgNode.getComponent(UITransform)!.setContentSize(this._halfW * 2, this._halfH * 2);
+                this._bg.setUsingSprite(true);   // 停掉渐变重画
+            }
+        });
 
         // 画布：一个居中的子节点，本地坐标 (0,0) 即屏幕中心
         const gfxNode = new Node('Gfx');
