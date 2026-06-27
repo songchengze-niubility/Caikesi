@@ -1,7 +1,10 @@
-// Excel → 战斗配置导出脚本
-// 读 tools/config-xlsx/battle.xlsx（6 sheet）→ 生成 assets/scripts/config/battle.config.generated.ts
-// 产物结构与 assets/scripts/config/BattleConfig.ts 的 BattleConfig 对象完全一致，
-// 保证 BattleManager 的引用、ConfigPanel 的 setter 不受影响。
+// Excel → 配置导出脚本（多源驱动）
+// 一张「源清单」(SOURCES) 描述：哪个 xlsx → 哪个 parser → 生成哪个产物。
+// `npm run config` 会遍历所有源依次导出，每源独立校验、独立产物。
+//
+// 目前只有 battle 一个模块（tools/config-xlsx/battle.xlsx → battle.config.generated.ts）。
+// 【加新模块（如掉装备）】：① 写一个 buildXxxConfig(wb) 解析函数；
+//   ② 在 SOURCES 末尾加一行 {name,xlsxRel,outRel,exportVar,build}。主流程不用改。
 //
 // 用法：npm run config   （或 npx tsx tools/excel-to-config.ts）
 // 改完 Excel 必须跑这个脚本，生成的 .generated.ts 才会更新。
@@ -10,24 +13,22 @@ import * as XLSX from 'xlsx';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const XLSX_PATH = resolve(__dirname, 'config-xlsx/battle.xlsx');
-const OUT_PATH = resolve(__dirname, '../assets/scripts/config/battle.config.generated.ts');
-
-// ============ 校验错误/警告收集（跑完统一处理，定位全部问题）============
-// err   = 会让产物坏掉的硬错误（缺字段、引用不存在、键不一致）→ 阻断导出。
+// ============ 校验错误/警告收集（每个源独立，跑前清空）============
+// err   = 会让产物坏掉的硬错误（缺字段、引用不存在、键不一致）→ 阻断该源导出。
 // warn  = 数值越界等可疑但不一定致命的问题（如概率 > 1、count = 0）→ 只提示，不阻断。
 const errors: string[] = [];
 const warnings: string[] = [];
 function err(msg: string) { errors.push(msg); }
 function warn(msg: string) { warnings.push(msg); }
-// 跑完所有解析后调用：有错误则打印全部并退出；无错则把警告打出来后继续。
-function checkErrors(): void {
+function resetIssues() { errors.length = 0; warnings.length = 0; }
+// 某源解析完后调用：有错误则打印全部并退出；无错则把警告打出来后继续。
+function reportIssues(source: string): void {
     if (warnings.length > 0) {
-        console.warn('\n⚠️  ' + warnings.length + ' 个数值警告（不阻断，建议核对）：');
+        console.warn(`\n⚠️  [${source}] ${warnings.length} 个数值警告（不阻断，建议核对）：`);
         for (const w of warnings) console.warn('  - ' + w);
     }
     if (errors.length === 0) return;
-    console.error('\n❌ 配置导出失败，共 ' + errors.length + ' 个问题：');
+    console.error(`\n❌ [${source}] 配置导出失败，共 ${errors.length} 个问题：`);
     for (const e of errors) console.error('  - ' + e);
     process.exit(1);
 }
@@ -47,7 +48,7 @@ function checkStatRanges(st: Record<string, number>, where: string) {
     if (st['attackSpeed'] <= 0) warn(`${where}.attackSpeed = ${st['attackSpeed']} 必须 > 0（否则攻击间隔除零）`);
 }
 
-// ============ 小工具 ============
+// ============ 通用小工具（任意模块解析器复用）============
 type Cell = unknown;
 
 // 把单元格转成数字；空/非法 → null
@@ -83,6 +84,18 @@ function parseColor(c: Cell, where: string): [number, number, number] {
     return [parts[0], parts[1], parts[2]];
 }
 
+// 点分 key → 嵌套对象（如 "cloud.speed" → root.cloud.speed）
+function setPath(root: Record<string, unknown>, dotted: string, value: unknown) {
+    const parts = dotted.split('.');
+    let cur = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+        const k = parts[i];
+        if (cur[k] === undefined) cur[k] = {};
+        cur = cur[k] as Record<string, unknown>;
+    }
+    cur[parts[parts.length - 1]] = value;
+}
+
 // 读某 sheet 成「表头行 + 数据行」的二维数组（首行表头）
 function sheetToRows(wb: XLSX.WorkBook, name: string): { header: string[]; rows: Record<string, Cell>[] } {
     const ws = wb.Sheets[name];
@@ -108,10 +121,9 @@ function sheetToRows(wb: XLSX.WorkBook, name: string): { header: string[]; rows:
     return { header, rows };
 }
 
-// ============ 主流程 ============
-function main() {
-    const wb = XLSX.read(readFileSync(XLSX_PATH));
-
+// ============ battle 模块解析器 ============
+// 读 battle.xlsx 的 6 sheet → 战斗配置对象（结构与 BattleConfig 类型完全一致）。
+function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: string } {
     // —— Stats ——
     const { rows: statsRows } = sheetToRows(wb, 'Stats');
     const stats: Record<string, Record<string, number>> = {};
@@ -217,16 +229,6 @@ function main() {
 
     // —— Misc（点分 key → 嵌套）——
     const { rows: miscRows } = sheetToRows(wb, 'Misc');
-    function setPath(root: Record<string, unknown>, dotted: string, value: unknown) {
-        const parts = dotted.split('.');
-        let cur = root;
-        for (let i = 0; i < parts.length - 1; i++) {
-            const k = parts[i];
-            if (cur[k] === undefined) cur[k] = {};
-            cur = cur[k] as Record<string, unknown>;
-        }
-        cur[parts[parts.length - 1]] = value;
-    }
     const misc: Record<string, unknown> = {};
     const miscKeys = new Set<string>();
     for (const r of miscRows) {
@@ -278,9 +280,6 @@ function main() {
         if (!statsKeys.has(cls)) err(`一致性: 职业 "${cls}" 在 Classes 有、Stats 缺失`);
     }
 
-    // —— 校验通过检查 ——
-    checkErrors();   // 若有 errors 在此打印全部并退出；无错则继续
-
     // —— 组装最终对象 ——
     const config = {
         stats,
@@ -296,21 +295,56 @@ function main() {
         scene,
     };
 
+    const summary = `stats=${Object.keys(stats).length} enemyTypes=${Object.keys(enemyTypes).length} ` +
+        `classes=${Object.keys(classes).length} levels=${levels.length} roster=${roster.length}`;
+    return { config, summary };
+}
+
+// ============ 源清单（加模块就在这里加一行）============
+interface ConfigSource {
+    name: string;        // 模块名（日志/报错用）
+    xlsxRel: string;     // 源 xlsx，相对 tools/
+    outRel: string;      // 产物 .ts，相对 tools/
+    exportVar: string;   // 产物里 export const 的名字（消费端 import 用）
+    build: (wb: XLSX.WorkBook) => { config: unknown; summary: string };
+}
+const SOURCES: ConfigSource[] = [
+    {
+        name: 'battle',
+        xlsxRel: 'config-xlsx/battle.xlsx',
+        outRel: '../assets/scripts/config/battle.config.generated.ts',
+        exportVar: 'generatedBattleConfig',
+        build: buildBattleConfig,
+    },
+];
+
+// 产物代码模板
+function genCode(src: ConfigSource, config: unknown): string {
     const now = new Date().toISOString();
-    const code = `// ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
-// 改数值请编辑 tools/config-xlsx/battle.xlsx，然后跑：npm run config
-// 源文件：tools/config-xlsx/battle.xlsx
+    return `// ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
+// 改数值请编辑 tools/${src.xlsxRel}，然后跑：npm run config
+// 源文件：tools/${src.xlsxRel}
 // 生成时间：${now}
 
 /* eslint-disable */
 // @ts-nocheck
-export const generatedBattleConfig = ${JSON.stringify(config, null, 4)};
+export const ${src.exportVar} = ${JSON.stringify(config, null, 4)};
 `;
+}
 
-    writeFileSync(OUT_PATH, code, 'utf-8');
-    console.log(`✓ 已生成 ${OUT_PATH}`);
-    console.log(`  stats=${Object.keys(stats).length} enemyTypes=${Object.keys(enemyTypes).length} ` +
-        `classes=${Object.keys(classes).length} levels=${levels.length} roster=${roster.length}`);
+// ============ 主流程：遍历所有源依次导出 ============
+function main() {
+    for (const src of SOURCES) {
+        resetIssues();
+        const xlsxPath = resolve(__dirname, src.xlsxRel);
+        const outPath = resolve(__dirname, src.outRel);
+        const wb = XLSX.read(readFileSync(xlsxPath));
+        const { config, summary } = src.build(wb);
+        reportIssues(src.name);   // 该源有 errors 在此打印全部并退出
+        writeFileSync(outPath, genCode(src, config), 'utf-8');
+        console.log(`✓ [${src.name}] 已生成 ${outPath}`);
+        console.log('  ' + summary);
+    }
 }
 
 main();

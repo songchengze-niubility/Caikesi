@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/battle.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/battle.xlsx
-// 生成时间：2026-06-27T04:58:46.035Z
+// 生成时间：2026-06-27T05:38:22.860Z
 
 /* eslint-disable */
 // @ts-nocheck
