@@ -6,7 +6,8 @@
   },
   "scripts": {
     "config": "tsx tools/excel-to-config.ts",
-    "test:art": "tsx tools/art-test.ts"
+    "test:art": "tsx tools/art-test.ts",
+    "check:art": "tsx tools/check-art.ts"
   },
   "devDependencies": {
     "tsx": "^4.22.4",
