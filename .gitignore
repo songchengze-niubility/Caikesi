@@ -22,3 +22,8 @@ node_modules/
 # WebStorm
 #//////////////////////////
 .idea/
+
+#//////////////////////////
+# AI 工作区临时账本（subagent-driven 执行进度，scratch，不入库）
+#//////////////////////////
+.superpowers/
