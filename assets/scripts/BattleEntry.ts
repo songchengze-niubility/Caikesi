@@ -25,6 +25,7 @@ export class BattleEntry extends Component {
 
     private _mgr: BattleManager = null!;
     private _bg: Background = null!;
+    private _battleRoot: Node = null!;   // 战斗渲染容器（bg/色块/角色/飘字/HUD）；背包面板覆盖它
     private _art: ArtRegistry<SpriteFrame> = null!;
     private _inv: InventoryModel = null!;
     private _invView: InventoryView = null!;
@@ -55,13 +56,21 @@ export class BattleEntry extends Component {
         const ut = this.getComponent(UITransform) || this.addComponent(UITransform);
         ut.setContentSize(vs.width, vs.height);
 
+        // 战斗渲染容器：背景/色块/角色 Sprite/飘字/HUD 都放这里。
+        // 背包面板作为它的兄弟、打开时置顶 → 战斗里异步/后续新建的节点永远在面板之下。
+        this._battleRoot = new Node('Battle');
+        this._battleRoot.layer = this.node.layer;
+        this._battleRoot.addComponent(UITransform);
+        this.node.addChild(this._battleRoot);
+        this._battleRoot.setPosition(0, 0, 0);
+
         // 背景节点：最先加入 → 渲染在最底层（蓝天白云 + 地面）。
         // 【替换真实背景】：给这个 bgNode 加 Sprite 指定图片即可，无需改战斗代码。
         const bgNode = new Node('Bg');
         bgNode.layer = this.node.layer;
         bgNode.addComponent(UITransform);
         const bgGfx = bgNode.addComponent(Graphics);
-        this.node.addChild(bgNode);
+        this._battleRoot.addChild(bgNode);
         bgNode.setPosition(0, 0, 0);
         this._bg = new Background(bgGfx, this._halfW, this._halfH);
 
@@ -86,7 +95,7 @@ export class BattleEntry extends Component {
                 const size = BattleConfig.classes[cls].size;
                 ut.setContentSize(size, size);
                 const sp2 = n.addComponent(Sprite);
-                this.node.addChild(n);
+                this._battleRoot.addChild(n);
                 this._solSprite[cls] = { node: n, anim: new FrameAnimPlayer(sp2, fr.frames, fr.fps, fr.loop) };
             }
 
@@ -100,7 +109,7 @@ export class BattleEntry extends Component {
         gfxNode.layer = this.node.layer;
         gfxNode.addComponent(UITransform);
         this._gfx = gfxNode.addComponent(Graphics);
-        this.node.addChild(gfxNode);
+        this._battleRoot.addChild(gfxNode);
         gfxNode.setPosition(0, 0, 0);
 
         // 文字
@@ -166,7 +175,7 @@ export class BattleEntry extends Component {
             node.layer = this.node.layer;
             node.addComponent(UITransform);
             const lb = node.addComponent(Label);
-            this.node.addChild(node);
+            this._battleRoot.addChild(node);
             this._floats.push(lb);
         }
         return this._floats[i];
@@ -296,7 +305,7 @@ export class BattleEntry extends Component {
         label.string = text;
         label.fontSize = size;
         label.lineHeight = size + 6;
-        this.node.addChild(node);
+        this._battleRoot.addChild(node);
         node.setPosition(x, y, 0);
         return label;
     }

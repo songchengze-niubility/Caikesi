@@ -41,7 +41,14 @@ export class InventoryView {
     }
 
     isOpen(): boolean { return this.root.active; }
-    toggle(): void { this.root.active = !this.root.active; if (this.root.active) { this.sel = null; this.render(); } }
+    toggle(): void {
+        this.root.active = !this.root.active;
+        if (this.root.active) {
+            this.root.setSiblingIndex(this.parent.children.length - 1);  // 置顶，盖住战斗渲染与按钮
+            this.sel = null;
+            this.render();
+        }
+    }
     refresh(): void { if (this.root.active) this.render(); }
 
     private setToast(s: string) { this.toast = s; this.toastT = 1.5; }
