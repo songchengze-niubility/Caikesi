@@ -1,0 +1,2 @@
+# Cocos .meta 统一用 LF 存储，避免 Windows 上反复出现 CRLF 行尾噪音
+*.meta text eol=lf
