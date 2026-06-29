@@ -503,20 +503,36 @@ function cropCanvas(b){
   }
   return c;
 }
-function blobOf(b){ return new Promise(res => cropCanvas(b).toBlob(res, 'image/png')); }
-async function downloadBox(b, fname){
-  const name = (fname || safeName(b.name)) + '.png';
-  const blob = await blobOf(b);
-  if(state.dirHandle && await ensureDirPermission(state.dirHandle)){
-    try{ await writeToDir(state.dirHandle, name, blob);
-         dirLabel.textContent = '📁 ' + state.dirHandle.name; return; }
-    catch(err){ console.warn('写入所选文件夹失败,回退浏览器下载', err); }
-  }
+function blobOfCanvas(c){
+  return new Promise((res, rej) => c.toBlob(blob => blob ? res(blob) : rej(new Error('PNG 生成失败')), 'image/png'));
+}
+function blobOf(b){ return blobOfCanvas(cropCanvas(b)); }
+function triggerBrowserDownload(canvas, name){
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  // Keep single-file download synchronous in the click handler; some browsers drop
+  // user activation after async toBlob/requestPermission and ignore a.click().
+  a.href = canvas.toDataURL('image/png');
   a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
+  dirLabel.textContent = '已下载 ' + name;
+}
+async function saveCanvasToPickedDir(canvas, name){
+  if(state.dirHandle && await ensureDirPermission(state.dirHandle)){
+    try{
+      await writeToDir(state.dirHandle, name, await blobOfCanvas(canvas));
+      dirLabel.textContent = '已保存 ' + name + ' → ' + state.dirHandle.name;
+      return true;
+    }catch(err){
+      console.warn('写入所选文件夹失败,回退浏览器下载', err);
+    }
+  }
+  return false;
+}
+async function downloadBox(b, fname, preferDir = false){
+  const name = (fname || safeName(b.name)) + '.png';
+  const canvas = cropCanvas(b);
+  if(preferDir && state.dirHandle && await saveCanvasToPickedDir(canvas, name)) return;
+  triggerBrowserDownload(canvas, name);
 }
 async function copyBox(b){
   if(!canCopy){ alert('复制图片需 Chrome 或 Edge'); return; }
@@ -526,7 +542,7 @@ async function downloadAll(){
   const used = new Map();
   for(const b of state.boxes){
     const n = safeName(b.name); const c = (used.get(n)||0)+1; used.set(n, c);
-    await downloadBox(b, c>1 ? `${n}_${c}` : n);
+    await downloadBox(b, c>1 ? `${n}_${c}` : n, true);
   }
 }
 function updateExportEnabled(){
@@ -535,7 +551,7 @@ function updateExportEnabled(){
   dlBtn.disabled = !sel;
   copyBtn.disabled = !sel || !canCopy;
 }
-dlBtn.addEventListener('click', ()=>{ const b=getBox(state.selectedId); if(b) downloadBox(b); });
+dlBtn.addEventListener('click', ()=>{ const b=getBox(state.selectedId); if(b) downloadBox(b, undefined, true); });
 copyBtn.addEventListener('click', ()=>{ const b=getBox(state.selectedId); if(b) copyBox(b); });
 downloadAllBtn.addEventListener('click', downloadAll);
 if(!canCopy) copyBtn.title = '复制图片需 Chrome 或 Edge';

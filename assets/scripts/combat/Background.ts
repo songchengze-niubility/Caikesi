@@ -39,7 +39,11 @@ export class Background {
         }
     }
 
-    setUsingSprite(v: boolean) { this._useSprite = v; }
+    setUsingSprite(v: boolean) {
+        this._useSprite = v;
+        this.g.clear();
+        this.g.enabled = !v;
+    }
 
     update(dt: number) {
         if (this._useSprite) return;

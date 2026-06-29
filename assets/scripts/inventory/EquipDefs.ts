@@ -1,14 +1,19 @@
-// 装备定义（占位）：部位/品质/颜色/名字池 + 随机生成。
-// 纯数据，不依赖 cc。后续接 equip.xlsx 时整体替换，Model/UI 接口不变。
+// 装备定义：部位/品质/颜色/名字池 + 随机生成。
+// 纯数据，不依赖 cc。数值由 config/EquipConfig 从 equip.xlsx 生成。
+
+import { calcEquipItemStats } from '../config/EquipConfig';
 
 export type EquipSlot = 'weapon' | 'helmet' | 'chest' | 'pants' | 'shoes'; // 武器/头盔/胸甲/裤子/鞋子
 export type Quality = 'common' | 'fine' | 'rare' | 'epic' | 'legend';       // 白/绿/蓝/紫/橙
+export type EquipStatKey = 'hp' | 'atk' | 'def' | 'range' | 'attackSpeed' | 'critRate' | 'critDmg' | 'dodgeRate' | 'blockRate' | 'blockRatio' | 'dmgBonus' | 'dmgReduce';
+export type EquipStats = Partial<Record<EquipStatKey, number>>;
 
 export interface EquipItem {
     id: string;        // 实例唯一 id
     slot: EquipSlot;   // 部位
     name: string;      // 占位名
     quality: Quality;  // 品质
+    stats?: EquipStats; // 属性加成；读老存档时会补齐
 }
 
 export const SLOTS: EquipSlot[] = ['weapon', 'helmet', 'chest', 'pants', 'shoes'];
@@ -41,17 +46,88 @@ const NAME_POOL: Record<EquipSlot, string[]> = {
     shoes: ['草鞋', '皮靴', '战靴'],
 };
 
+export const STAT_LABEL: Record<EquipStatKey, string> = {
+    hp: '生命',
+    atk: '攻击',
+    def: '防御',
+    range: '射程',
+    attackSpeed: '攻速',
+    critRate: '暴击',
+    critDmg: '暴伤',
+    dodgeRate: '闪避',
+    blockRate: '格挡',
+    blockRatio: '格挡减伤',
+    dmgBonus: '增伤',
+    dmgReduce: '减伤',
+};
+export const PERCENT_STATS: EquipStatKey[] = ['attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce'];
+export const STAT_ORDER: EquipStatKey[] = ['atk', 'hp', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce'];
+
+export function formatStatValue(key: EquipStatKey, value: number): string {
+    if (PERCENT_STATS.indexOf(key) >= 0) return `${Math.round(value * 100)}%`;
+    return String(value);
+}
+
+export function formatSignedStatValue(key: EquipStatKey, value: number): string {
+    const sign = value > 0 ? '+' : '';
+    if (PERCENT_STATS.indexOf(key) >= 0) return `${sign}${Math.round(value * 100)}%`;
+    return `${sign}${value}`;
+}
+
+export function formatEquipStats(stats: EquipStats | undefined, maxParts = 2): string {
+    if (!stats) return '';
+    const parts: string[] = [];
+    for (const k of STAT_ORDER) {
+        const v = stats[k];
+        if (!v) continue;
+        parts.push(`${STAT_LABEL[k]}+${formatStatValue(k, v)}`);
+        if (parts.length >= maxParts) break;
+    }
+    return parts.join(' ');
+}
+
+function hasStats(stats: EquipStats | undefined): boolean {
+    return !!stats && Object.keys(stats).length > 0;
+}
+
+function seedFromString(s: string): number {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+}
+
+function seededRng(seed: number): () => number {
+    let s = seed || 1;
+    return () => {
+        s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+        return s / 0x100000000;
+    };
+}
+
+export function ensureEquipItemStats(item: EquipItem): EquipItem {
+    if (hasStats(item.stats)) return item;
+    const seed = seedFromString(`${item.id}|${item.slot}|${item.quality}|${item.name}`);
+    return { ...item, stats: calcEquipItemStats(item.slot, item.quality, seededRng(seed)) };
+}
+
 let _seq = 0;
 // Date(ms) + 自增序列 → 同一毫秒内也唯一
 export function makeId(): string {
     return `eq_${Date.now().toString(36)}_${(_seq++).toString(36)}`;
 }
 
-function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
+function pick<T>(arr: T[], rng: () => number = Math.random): T {
+    return arr[Math.floor(rng() * arr.length)];
+}
 
-export function randomItem(): EquipItem {
-    const slot = pick(SLOTS);
-    const quality = pick(QUALITIES);
-    const name = pick(NAME_POOL[slot]);
-    return { id: makeId(), slot, name, quality };
+export function createEquipItem(slot: EquipSlot, quality: Quality, rng: () => number = Math.random): EquipItem {
+    const name = pick(NAME_POOL[slot], rng);
+    return { id: makeId(), slot, name, quality, stats: calcEquipItemStats(slot, quality, rng) };
+}
+
+export function randomItem(rng: () => number = Math.random): EquipItem {
+    return createEquipItem(pick(SLOTS, rng), pick(QUALITIES, rng), rng);
 }

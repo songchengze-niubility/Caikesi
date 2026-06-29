@@ -1,10 +1,10 @@
 // 装备存储模型（纯逻辑，不依赖 cc）：背包 / 仓库 / 5 装备栏 + 掉落/转移/穿脱 + 序列化。
 // 所有操作返回 OpResult，满了/非法就失败，绝不静默丢装备。
 
-import { EquipItem, EquipSlot, SLOTS, CharacterId, CHARACTERS, randomItem } from './EquipDefs';
+import { EquipItem, EquipSlot, SLOTS, CharacterId, CHARACTERS, randomItem, ensureEquipItemStats } from './EquipDefs';
 import { InventoryConfig } from './InventoryConfig';
 
-export interface OpResult { ok: boolean; reason?: string; }
+export interface OpResult { ok: boolean; reason?: string; item?: EquipItem; }
 const OK: OpResult = { ok: true };
 function fail(reason: string): OpResult { return { ok: false, reason }; }
 
@@ -29,6 +29,11 @@ function emptyEquipped(): CharEquipped {
     return e;
 }
 
+function cloneItem(it: EquipItem): EquipItem {
+    const item = ensureEquipItemStats(it);
+    return { ...item, stats: item.stats ? { ...item.stats } : undefined };
+}
+
 export class InventoryModel {
     backpack: EquipItem[] = [];
     warehouse: EquipItem[] = [];
@@ -44,11 +49,28 @@ export class InventoryModel {
     get maxBackpack(): number { return this.backpackCap; }
     get maxWarehouse(): number { return this.warehouseCap; }
 
+    addItemToBackpack(item: EquipItem): OpResult {
+        if (this.backpackFull) return fail('背包已满');
+        const stored = cloneItem(item);
+        this.backpack.push(stored);
+        return { ok: true, item: stored };
+    }
+
+    addItemToWarehouse(item: EquipItem): OpResult {
+        if (this.warehouseFull) return fail('仓库已满');
+        const stored = cloneItem(item);
+        this.warehouse.push(stored);
+        return { ok: true, item: stored };
+    }
+
     // 调试掉落：随机生成一件 → 背包
     dropRandom(): OpResult {
-        if (this.backpackFull) return fail('背包已满');
-        this.backpack.push(randomItem());
-        return OK;
+        return this.addItemToBackpack(randomItem());
+    }
+
+    // 随机生成一件 → 仓库（用于调试/兜底）
+    dropRandomToWarehouse(): OpResult {
+        return this.addItemToWarehouse(randomItem());
     }
 
     // 背包 → 仓库
@@ -82,6 +104,18 @@ export class InventoryModel {
         return OK;
     }
 
+    // 仓库某件 → 指定角色装备栏；原有装备退回仓库。净仓库数不增，换装安全。
+    equipFromWarehouse(id: string, character: CharacterId): OpResult {
+        if (!this.equipped[character]) return fail('角色不存在');
+        const i = this.warehouse.findIndex(it => it.id === id);
+        if (i < 0) return fail('装备不在仓库');
+        const item = this.warehouse.splice(i, 1)[0];
+        const prev = this.equipped[character][item.slot];
+        this.equipped[character][item.slot] = item;
+        if (prev) this.warehouse.push(prev);
+        return OK;
+    }
+
     // 指定角色的装备栏 → 背包（背包 +1，需判满）
     unequip(character: CharacterId, slot: EquipSlot): OpResult {
         if (!this.equipped[character]) return fail('角色不存在');
@@ -93,25 +127,36 @@ export class InventoryModel {
         return OK;
     }
 
+    // 指定角色装备栏 → 仓库（仓库 +1，需判满）
+    unequipToWarehouse(character: CharacterId, slot: EquipSlot): OpResult {
+        if (!this.equipped[character]) return fail('角色不存在');
+        const item = this.equipped[character][slot];
+        if (!item) return fail('该装备栏为空');
+        if (this.warehouseFull) return fail('仓库已满');
+        this.equipped[character][slot] = null;
+        this.warehouse.push(item);
+        return OK;
+    }
+
     serialize(): InventorySave {
         const eq = emptyEquipped();
         for (const c of CHARACTERS) {
             for (const s of SLOTS) {
                 const it = this.equipped[c][s];
-                eq[c][s] = it ? { ...it } : null;
+                eq[c][s] = it ? cloneItem(it) : null;
             }
         }
         return {
-            backpack: this.backpack.map(it => ({ ...it })),
-            warehouse: this.warehouse.map(it => ({ ...it })),
+            backpack: this.backpack.map(cloneItem),
+            warehouse: this.warehouse.map(cloneItem),
             equipped: eq,
         };
     }
 
     // 缺字段/undefined 用空兜底（老存档加了新系统、或旧的「单套装备栏」格式都不报错）
     deserialize(save: Partial<InventorySave> | undefined): void {
-        this.backpack = (save?.backpack ?? []).map(it => ({ ...it }));
-        this.warehouse = (save?.warehouse ?? []).map(it => ({ ...it }));
+        this.backpack = (save?.backpack ?? []).map(cloneItem);
+        this.warehouse = (save?.warehouse ?? []).map(cloneItem);
         const e = emptyEquipped();
         const saved = save?.equipped;
         if (saved) {
@@ -120,7 +165,7 @@ export class InventoryModel {
                 if (!slots) continue;   // 缺该角色 → 留空
                 for (const s of SLOTS) {
                     const it = slots[s];
-                    e[c][s] = it ? { ...it } : null;
+                    e[c][s] = it ? cloneItem(it) : null;
                 }
             }
         }

@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/battle.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/battle.xlsx
-// 生成时间：2026-06-27T05:38:22.860Z
+// 生成时间：2026-06-28T05:50:27.536Z
 
 /* eslint-disable */
 // @ts-nocheck
@@ -131,6 +131,7 @@ export const generatedBattleConfig = {
         {
             "name": "第1关 · 试炼",
             "waveGap": 2,
+            "dropGroup": "level_1",
             "waves": [
                 {
                     "spawns": [
@@ -174,6 +175,7 @@ export const generatedBattleConfig = {
         {
             "name": "第2关 · 猛攻",
             "waveGap": 1.8,
+            "dropGroup": "level_2",
             "waves": [
                 {
                     "spawns": [

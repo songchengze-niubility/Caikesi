@@ -1,0 +1,334 @@
+{
+  "image": "atlas.png",
+  "frames": {
+    "hud_profile_cluster": {
+      "x": 4,
+      "y": 4,
+      "w": 335,
+      "h": 112,
+      "file": "slices/hud/profile_cluster.png"
+    },
+    "hud_avatar_circle": {
+      "x": 343,
+      "y": 4,
+      "w": 108,
+      "h": 108,
+      "file": "slices/hud/avatar_circle.png"
+    },
+    "hud_name_hp_power": {
+      "x": 455,
+      "y": 4,
+      "w": 225,
+      "h": 82,
+      "file": "slices/hud/name_hp_power.png"
+    },
+    "hud_resource_gold_full": {
+      "x": 684,
+      "y": 4,
+      "w": 180,
+      "h": 44,
+      "file": "slices/hud/resource_gold_full.png"
+    },
+    "hud_resource_gold_icon": {
+      "x": 868,
+      "y": 4,
+      "w": 44,
+      "h": 44,
+      "file": "slices/hud/resource_gold_icon.png"
+    },
+    "hud_resource_jade_full": {
+      "x": 916,
+      "y": 4,
+      "w": 158,
+      "h": 44,
+      "file": "slices/hud/resource_jade_full.png"
+    },
+    "hud_resource_jade_icon": {
+      "x": 1078,
+      "y": 4,
+      "w": 48,
+      "h": 44,
+      "file": "slices/hud/resource_jade_icon.png"
+    },
+    "hud_resource_energy_full": {
+      "x": 1130,
+      "y": 4,
+      "w": 189,
+      "h": 44,
+      "file": "slices/hud/resource_energy_full.png"
+    },
+    "hud_resource_energy_icon": {
+      "x": 1323,
+      "y": 4,
+      "w": 50,
+      "h": 44,
+      "file": "slices/hud/resource_energy_icon.png"
+    },
+    "hud_plus_button_gold": {
+      "x": 1377,
+      "y": 4,
+      "w": 36,
+      "h": 36,
+      "file": "slices/hud/plus_button_gold.png"
+    },
+    "hud_plus_button_jade": {
+      "x": 1417,
+      "y": 4,
+      "w": 36,
+      "h": 36,
+      "file": "slices/hud/plus_button_jade.png"
+    },
+    "hud_plus_button_energy": {
+      "x": 1457,
+      "y": 4,
+      "w": 36,
+      "h": 36,
+      "file": "slices/hud/plus_button_energy.png"
+    },
+    "stage_chapter_banner": {
+      "x": 1497,
+      "y": 4,
+      "w": 320,
+      "h": 62,
+      "file": "slices/stage/chapter_banner.png"
+    },
+    "stage_wave_progress": {
+      "x": 4,
+      "y": 120,
+      "w": 318,
+      "h": 60,
+      "file": "slices/stage/wave_progress.png"
+    },
+    "stage_reward_card": {
+      "x": 326,
+      "y": 120,
+      "w": 140,
+      "h": 110,
+      "file": "slices/stage/reward_card.png"
+    },
+    "battlefield_reference": {
+      "x": 470,
+      "y": 120,
+      "w": 941,
+      "h": 1268,
+      "file": "slices/battle/battlefield_reference.png"
+    },
+    "background_upper_reference": {
+      "x": 4,
+      "y": 1392,
+      "w": 941,
+      "h": 560,
+      "file": "slices/battle/background_upper_reference.png"
+    },
+    "entity_strip_reference": {
+      "x": 949,
+      "y": 1392,
+      "w": 895,
+      "h": 305,
+      "file": "slices/battle/entity_strip_reference.png"
+    },
+    "hp_ally_01": {
+      "x": 1848,
+      "y": 1392,
+      "w": 80,
+      "h": 14,
+      "file": "slices/hp/ally_01.png"
+    },
+    "hp_ally_02": {
+      "x": 1932,
+      "y": 1392,
+      "w": 80,
+      "h": 14,
+      "file": "slices/hp/ally_02.png"
+    },
+    "hp_ally_03": {
+      "x": 4,
+      "y": 1956,
+      "w": 80,
+      "h": 14,
+      "file": "slices/hp/ally_03.png"
+    },
+    "hp_enemy_small": {
+      "x": 88,
+      "y": 1956,
+      "w": 82,
+      "h": 14,
+      "file": "slices/hp/enemy_small.png"
+    },
+    "hp_enemy_wolf": {
+      "x": 174,
+      "y": 1956,
+      "w": 82,
+      "h": 14,
+      "file": "slices/hp/enemy_wolf.png"
+    },
+    "hp_enemy_boss": {
+      "x": 260,
+      "y": 1956,
+      "w": 88,
+      "h": 14,
+      "file": "slices/hp/enemy_boss.png"
+    },
+    "entity_ally_hat_raw": {
+      "x": 352,
+      "y": 1956,
+      "w": 140,
+      "h": 184,
+      "file": "slices/entities_raw/ally_hat.png"
+    },
+    "entity_ally_green_raw": {
+      "x": 496,
+      "y": 1956,
+      "w": 185,
+      "h": 212,
+      "file": "slices/entities_raw/ally_green.png"
+    },
+    "entity_ally_blue_raw": {
+      "x": 685,
+      "y": 1956,
+      "w": 153,
+      "h": 205,
+      "file": "slices/entities_raw/ally_blue.png"
+    },
+    "entity_enemy_small_raw": {
+      "x": 842,
+      "y": 1956,
+      "w": 150,
+      "h": 136,
+      "file": "slices/entities_raw/enemy_small.png"
+    },
+    "entity_enemy_wolf_raw": {
+      "x": 996,
+      "y": 1956,
+      "w": 170,
+      "h": 170,
+      "file": "slices/entities_raw/enemy_wolf.png"
+    },
+    "entity_enemy_boss_raw": {
+      "x": 1170,
+      "y": 1956,
+      "w": 237,
+      "h": 292,
+      "file": "slices/entities_raw/enemy_boss.png"
+    },
+    "entity_ally_hat_softmask": {
+      "x": 1411,
+      "y": 1956,
+      "w": 140,
+      "h": 184,
+      "file": "slices/entities_softmask/ally_hat.png"
+    },
+    "entity_ally_green_softmask": {
+      "x": 1555,
+      "y": 1956,
+      "w": 185,
+      "h": 212,
+      "file": "slices/entities_softmask/ally_green.png"
+    },
+    "entity_ally_blue_softmask": {
+      "x": 1744,
+      "y": 1956,
+      "w": 153,
+      "h": 205,
+      "file": "slices/entities_softmask/ally_blue.png"
+    },
+    "entity_enemy_small_softmask": {
+      "x": 4,
+      "y": 2252,
+      "w": 150,
+      "h": 136,
+      "file": "slices/entities_softmask/enemy_small.png"
+    },
+    "entity_enemy_wolf_softmask": {
+      "x": 158,
+      "y": 2252,
+      "w": 170,
+      "h": 170,
+      "file": "slices/entities_softmask/enemy_wolf.png"
+    },
+    "entity_enemy_boss_softmask": {
+      "x": 332,
+      "y": 2252,
+      "w": 237,
+      "h": 292,
+      "file": "slices/entities_softmask/enemy_boss.png"
+    },
+    "skills_row": {
+      "x": 573,
+      "y": 2252,
+      "w": 425,
+      "h": 142,
+      "file": "slices/skills/skills_row.png"
+    },
+    "skill_01": {
+      "x": 1002,
+      "y": 2252,
+      "w": 130,
+      "h": 130,
+      "file": "slices/skills/skill_01.png"
+    },
+    "skill_02": {
+      "x": 1136,
+      "y": 2252,
+      "w": 130,
+      "h": 130,
+      "file": "slices/skills/skill_02.png"
+    },
+    "skill_03": {
+      "x": 1270,
+      "y": 2252,
+      "w": 130,
+      "h": 130,
+      "file": "slices/skills/skill_03.png"
+    },
+    "nav_bar_full": {
+      "x": 4,
+      "y": 2548,
+      "w": 941,
+      "h": 197,
+      "file": "slices/nav/nav_bar_full.png"
+    },
+    "nav_home": {
+      "x": 949,
+      "y": 2548,
+      "w": 142,
+      "h": 160,
+      "file": "slices/nav/home.png"
+    },
+    "nav_heroes": {
+      "x": 1095,
+      "y": 2548,
+      "w": 164,
+      "h": 164,
+      "file": "slices/nav/heroes.png"
+    },
+    "nav_battle_selected": {
+      "x": 1263,
+      "y": 2548,
+      "w": 198,
+      "h": 188,
+      "file": "slices/nav/battle_selected.png"
+    },
+    "nav_equipment": {
+      "x": 1465,
+      "y": 2548,
+      "w": 138,
+      "h": 164,
+      "file": "slices/nav/equipment.png"
+    },
+    "nav_bag": {
+      "x": 1607,
+      "y": 2548,
+      "w": 132,
+      "h": 162,
+      "file": "slices/nav/bag.png"
+    },
+    "nav_sect": {
+      "x": 1743,
+      "y": 2548,
+      "w": 99,
+      "h": 165,
+      "file": "slices/nav/sect.png"
+    }
+  }
+}

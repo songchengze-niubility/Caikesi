@@ -3,18 +3,43 @@
 
 import { Node, Graphics, Label, UITransform, Color, Vec3, EventTouch } from 'cc';
 import { InventoryModel } from './InventoryModel';
-import { SLOTS, SLOT_LABEL, QUALITY_COLOR, EquipSlot, EquipItem, CharacterId, CHARACTERS, CHARACTER_LABEL } from './EquipDefs';
+import type { OpResult } from './InventoryModel';
+import {
+    SLOTS, SLOT_LABEL, QUALITY_COLOR, QUALITY_LABEL, EquipSlot, EquipItem, CharacterId, CHARACTERS,
+    CHARACTER_LABEL, formatEquipStats, formatStatValue, formatSignedStatValue, STAT_LABEL, STAT_ORDER,
+    EquipStats,
+} from './EquipDefs';
 
 type Zone = 'backpack' | 'warehouse' | 'equipped';
+export type InventoryChangeKind = 'drop' | 'transfer' | 'equip' | 'unequip';
 interface Hot { x: number; y: number; w: number; h: number; kind: string; zone?: Zone; id?: string; slot?: EquipSlot; char?: CharacterId; }
+type ListZone = 'backpack' | 'warehouse';
+interface ScrollArea { x: number; y: number; w: number; h: number; contentH: number; maxScroll: number; }
+interface DragState { item: EquipItem; zone: Zone; id?: string; slot?: EquipSlot; x: number; y: number; }
+interface TouchState {
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    hit: Hot | null;
+    scrollZone: ListZone | null;
+    moved: boolean;
+    scrolling: boolean;
+    drag: DragState | null;
+}
 
-const CELL = 92, GAP = 8, COLS = 4;
+const CELL = 92, GAP = 8, COLS = 3;
+const ROW = CELL + GAP;
+const DRAG_THRESHOLD = 10;
 
 export class InventoryView {
     private root: Node;
     private gfx: Graphics;
     private labelPool: Label[] = [];
     private hots: Hot[] = [];
+    private scrollAreas: Partial<Record<ListZone, ScrollArea>> = {};
+    private scroll: Record<ListZone, number> = { backpack: 0, warehouse: 0 };
+    private touch: TouchState | null = null;
     private sel: { zone: Zone; id?: string; slot?: EquipSlot } | null = null;
     private activeChar: CharacterId = CHARACTERS[0];   // 当前选中的角色（装备栏归它）
     private toast = '';
@@ -25,7 +50,8 @@ export class InventoryView {
         private halfW: number,
         private halfH: number,
         private model: InventoryModel,
-        private onChanged: () => void,
+        private onChanged: (kind: InventoryChangeKind) => void,
+        private onDrop?: () => OpResult,
     ) {
         this.root = new Node('InventoryView');
         this.root.layer = parent.layer;
@@ -37,7 +63,10 @@ export class InventoryView {
         this.root.addChild(g);
         parent.addChild(this.root);
         this.root.active = false;
-        this.root.on(Node.EventType.TOUCH_END, this.onTap, this);
+        this.root.on(Node.EventType.TOUCH_START, this.onTouchStart, this);
+        this.root.on(Node.EventType.TOUCH_MOVE, this.onTouchMove, this);
+        this.root.on(Node.EventType.TOUCH_END, this.onTouchEnd, this);
+        this.root.on(Node.EventType.TOUCH_CANCEL, this.onTouchCancel, this);
     }
 
     isOpen(): boolean { return this.root.active; }
@@ -71,6 +100,7 @@ export class InventoryView {
     private render() {
         const g = this.gfx; g.clear();
         this.hots = [];
+        this.scrollAreas = {};
         let li = 0;
         const lbl = (x: number, y: number, s: string, size = 18, col = new Color(240, 240, 240)) => {
             const lb = this.getLabel(li++); lb.node.active = true; lb.string = s; lb.fontSize = size;
@@ -105,18 +135,28 @@ export class InventoryView {
             const it = eq[slot];
             this.drawCell(g, ex, topY, it, this.sel?.zone === 'equipped' && this.sel.slot === slot);
             lbl(ex + CELL / 2, topY + CELL + 2, SLOT_LABEL[slot], 14, new Color(170, 170, 180));
-            if (it) lbl(ex + CELL / 2, topY + CELL / 2, it.name, 16);
+            if (it) {
+                lbl(ex + CELL / 2, topY + CELL / 2 + 12, it.name, 15);
+                const st = formatEquipStats(it.stats);
+                if (st) lbl(ex + CELL / 2, topY + CELL / 2 - 12, st, 12);
+            }
             this.hots.push({ x: ex, y: topY, w: CELL, h: CELL, kind: 'cell', zone: 'equipped', slot });
             ex += CELL + GAP;
         }
 
         // —— 中部：左背包 / 右仓库 ——
         const midTop = topY - 60;
-        this.drawGrid(g, lbl, 'backpack', -this.halfW + 30, midTop, `背包 ${this.model.backpack.length}/${this.model.maxBackpack}`, this.model.backpack);
-        this.drawGrid(g, lbl, 'warehouse', 30, midTop, `仓库 ${this.model.warehouse.length}/${this.model.maxWarehouse}`, this.model.warehouse);
-
-        // —— 底部按钮 ——
+        // —— 底部：选中装备详情 + 按钮 ——
         const by = -this.halfH + 50;
+        this.drawDetails(g, lbl, -this.halfW + 20, by + 58, this.halfW * 2 - 40, 128);
+        const gridBottom = by + 210;
+        const gridW = COLS * CELL + (COLS - 1) * GAP;
+        const listGap = 28;
+        const leftX = -gridW - listGap / 2;
+        const rightX = listGap / 2;
+        this.drawGrid(g, lbl, 'backpack', leftX, midTop, gridBottom, `背包 ${this.model.backpack.length}/${this.model.maxBackpack}`, this.model.backpack);
+        this.drawGrid(g, lbl, 'warehouse', rightX, midTop, gridBottom, `仓库 ${this.model.warehouse.length}/${this.model.maxWarehouse}`, this.model.warehouse);
+
         const btn = (x: number, s: string, kind: string) => {
             g.fillColor = new Color(60, 66, 80); g.roundRect(x, by, 110, 44, 8); g.fill();
             lbl(x + 55, by + 22, s, 18);
@@ -128,23 +168,66 @@ export class InventoryView {
         btn(-this.halfW + 380, '脱', 'unequip');
         btn(this.halfW - 130, '关闭', 'close');
 
-        if (this.toast) lbl(0, by + 70, this.toast, 20, new Color(255, 120, 120));
+        if (this.toast) lbl(0, by + 198, this.toast, 20, new Color(255, 120, 120));
+        this.drawDragPreview(g, lbl);
 
         // 隐藏多余 label
         for (let i = li; i < this.labelPool.length; i++) this.labelPool[i].node.active = false;
     }
 
     private drawGrid(g: Graphics, lbl: (x: number, y: number, s: string, size?: number, c?: Color) => void,
-                     zone: Zone, x0: number, yTop: number, title: string, list: EquipItem[]) {
-        lbl(x0 + 200, yTop + 26, title, 20, new Color(200, 210, 230));
+                     zone: ListZone, x0: number, yTop: number, yBottom: number, title: string, list: EquipItem[]) {
+        const gridW = COLS * CELL + (COLS - 1) * GAP;
+        const gridTop = yTop - 10;
+        const visibleH = Math.max(CELL, gridTop - yBottom);
+        const rows = Math.ceil(list.length / COLS);
+        const contentH = Math.max(0, rows * CELL + Math.max(0, rows - 1) * GAP);
+        const visibleRows = Math.max(1, Math.floor((visibleH + GAP) / ROW));
+        const maxScroll = Math.max(0, (rows - visibleRows) * ROW);
+        this.scroll[zone] = Math.max(0, Math.min(maxScroll, this.scroll[zone]));
+        const drawScroll = Math.max(0, Math.min(maxScroll, Math.round(this.scroll[zone] / ROW) * ROW));
+        this.scrollAreas[zone] = { x: x0, y: yBottom, w: gridW, h: visibleH, contentH, maxScroll };
+
+        g.fillColor = new Color(24, 27, 36, 170);
+        g.roundRect(x0 - 10, yBottom - 10, gridW + 20, visibleH + 56, 8); g.fill();
+        g.strokeColor = new Color(76, 84, 102, 180);
+        g.lineWidth = 2;
+        g.roundRect(x0 - 10, yBottom - 10, gridW + 20, visibleH + 56, 8); g.stroke();
+
+        lbl(x0 + gridW / 2, gridTop + 26, title, 20, new Color(200, 210, 230));
         for (let i = 0; i < list.length; i++) {
             const r = Math.floor(i / COLS), c = i % COLS;
-            const x = x0 + c * (CELL + GAP), y = yTop - 10 - (r + 1) * (CELL + GAP);
+            const x = x0 + c * ROW;
+            const y = gridTop - CELL - r * ROW + drawScroll;
+            if (y < yBottom || y > gridTop - CELL) continue;
             const it = list[i];
             this.drawCell(g, x, y, it, this.sel?.zone === zone && this.sel.id === it.id);
-            lbl(x + CELL / 2, y + CELL / 2, it.name, 16);
+            lbl(x + CELL / 2, y + CELL / 2 + 12, it.name, 15);
+            const st = formatEquipStats(it.stats);
+            if (st) lbl(x + CELL / 2, y + CELL / 2 - 12, st, 12);
             this.hots.push({ x, y, w: CELL, h: CELL, kind: 'cell', zone, id: it.id });
         }
+
+        if (maxScroll > 0) {
+            const trackX = x0 + gridW + 6;
+            const thumbH = Math.max(28, visibleH * (visibleH / contentH));
+            const travel = visibleH - thumbH;
+            const thumbY = yBottom + travel * (1 - drawScroll / maxScroll);
+            g.fillColor = new Color(70, 76, 92, 180);
+            g.roundRect(trackX, yBottom, 5, visibleH, 3); g.fill();
+            g.fillColor = new Color(180, 190, 210, 220);
+            g.roundRect(trackX - 1, thumbY, 7, thumbH, 4); g.fill();
+        }
+    }
+
+    private snapScroll(zone: ListZone) {
+        const area = this.scrollAreas[zone];
+        if (!area || area.maxScroll <= 0) {
+            this.scroll[zone] = 0;
+            return;
+        }
+        const snapped = Math.round(this.scroll[zone] / ROW) * ROW;
+        this.scroll[zone] = Math.max(0, Math.min(area.maxScroll, snapped));
     }
 
     private drawCell(g: Graphics, x: number, y: number, it: EquipItem | null, selected: boolean) {
@@ -155,11 +238,192 @@ export class InventoryView {
         g.lineWidth = selected ? 4 : 2; g.roundRect(x, y, CELL, CELL, 6); g.stroke();
     }
 
-    private onTap(e: EventTouch) {
-        // 屏幕坐标 → root 本地坐标
+    private drawDragPreview(g: Graphics, lbl: (x: number, y: number, s: string, size?: number, c?: Color) => void) {
+        const d = this.touch?.drag;
+        if (!d) return;
+        const x = d.x - CELL / 2, y = d.y - CELL / 2;
+        this.drawCell(g, x, y, d.item, true);
+        lbl(d.x, d.y + 10, d.item.name, 15);
+        const st = formatEquipStats(d.item.stats);
+        if (st) lbl(d.x, d.y - 14, st, 12);
+    }
+
+    private selectedItem(): EquipItem | null {
+        if (!this.sel) return null;
+        if (this.sel.zone === 'equipped' && this.sel.slot) return this.model.equipped[this.activeChar][this.sel.slot];
+        if (!this.sel.id) return null;
+        const list = this.sel.zone === 'backpack' ? this.model.backpack : this.model.warehouse;
+        return list.find(it => it.id === this.sel!.id) ?? null;
+    }
+
+    private statsDelta(next: EquipStats | undefined, cur: EquipStats | undefined): EquipStats {
+        const out: EquipStats = {};
+        for (const k of STAT_ORDER) {
+            const d = (next?.[k] ?? 0) - (cur?.[k] ?? 0);
+            if (Math.abs(d) > 0.00001) out[k] = Number(d.toFixed(4));
+        }
+        return out;
+    }
+
+    private drawDetails(
+        g: Graphics,
+        lbl: (x: number, y: number, s: string, size?: number, c?: Color) => void,
+        x: number,
+        y: number,
+        w: number,
+        h: number,
+    ) {
+        g.fillColor = new Color(28, 31, 40, 230);
+        g.roundRect(x, y, w, h, 8); g.fill();
+        g.strokeColor = new Color(82, 90, 110, 230);
+        g.lineWidth = 2;
+        g.roundRect(x, y, w, h, 8); g.stroke();
+
+        const item = this.selectedItem();
+        if (!item) {
+            const empty = this.sel?.zone === 'equipped' ? '该装备栏为空' : '选中装备查看完整属性';
+            lbl(x + w / 2, y + h / 2, empty, 18, new Color(180, 185, 198));
+            return;
+        }
+
+        const qColor = QUALITY_COLOR[item.quality];
+        const titleColor = new Color(qColor[0], qColor[1], qColor[2]);
+        lbl(x + 80, y + h - 28, `${QUALITY_LABEL[item.quality]} · ${item.name}`, 20, titleColor);
+        lbl(x + 82, y + h - 54, `${SLOT_LABEL[item.slot]}  ${this.sel?.zone === 'equipped' ? '已穿戴' : `给${CHARACTER_LABEL[this.activeChar]}对比`}`, 15, new Color(190, 198, 214));
+
+        const current = this.sel?.zone === 'equipped' ? null : this.model.equipped[this.activeChar][item.slot];
+        const delta = current ? this.statsDelta(item.stats, current.stats) : {};
+        let line = 0;
+        for (const k of STAT_ORDER) {
+            const v = item.stats?.[k];
+            if (!v) continue;
+            const col = line % 2;
+            const row = Math.floor(line / 2);
+            const lx = x + 260 + col * 210;
+            const ly = y + h - 30 - row * 26;
+            const d = delta[k];
+            const text = `${STAT_LABEL[k]} +${formatStatValue(k, v)}${d ? ` (${formatSignedStatValue(k, d)})` : ''}`;
+            const color = d === undefined ? new Color(230, 232, 238) : (d >= 0 ? new Color(110, 230, 145) : new Color(255, 120, 120));
+            lbl(lx, ly, text, 15, color);
+            line++;
+        }
+        if (current) {
+            lbl(x + 120, y + 22, `当前：${current.name}`, 14, new Color(155, 160, 176));
+        }
+    }
+
+    private localPoint(e: EventTouch): Vec3 {
         const ui = e.getUILocation();
-        const p = this.root.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
-        const hit = this.hots.find(h => p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h);
+        return this.root.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
+    }
+
+    private hitAt(p: Vec3): Hot | null {
+        return this.hots.find(h => p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h) ?? null;
+    }
+
+    private scrollZoneAt(p: Vec3): ListZone | null {
+        for (const z of ['backpack', 'warehouse'] as ListZone[]) {
+            const a = this.scrollAreas[z];
+            if (a && p.x >= a.x && p.x <= a.x + a.w && p.y >= a.y && p.y <= a.y + a.h) return z;
+        }
+        return null;
+    }
+
+    private itemFromHot(hit: Hot | null): EquipItem | null {
+        if (!hit || hit.kind !== 'cell') return null;
+        if (hit.zone === 'equipped' && hit.slot) return this.model.equipped[this.activeChar][hit.slot];
+        if (!hit.id) return null;
+        const list = hit.zone === 'backpack' ? this.model.backpack : this.model.warehouse;
+        return list.find(it => it.id === hit.id) ?? null;
+    }
+
+    private onTouchStart(e: EventTouch) {
+        if (!this.root.active) return;
+        const p = this.localPoint(e);
+        const hit = this.hitAt(p);
+        this.touch = {
+            startX: p.x, startY: p.y, lastX: p.x, lastY: p.y,
+            hit,
+            scrollZone: this.scrollZoneAt(p),
+            moved: false,
+            scrolling: false,
+            drag: null,
+        };
+    }
+
+    private onTouchMove(e: EventTouch) {
+        if (!this.touch) return;
+        const p = this.localPoint(e);
+        const dx = p.x - this.touch.startX;
+        const dy = p.y - this.touch.startY;
+        const stepY = p.y - this.touch.lastY;
+        const dist2 = dx * dx + dy * dy;
+        if (dist2 > DRAG_THRESHOLD * DRAG_THRESHOLD) this.touch.moved = true;
+
+        if (!this.touch.drag && !this.touch.scrolling && this.touch.moved) {
+            const item = this.itemFromHot(this.touch.hit);
+            if (item) {
+                const h = this.touch.hit!;
+                const selected = this.sel?.zone === h.zone && this.sel?.id === h.id && this.sel?.slot === h.slot;
+                if (selected || !this.touch.scrollZone) {
+                    this.touch.drag = {
+                        item,
+                        zone: h.zone!,
+                        id: h.id,
+                        slot: h.slot,
+                        x: p.x,
+                        y: p.y,
+                    };
+                    this.sel = { zone: h.zone!, id: h.id, slot: h.slot };
+                } else {
+                    this.touch.scrolling = true;
+                }
+            } else if (this.touch.scrollZone) {
+                this.touch.scrolling = true;
+            }
+        }
+
+        if (this.touch.drag) {
+            this.touch.drag.x = p.x;
+            this.touch.drag.y = p.y;
+            this.render();
+        } else if (this.touch.scrolling && this.touch.scrollZone) {
+            const z = this.touch.scrollZone;
+            const area = this.scrollAreas[z];
+            if (area) {
+                this.scroll[z] = Math.max(0, Math.min(area.maxScroll, this.scroll[z] + stepY));
+                this.render();
+            }
+        }
+        this.touch.lastX = p.x;
+        this.touch.lastY = p.y;
+    }
+
+    private onTouchEnd(e: EventTouch) {
+        if (!this.touch) return;
+        const p = this.localPoint(e);
+        const t = this.touch;
+        this.touch = null;
+        if (t.drag) {
+            this.finishDrag(t.drag, p);
+            return;
+        }
+        if (t.scrolling) {
+            if (t.scrollZone) this.snapScroll(t.scrollZone);
+            this.render();
+            return;
+        }
+        if (t.moved) return;
+        this.handleTap(t.hit);
+    }
+
+    private onTouchCancel() {
+        if (!this.touch) return;
+        this.touch = null;
+        this.render();
+    }
+
+    private handleTap(hit: Hot | null) {
         if (!hit) return;
         if (hit.kind === 'char') {
             this.activeChar = hit.char!;
@@ -173,12 +437,62 @@ export class InventoryView {
         this.handleButton(hit.kind);
     }
 
+    private finishDrag(drag: DragState, p: Vec3) {
+        const target = this.hitAt(p);
+        const targetList = this.scrollZoneAt(p);
+        let r = { ok: false, reason: '拖到装备栏、背包或仓库' } as { ok: boolean; reason?: string };
+        let changed: InventoryChangeKind | null = null;
+
+        if (target?.zone === 'equipped' && target.slot) {
+            if (drag.item.slot !== target.slot) {
+                r = { ok: false, reason: `这件装备只能放到${SLOT_LABEL[drag.item.slot]}` };
+            } else if (drag.zone === 'backpack' && drag.id) {
+                r = this.model.equip(drag.id, this.activeChar);
+                changed = 'equip';
+            } else if (drag.zone === 'warehouse' && drag.id) {
+                r = this.model.equipFromWarehouse(drag.id, this.activeChar);
+                changed = 'equip';
+            } else {
+                r = { ok: true };
+            }
+        } else if (targetList === 'backpack') {
+            if (drag.zone === 'warehouse' && drag.id) {
+                r = this.model.toBackpack(drag.id);
+                changed = 'transfer';
+            } else if (drag.zone === 'equipped' && drag.slot) {
+                r = this.model.unequip(this.activeChar, drag.slot);
+                changed = 'unequip';
+            } else {
+                r = { ok: true };
+            }
+        } else if (targetList === 'warehouse') {
+            if (drag.zone === 'backpack' && drag.id) {
+                r = this.model.toWarehouse(drag.id);
+                changed = 'transfer';
+            } else if (drag.zone === 'equipped' && drag.slot) {
+                r = this.model.unequipToWarehouse(this.activeChar, drag.slot);
+                changed = 'unequip';
+            } else {
+                r = { ok: true };
+            }
+        }
+
+        if (!r.ok) {
+            this.setToast(r.reason || '拖拽失败');
+            this.sel = { zone: drag.zone, id: drag.id, slot: drag.slot };
+        } else {
+            this.sel = null;
+            if (changed) this.onChanged(changed);
+        }
+        this.render();
+    }
+
     private handleButton(kind: string) {
         const m = this.model;
         let r = { ok: true, reason: '' } as { ok: boolean; reason?: string };
         switch (kind) {
             case 'close': this.toggle(); return;
-            case 'drop': r = m.dropRandom(); break;
+            case 'drop': r = this.onDrop ? this.onDrop() : m.dropRandom(); break;
             case 'transfer':
                 if (!this.sel || !this.sel.id) { this.setToast('先选背包或仓库里的装备'); this.render(); return; }
                 r = this.sel.zone === 'backpack' ? m.toWarehouse(this.sel.id) : m.toBackpack(this.sel.id);
@@ -191,7 +505,7 @@ export class InventoryView {
                 r = m.unequip(this.activeChar, this.sel.slot); break;
         }
         if (!r.ok) { this.setToast(r.reason || '操作失败'); }
-        else { this.sel = null; this.onChanged(); }
+        else { this.sel = null; this.onChanged(kind as InventoryChangeKind); }
         this.render();
     }
 }

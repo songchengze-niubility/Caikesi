@@ -1,6 +1,6 @@
 // 装备存储系统单测（纯逻辑，tsx 运行）。assets 下的 Model/Defs 不依赖 cc，故可直接 import。
 import * as assert from 'node:assert/strict';
-import { randomItem, SLOTS, QUALITIES, makeId, CHARACTERS } from '../assets/scripts/inventory/EquipDefs';
+import { randomItem, SLOTS, QUALITIES, makeId, CHARACTERS, createEquipItem } from '../assets/scripts/inventory/EquipDefs';
 import { InventoryModel } from '../assets/scripts/inventory/InventoryModel';
 
 let pass = 0, fail = 0;
@@ -15,6 +15,7 @@ test('randomItem 产出合法 slot/quality/name', () => {
         assert.ok(SLOTS.includes(it.slot), 'slot 非法: ' + it.slot);
         assert.ok(QUALITIES.includes(it.quality), 'quality 非法: ' + it.quality);
         assert.ok(typeof it.name === 'string' && it.name.length > 0, 'name 为空');
+        assert.ok(it.stats && Object.keys(it.stats).length > 0, 'stats 为空');
     }
 });
 
@@ -33,13 +34,43 @@ test('新建模型：背包/仓库空，每个角色 5 装备栏均 null', () =>
 
 test('dropRandom 进背包；背包满则失败', () => {
     const m = new InventoryModel(2, 2); // 小上限便于测满
-    assert.equal(m.dropRandom().ok, true);
+    const first = m.dropRandom();
+    assert.equal(first.ok, true);
+    assert.ok(first.item && first.item.stats && Object.keys(first.item.stats).length > 0, '掉落结果未返回装备属性');
     assert.equal(m.dropRandom().ok, true);
     assert.equal(m.backpack.length, 2);
     const r = m.dropRandom();
     assert.equal(r.ok, false);
     assert.equal(r.reason, '背包已满');
     assert.equal(m.backpack.length, 2);
+});
+
+test('dropRandomToWarehouse 进仓库；仓库满则失败', () => {
+    const m = new InventoryModel(1, 1);
+    const r = m.dropRandomToWarehouse();
+    assert.equal(r.ok, true);
+    assert.equal(m.warehouse.length, 1);
+    assert.equal(m.warehouse[0].id, r.item!.id);
+    assert.ok(r.item?.stats && Object.keys(r.item.stats).length > 0, '仓库掉落缺少 stats');
+    const full = m.dropRandomToWarehouse();
+    assert.equal(full.ok, false);
+    assert.equal(full.reason, '仓库已满');
+});
+
+test('addItemToBackpack/addItemToWarehouse 接收配置掉落且保留属性', () => {
+    const m = new InventoryModel(1, 1);
+    const item = createEquipItem('weapon', 'rare', () => 0.25);
+    const toBag = m.addItemToBackpack(item);
+    assert.equal(toBag.ok, true);
+    assert.equal(m.backpack[0].id, item.id);
+    assert.ok(m.backpack[0].stats && Object.keys(m.backpack[0].stats).length > 0, '背包配置掉落缺少 stats');
+    assert.equal(m.addItemToBackpack(createEquipItem('helmet', 'common')).reason, '背包已满');
+
+    const toWarehouse = m.addItemToWarehouse(createEquipItem('helmet', 'fine', () => 0.25));
+    assert.equal(toWarehouse.ok, true);
+    assert.equal(m.warehouse.length, 1);
+    assert.ok(m.warehouse[0].stats && Object.keys(m.warehouse[0].stats).length > 0, '仓库配置掉落缺少 stats');
+    assert.equal(m.addItemToWarehouse(createEquipItem('chest', 'common')).reason, '仓库已满');
 });
 
 test('toWarehouse：背包→仓库；id 不存在/仓库满则失败', () => {
@@ -96,6 +127,19 @@ test('equip：不同角色装备栏互相独立', () => {
     assert.equal(m.equipped.healer.weapon, null);
 });
 
+test('equipFromWarehouse：仓库→装备栏；旧装备退回仓库', () => {
+    const m = new InventoryModel(5, 5);
+    const a: any = { id: 'a', slot: 'weapon', name: '仓库剑A', quality: 'common', stats: { atk: 1 } };
+    const b: any = { id: 'b', slot: 'weapon', name: '仓库剑B', quality: 'rare', stats: { atk: 3 } };
+    m.warehouse.push(a, b);
+    assert.equal(m.equipFromWarehouse('a', 'tank').ok, true);
+    assert.equal(m.equipped.tank.weapon!.id, 'a');
+    assert.deepEqual(m.warehouse.map(i => i.id), ['b']);
+    assert.equal(m.equipFromWarehouse('b', 'tank').ok, true);
+    assert.equal(m.equipped.tank.weapon!.id, 'b');
+    assert.deepEqual(m.warehouse.map(i => i.id), ['a']);
+});
+
 test('equip：背包满时换装仍成功（净背包数不增）', () => {
     const m = new InventoryModel(2, 5);
     const a: any = { id: 'a', slot: 'helmet', name: '盔A', quality: 'common' };
@@ -122,6 +166,21 @@ test('unequip(角色)：装备栏→背包；空栏/背包满则失败', () => {
     assert.equal(r.reason, '背包已满');
 });
 
+test('unequipToWarehouse：装备栏→仓库；仓库满则失败', () => {
+    const m = new InventoryModel(5, 1);
+    const a: any = { id: 'a', slot: 'helmet', name: '盔', quality: 'fine', stats: { hp: 10 } };
+    m.equipped.tank.helmet = a;
+    assert.equal(m.unequipToWarehouse('tank', 'helmet').ok, true);
+    assert.equal(m.equipped.tank.helmet, null);
+    assert.deepEqual(m.warehouse.map(i => i.id), ['a']);
+    const b: any = { id: 'b', slot: 'chest', name: '甲', quality: 'common' };
+    m.equipped.tank.chest = b;
+    const r = m.unequipToWarehouse('tank', 'chest');
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, '仓库已满');
+    assert.equal(m.equipped.tank.chest!.id, 'b');
+});
+
 test('serialize/deserialize 往返一致 + 深拷贝', () => {
     const m = new InventoryModel(5, 5);
     m.dropRandom();
@@ -134,6 +193,11 @@ test('serialize/deserialize 往返一致 + 深拷贝', () => {
     // 深拷贝：改 m2 不影响 save
     m2.backpack.push({ id: 'z', slot: 'weapon', name: 'x', quality: 'common' });
     assert.notEqual(m2.backpack.length, save.backpack.length);
+    const equippedSlot = SLOTS.find(s => !!m2.equipped.dps[s]?.stats);
+    if (equippedSlot && m2.equipped.dps[equippedSlot]?.stats && save.equipped.dps[equippedSlot]?.stats) {
+        m2.equipped.dps[equippedSlot]!.stats!.hp = 999;
+        assert.notEqual(m2.equipped.dps[equippedSlot]!.stats!.hp, save.equipped.dps[equippedSlot]!.stats!.hp);
+    }
 });
 
 test('deserialize：undefined / 缺字段 → 空兜底', () => {
@@ -146,6 +210,28 @@ test('deserialize：undefined / 缺字段 → 空兜底', () => {
     assert.equal(m.backpack.length, 1);
     assert.equal(m.warehouse.length, 0);          // 缺 warehouse 兜底为空
     assert.equal(m.equipped.tank.weapon, null);   // 缺 equipped 兜底为 null（每角色每栏）
+});
+
+test('deserialize：老存档装备缺 stats 时自动补属性', () => {
+    const m = new InventoryModel();
+    m.deserialize({
+        backpack: [{ id: 'old-h', slot: 'helmet', name: '头巾', quality: 'rare' }],
+        warehouse: [{ id: 'old-w', slot: 'weapon', name: '巨斧', quality: 'fine' }],
+        equipped: {
+            tank: {
+                weapon: null,
+                helmet: { id: 'old-e', slot: 'helmet', name: '铁盔', quality: 'common' },
+                chest: null,
+                pants: null,
+                shoes: null,
+            },
+            dps: Object.fromEntries(SLOTS.map(s => [s, null])) as any,
+            healer: Object.fromEntries(SLOTS.map(s => [s, null])) as any,
+        },
+    });
+    assert.ok(m.backpack[0].stats && Object.keys(m.backpack[0].stats).length > 0, '背包旧装备未补 stats');
+    assert.ok(m.warehouse[0].stats && Object.keys(m.warehouse[0].stats).length > 0, '仓库旧装备未补 stats');
+    assert.ok(m.equipped.tank.helmet?.stats && Object.keys(m.equipped.tank.helmet.stats).length > 0, '已穿旧装备未补 stats');
 });
 
 console.log(`\n装备测试：${pass} 通过，${fail} 失败`);

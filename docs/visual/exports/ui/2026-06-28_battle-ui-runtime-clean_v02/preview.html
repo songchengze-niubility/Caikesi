@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cgame Battle UI Runtime Clean Preview</title>
+<style>
+body { margin: 0; font-family: Arial, sans-serif; background: #ece8df; color: #29231d; }
+header { padding: 18px 22px 8px; }
+h1 { margin: 0 0 6px; font-size: 22px; }
+p { margin: 0; color: #635b50; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; padding: 18px 22px 28px; }
+figure { margin: 0; background: #faf8f1; border: 1px solid #d3cab9; border-radius: 6px; overflow: hidden; }
+.swatch { min-height: 140px; display: grid; place-items: center; background-image: linear-gradient(45deg,#cfd4da 25%,transparent 25%),linear-gradient(-45deg,#cfd4da 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#cfd4da 75%),linear-gradient(-45deg,transparent 75%,#cfd4da 75%); background-size: 24px 24px; background-position: 0 0,0 12px,12px -12px,-12px 0; position: relative; }
+.swatch::after { content: ""; position: absolute; inset: 0 0 0 50%; background: #70afeb; z-index: 0; }
+img { max-width: 92%; max-height: 132px; z-index: 1; }
+figcaption { padding: 8px 10px; font-size: 12px; background: #fffdf8; line-height: 1.45; }
+span { color: #786c5f; }
+</style>
+</head>
+<body>
+<header><h1>Battle UI Runtime Clean Preview</h1><p>每个运行 PNG 同时叠在棋盘格和蓝色游戏背景上，用来检查是否还带源图底色。</p></header>
+<main class="grid"><figure><div class="swatch"><img src="../../../../../assets/resources/art/ui/battle/hud/profile_cluster.png" /></div><figcaption>hud/profile_cluster.png<br><span>transparent 57.9%, partial 0.0%</span></figcaption></figure><figure><div class="swatch"><img src="../../../../../assets/resources/art/ui/battle/hud/resource_energy_full.png" /></div><figcaption>hud/resource_energy_full.png<br><span>transparent 51.9%, partial 0.0%</span></figcaption></figure><figure><div class="swatch"><img src="../../../../../assets/resources/art/ui/battle/hud/resource_gold_full.png" /></div><figcaption>hud/resource_gold_full.png<br><span>transparent 45.5%, partial 0.0%</span></figcaption></figure><figure><div class="swatch"><img src="../../../../../assets/resources/art/ui/battle/hud/resource_jade_full.png" /></div><figcaption>hud/resource_jade_full.png<br><span>transparent 47.8%, partial 0.0%</span></figcaption></figure><figure><div class="swatch"><img src="../../../../../assets/resources/art/ui/battle/nav/nav_bar_full.png" /></div><figcaption>nav/nav_bar_full.png<br><span>transparent 0.0%, partial 0.0%</span></figcaption></figure><figure><div class="swatch"><img src="../../../../../assets/resources/art/ui/battle/skills/skill_01.png" /></div><figcaption>skills/skill_01.png<br><span>transparent 20.2%, partial 7.1%</span></figcaption></figure><figure><div class="swatch"><img src="../../../../../assets/resources/art/ui/battle/skills/skill_02.png" /></div><figcaption>skills/skill_02.png<br><span>transparent 20.2%, partial 7.1%</span></figcaption></figure><figure><div class="swatch"><img src="../../../../../assets/resources/art/ui/battle/skills/skill_03.png" /></div><figcaption>skills/skill_03.png<br><span>transparent 20.2%, partial 7.1%</span></figcaption></figure><figure><div class="swatch"><img src="../../../../../assets/resources/art/ui/battle/stage/chapter_banner.png" /></div><figcaption>stage/chapter_banner.png<br><span>transparent 0.0%, partial 66.0%</span></figcaption></figure><figure><div class="swatch"><img src="../../../../../assets/resources/art/ui/battle/stage/reward_card.png" /></div><figcaption>stage/reward_card.png<br><span>transparent 0.0%, partial 0.0%</span></figcaption></figure><figure><div class="swatch"><img src="../../../../../assets/resources/art/ui/battle/stage/wave_progress.png" /></div><figcaption>stage/wave_progress.png<br><span>transparent 78.6%, partial 0.0%</span></figcaption></figure></main>
+</body>
+</html>

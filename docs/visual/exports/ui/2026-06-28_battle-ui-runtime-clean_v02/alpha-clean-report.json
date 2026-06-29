@@ -1,0 +1,135 @@
+{
+  "canvas": {
+    "w": 941,
+    "h": 1672
+  },
+  "assetsRoot": "../../../../../assets/resources/art/ui/battle",
+  "notes": [
+    "Runtime alpha-clean preview: each asset is shown on checkerboard and blue game-like background.",
+    "Opaque panel assets are intentionally retained only when the panel itself is the component.",
+    "Do not promote raw rectangular crops unless this preview and alpha audit pass."
+  ],
+  "assets": [
+    {
+      "file": "assets/resources/art/ui/battle/hud/profile_cluster.png",
+      "size": {
+        "w": 335,
+        "h": 112
+      },
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "transparentRatio": 0.579317697228145,
+      "partialRatio": 0.0
+    },
+    {
+      "file": "assets/resources/art/ui/battle/hud/resource_energy_full.png",
+      "size": {
+        "w": 189,
+        "h": 44
+      },
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "transparentRatio": 0.5192400192400193,
+      "partialRatio": 0.0
+    },
+    {
+      "file": "assets/resources/art/ui/battle/hud/resource_gold_full.png",
+      "size": {
+        "w": 180,
+        "h": 44
+      },
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "transparentRatio": 0.4553030303030303,
+      "partialRatio": 0.0
+    },
+    {
+      "file": "assets/resources/art/ui/battle/hud/resource_jade_full.png",
+      "size": {
+        "w": 158,
+        "h": 44
+      },
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "transparentRatio": 0.4782796317606444,
+      "partialRatio": 0.0
+    },
+    {
+      "file": "assets/resources/art/ui/battle/nav/nav_bar_full.png",
+      "size": {
+        "w": 941,
+        "h": 197
+      },
+      "alphaMin": 255,
+      "alphaMax": 255,
+      "transparentRatio": 0.0,
+      "partialRatio": 0.0
+    },
+    {
+      "file": "assets/resources/art/ui/battle/skills/skill_01.png",
+      "size": {
+        "w": 130,
+        "h": 130
+      },
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "transparentRatio": 0.20236686390532543,
+      "partialRatio": 0.0714792899408284
+    },
+    {
+      "file": "assets/resources/art/ui/battle/skills/skill_02.png",
+      "size": {
+        "w": 130,
+        "h": 130
+      },
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "transparentRatio": 0.20236686390532543,
+      "partialRatio": 0.0714792899408284
+    },
+    {
+      "file": "assets/resources/art/ui/battle/skills/skill_03.png",
+      "size": {
+        "w": 130,
+        "h": 130
+      },
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "transparentRatio": 0.20236686390532543,
+      "partialRatio": 0.0714792899408284
+    },
+    {
+      "file": "assets/resources/art/ui/battle/stage/chapter_banner.png",
+      "size": {
+        "w": 320,
+        "h": 62
+      },
+      "alphaMin": 250,
+      "alphaMax": 255,
+      "transparentRatio": 0.0,
+      "partialRatio": 0.6597278225806451
+    },
+    {
+      "file": "assets/resources/art/ui/battle/stage/reward_card.png",
+      "size": {
+        "w": 140,
+        "h": 110
+      },
+      "alphaMin": 255,
+      "alphaMax": 255,
+      "transparentRatio": 0.0,
+      "partialRatio": 0.0
+    },
+    {
+      "file": "assets/resources/art/ui/battle/stage/wave_progress.png",
+      "size": {
+        "w": 318,
+        "h": 60
+      },
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "transparentRatio": 0.7863731656184486,
+      "partialRatio": 0.0
+    }
+  ]
+}

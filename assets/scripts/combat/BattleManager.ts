@@ -5,12 +5,13 @@
 
 import { BattleConfig, SoldierClass, AttackType, CombatStats } from '../config/BattleConfig';
 import { calcDamage, DamageResult } from './CombatFormula';
+import type { EffectiveStatsMap } from './EffectiveStats';
 
-// 一名士兵（战斗属性走统一 stats，行为字段从职业配置拷来）
+// 一名士兵（战斗属性走统一 stats；可由装备层生成 effective stats）
 export interface Soldier {
     cls: SoldierClass;
     attackType: AttackType; // 近战 / 远程 / 治疗
-    stats: CombatStats;     // 统一战斗属性（引用配置，便于实时调参）
+    stats: CombatStats;     // 统一战斗属性（无装备时引用配置；有装备时为 effective stats）
     x: number;            // 当前位置（近战会冲出去）
     y: number;
     homeX: number;        // 原始站位（防线、退守都用它）
@@ -85,12 +86,14 @@ export class BattleManager {
     levelIndex = 0;
     waveIndex = 0;
     private gapTimer = 0;
+    private effectiveStats: EffectiveStatsMap;
     // 当前波每个刷怪组的运行时状态
     private _groups: { type: string; count: number; interval: number; hp?: number; spawned: number; timer: number }[] = [];
 
-    constructor(halfW: number, halfH: number, levelIndex = BattleConfig.startLevel) {
+    constructor(halfW: number, halfH: number, levelIndex = BattleConfig.startLevel, effectiveStats: EffectiveStatsMap = {}) {
         this.halfW = halfW;
         this.halfH = halfH;
+        this.effectiveStats = effectiveStats;
         this.levelIndex = Math.max(0, Math.min(levelIndex, BattleConfig.levels.length - 1));
         this._setupSquad();
         this._startWave(0);
@@ -106,7 +109,7 @@ export class BattleManager {
         const frontX = -this.halfW + L.frontMargin;
         BattleConfig.roster.forEach((cls, i) => {
             const cdef = BattleConfig.classes[cls];   // 职业行为配置
-            const st = BattleConfig.stats[cls];       // 职业战斗属性（统一表）
+            const st = this.effectiveStats[cls] ?? BattleConfig.stats[cls]; // 职业战斗属性（统一表）
             const hx = frontX - i * L.spacing;   // 越靠后（i 越大）越靠左
             this.soldiers.push({
                 cls,

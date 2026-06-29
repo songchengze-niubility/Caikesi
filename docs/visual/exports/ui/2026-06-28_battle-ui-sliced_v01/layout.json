@@ -1,0 +1,589 @@
+{
+  "source": "source.png",
+  "canvas": {
+    "w": 941,
+    "h": 1672
+  },
+  "scaleHints": {
+    "to_1080x1920": {
+      "x": 1.1477151965993624,
+      "y": 1.1483253588516746
+    },
+    "to_720x1280": {
+      "x": 0.7651434643995749,
+      "y": 0.7655502392344498
+    }
+  },
+  "notes": [
+    "Generated from one flat concept image. Rectangular slices are faithful crops, not true source layers.",
+    "Circle slices have transparent outside corners. Entity softmask slices are approximate only.",
+    "Text should usually be rebuilt as live UI labels instead of shipped as baked text pixels.",
+    "Move final runtime assets into assets/resources/art/ui/... and register ArtManifest only after visual approval."
+  ],
+  "slices": [
+    {
+      "name": "hud_profile_cluster",
+      "file": "slices/hud/profile_cluster.png",
+      "rect": {
+        "x": 16,
+        "y": 18,
+        "w": 335,
+        "h": 112
+      },
+      "kind": "raw",
+      "role": "top-left player cluster"
+    },
+    {
+      "name": "hud_avatar_circle",
+      "file": "slices/hud/avatar_circle.png",
+      "rect": {
+        "x": 25,
+        "y": 20,
+        "w": 108,
+        "h": 108
+      },
+      "kind": "circle",
+      "role": "round avatar portrait"
+    },
+    {
+      "name": "hud_name_hp_power",
+      "file": "slices/hud/name_hp_power.png",
+      "rect": {
+        "x": 126,
+        "y": 38,
+        "w": 225,
+        "h": 82
+      },
+      "kind": "raw",
+      "role": "name, hp bar and combat power reference"
+    },
+    {
+      "name": "hud_resource_gold_full",
+      "file": "slices/hud/resource_gold_full.png",
+      "rect": {
+        "x": 374,
+        "y": 48,
+        "w": 180,
+        "h": 44
+      },
+      "kind": "raw",
+      "role": "gold currency group"
+    },
+    {
+      "name": "hud_resource_gold_icon",
+      "file": "slices/hud/resource_gold_icon.png",
+      "rect": {
+        "x": 378,
+        "y": 49,
+        "w": 44,
+        "h": 44
+      },
+      "kind": "circle",
+      "role": "gold icon"
+    },
+    {
+      "name": "hud_resource_jade_full",
+      "file": "slices/hud/resource_jade_full.png",
+      "rect": {
+        "x": 578,
+        "y": 48,
+        "w": 158,
+        "h": 44
+      },
+      "kind": "raw",
+      "role": "jade currency group"
+    },
+    {
+      "name": "hud_resource_jade_icon",
+      "file": "slices/hud/resource_jade_icon.png",
+      "rect": {
+        "x": 577,
+        "y": 48,
+        "w": 48,
+        "h": 44
+      },
+      "kind": "circle",
+      "role": "jade icon"
+    },
+    {
+      "name": "hud_resource_energy_full",
+      "file": "slices/hud/resource_energy_full.png",
+      "rect": {
+        "x": 752,
+        "y": 48,
+        "w": 189,
+        "h": 44
+      },
+      "kind": "raw",
+      "role": "stamina/energy group"
+    },
+    {
+      "name": "hud_resource_energy_icon",
+      "file": "slices/hud/resource_energy_icon.png",
+      "rect": {
+        "x": 752,
+        "y": 48,
+        "w": 50,
+        "h": 44
+      },
+      "kind": "circle",
+      "role": "energy icon"
+    },
+    {
+      "name": "hud_plus_button_gold",
+      "file": "slices/hud/plus_button_gold.png",
+      "rect": {
+        "x": 511,
+        "y": 52,
+        "w": 36,
+        "h": 36
+      },
+      "kind": "circle",
+      "role": "plus button"
+    },
+    {
+      "name": "hud_plus_button_jade",
+      "file": "slices/hud/plus_button_jade.png",
+      "rect": {
+        "x": 700,
+        "y": 52,
+        "w": 36,
+        "h": 36
+      },
+      "kind": "circle",
+      "role": "plus button"
+    },
+    {
+      "name": "hud_plus_button_energy",
+      "file": "slices/hud/plus_button_energy.png",
+      "rect": {
+        "x": 896,
+        "y": 52,
+        "w": 36,
+        "h": 36
+      },
+      "kind": "circle",
+      "role": "plus button"
+    },
+    {
+      "name": "stage_chapter_banner",
+      "file": "slices/stage/chapter_banner.png",
+      "rect": {
+        "x": 331,
+        "y": 106,
+        "w": 320,
+        "h": 62
+      },
+      "kind": "raw",
+      "role": "chapter title banner"
+    },
+    {
+      "name": "stage_wave_progress",
+      "file": "slices/stage/wave_progress.png",
+      "rect": {
+        "x": 329,
+        "y": 166,
+        "w": 318,
+        "h": 60
+      },
+      "kind": "raw",
+      "role": "wave progress bar with nodes"
+    },
+    {
+      "name": "stage_reward_card",
+      "file": "slices/stage/reward_card.png",
+      "rect": {
+        "x": 801,
+        "y": 116,
+        "w": 140,
+        "h": 110
+      },
+      "kind": "raw",
+      "role": "right reward card"
+    },
+    {
+      "name": "battlefield_reference",
+      "file": "slices/battle/battlefield_reference.png",
+      "rect": {
+        "x": 0,
+        "y": 205,
+        "w": 941,
+        "h": 1268
+      },
+      "kind": "raw",
+      "role": "battlefield region reference, not clean background"
+    },
+    {
+      "name": "background_upper_reference",
+      "file": "slices/battle/background_upper_reference.png",
+      "rect": {
+        "x": 0,
+        "y": 210,
+        "w": 941,
+        "h": 560
+      },
+      "kind": "raw",
+      "role": "upper scenery reference with little foreground UI"
+    },
+    {
+      "name": "entity_strip_reference",
+      "file": "slices/battle/entity_strip_reference.png",
+      "rect": {
+        "x": 30,
+        "y": 760,
+        "w": 895,
+        "h": 305
+      },
+      "kind": "raw",
+      "role": "all battle entities reference"
+    },
+    {
+      "name": "hp_ally_01",
+      "file": "slices/hp/ally_01.png",
+      "rect": {
+        "x": 63,
+        "y": 845,
+        "w": 80,
+        "h": 14
+      },
+      "kind": "raw",
+      "role": "ally hp bar"
+    },
+    {
+      "name": "hp_ally_02",
+      "file": "slices/hp/ally_02.png",
+      "rect": {
+        "x": 211,
+        "y": 842,
+        "w": 80,
+        "h": 14
+      },
+      "kind": "raw",
+      "role": "ally hp bar"
+    },
+    {
+      "name": "hp_ally_03",
+      "file": "slices/hp/ally_03.png",
+      "rect": {
+        "x": 356,
+        "y": 842,
+        "w": 80,
+        "h": 14
+      },
+      "kind": "raw",
+      "role": "ally hp bar"
+    },
+    {
+      "name": "hp_enemy_small",
+      "file": "slices/hp/enemy_small.png",
+      "rect": {
+        "x": 541,
+        "y": 905,
+        "w": 82,
+        "h": 14
+      },
+      "kind": "raw",
+      "role": "enemy hp bar"
+    },
+    {
+      "name": "hp_enemy_wolf",
+      "file": "slices/hp/enemy_wolf.png",
+      "rect": {
+        "x": 650,
+        "y": 858,
+        "w": 82,
+        "h": 14
+      },
+      "kind": "raw",
+      "role": "enemy hp bar"
+    },
+    {
+      "name": "hp_enemy_boss",
+      "file": "slices/hp/enemy_boss.png",
+      "rect": {
+        "x": 774,
+        "y": 783,
+        "w": 88,
+        "h": 14
+      },
+      "kind": "raw",
+      "role": "boss hp bar"
+    },
+    {
+      "name": "entity_ally_hat_raw",
+      "file": "slices/entities_raw/ally_hat.png",
+      "rect": {
+        "x": 39,
+        "y": 862,
+        "w": 140,
+        "h": 184
+      },
+      "kind": "raw",
+      "role": "raw rectangular ally crop"
+    },
+    {
+      "name": "entity_ally_green_raw",
+      "file": "slices/entities_raw/ally_green.png",
+      "rect": {
+        "x": 162,
+        "y": 834,
+        "w": 185,
+        "h": 212
+      },
+      "kind": "raw",
+      "role": "raw rectangular ally crop"
+    },
+    {
+      "name": "entity_ally_blue_raw",
+      "file": "slices/entities_raw/ally_blue.png",
+      "rect": {
+        "x": 332,
+        "y": 833,
+        "w": 153,
+        "h": 205
+      },
+      "kind": "raw",
+      "role": "raw rectangular ally crop"
+    },
+    {
+      "name": "entity_enemy_small_raw",
+      "file": "slices/entities_raw/enemy_small.png",
+      "rect": {
+        "x": 492,
+        "y": 914,
+        "w": 150,
+        "h": 136
+      },
+      "kind": "raw",
+      "role": "raw rectangular enemy crop"
+    },
+    {
+      "name": "entity_enemy_wolf_raw",
+      "file": "slices/entities_raw/enemy_wolf.png",
+      "rect": {
+        "x": 612,
+        "y": 842,
+        "w": 170,
+        "h": 170
+      },
+      "kind": "raw",
+      "role": "raw rectangular enemy crop"
+    },
+    {
+      "name": "entity_enemy_boss_raw",
+      "file": "slices/entities_raw/enemy_boss.png",
+      "rect": {
+        "x": 704,
+        "y": 735,
+        "w": 237,
+        "h": 292
+      },
+      "kind": "raw",
+      "role": "raw rectangular boss crop"
+    },
+    {
+      "name": "entity_ally_hat_softmask",
+      "file": "slices/entities_softmask/ally_hat.png",
+      "rect": {
+        "x": 39,
+        "y": 862,
+        "w": 140,
+        "h": 184
+      },
+      "kind": "soft_ellipse",
+      "role": "approx masked ally crop"
+    },
+    {
+      "name": "entity_ally_green_softmask",
+      "file": "slices/entities_softmask/ally_green.png",
+      "rect": {
+        "x": 162,
+        "y": 834,
+        "w": 185,
+        "h": 212
+      },
+      "kind": "soft_ellipse",
+      "role": "approx masked ally crop"
+    },
+    {
+      "name": "entity_ally_blue_softmask",
+      "file": "slices/entities_softmask/ally_blue.png",
+      "rect": {
+        "x": 332,
+        "y": 833,
+        "w": 153,
+        "h": 205
+      },
+      "kind": "soft_ellipse",
+      "role": "approx masked ally crop"
+    },
+    {
+      "name": "entity_enemy_small_softmask",
+      "file": "slices/entities_softmask/enemy_small.png",
+      "rect": {
+        "x": 492,
+        "y": 914,
+        "w": 150,
+        "h": 136
+      },
+      "kind": "soft_ellipse",
+      "role": "approx masked enemy crop"
+    },
+    {
+      "name": "entity_enemy_wolf_softmask",
+      "file": "slices/entities_softmask/enemy_wolf.png",
+      "rect": {
+        "x": 612,
+        "y": 842,
+        "w": 170,
+        "h": 170
+      },
+      "kind": "soft_ellipse",
+      "role": "approx masked enemy crop"
+    },
+    {
+      "name": "entity_enemy_boss_softmask",
+      "file": "slices/entities_softmask/enemy_boss.png",
+      "rect": {
+        "x": 704,
+        "y": 735,
+        "w": 237,
+        "h": 292
+      },
+      "kind": "soft_ellipse",
+      "role": "approx masked boss crop"
+    },
+    {
+      "name": "skills_row",
+      "file": "slices/skills/skills_row.png",
+      "rect": {
+        "x": 258,
+        "y": 1313,
+        "w": 425,
+        "h": 142
+      },
+      "kind": "raw",
+      "role": "three skill buttons row"
+    },
+    {
+      "name": "skill_01",
+      "file": "slices/skills/skill_01.png",
+      "rect": {
+        "x": 266,
+        "y": 1320,
+        "w": 130,
+        "h": 130
+      },
+      "kind": "circle",
+      "role": "round skill button 1"
+    },
+    {
+      "name": "skill_02",
+      "file": "slices/skills/skill_02.png",
+      "rect": {
+        "x": 407,
+        "y": 1319,
+        "w": 130,
+        "h": 130
+      },
+      "kind": "circle",
+      "role": "round skill button 2"
+    },
+    {
+      "name": "skill_03",
+      "file": "slices/skills/skill_03.png",
+      "rect": {
+        "x": 549,
+        "y": 1320,
+        "w": 130,
+        "h": 130
+      },
+      "kind": "circle",
+      "role": "round skill button 3"
+    },
+    {
+      "name": "nav_bar_full",
+      "file": "slices/nav/nav_bar_full.png",
+      "rect": {
+        "x": 0,
+        "y": 1475,
+        "w": 941,
+        "h": 197
+      },
+      "kind": "raw",
+      "role": "bottom navigation full bar"
+    },
+    {
+      "name": "nav_home",
+      "file": "slices/nav/home.png",
+      "rect": {
+        "x": 46,
+        "y": 1492,
+        "w": 142,
+        "h": 160
+      },
+      "kind": "raw",
+      "role": "bottom nav home item"
+    },
+    {
+      "name": "nav_heroes",
+      "file": "slices/nav/heroes.png",
+      "rect": {
+        "x": 190,
+        "y": 1488,
+        "w": 164,
+        "h": 164
+      },
+      "kind": "raw",
+      "role": "bottom nav heroes item"
+    },
+    {
+      "name": "nav_battle_selected",
+      "file": "slices/nav/battle_selected.png",
+      "rect": {
+        "x": 363,
+        "y": 1479,
+        "w": 198,
+        "h": 188
+      },
+      "kind": "raw",
+      "role": "selected battle nav item"
+    },
+    {
+      "name": "nav_equipment",
+      "file": "slices/nav/equipment.png",
+      "rect": {
+        "x": 606,
+        "y": 1491,
+        "w": 138,
+        "h": 164
+      },
+      "kind": "raw",
+      "role": "bottom nav equipment item"
+    },
+    {
+      "name": "nav_bag",
+      "file": "slices/nav/bag.png",
+      "rect": {
+        "x": 727,
+        "y": 1493,
+        "w": 132,
+        "h": 162
+      },
+      "kind": "raw",
+      "role": "bottom nav bag item"
+    },
+    {
+      "name": "nav_sect",
+      "file": "slices/nav/sect.png",
+      "rect": {
+        "x": 842,
+        "y": 1490,
+        "w": 99,
+        "h": 165
+      },
+      "kind": "raw",
+      "role": "bottom nav sect item"
+    }
+  ]
+}

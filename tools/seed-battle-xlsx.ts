@@ -36,23 +36,23 @@ const CLASSES_ROWS: (string | number)[][] = [
 ];
 
 // —— Levels sheet：关卡，拍平到 spawn-group 粒度 ——
-// 列：levelIndex, levelName, waveGap, waveIndex, type, count, interval, hp(可选,空=不覆盖)
-const LEVELS_HEADER = ['levelIndex', 'levelName', 'waveGap', 'waveIndex', 'type', 'count', 'interval', 'hp'];
+// 列：levelIndex, levelName, waveGap, dropGroup, waveIndex, type, count, interval, hp(可选,空=不覆盖)
+const LEVELS_HEADER = ['levelIndex', 'levelName', 'waveGap', 'dropGroup', 'waveIndex', 'type', 'count', 'interval', 'hp'];
 const LEVELS_ROWS: (string | number)[][] = [
     // 第1关
-    [0, '第1关 · 试炼', 2.0, 0, 'zombie', 6,  0.7,  ''],
-    [0, '第1关 · 试炼', 2.0, 1, 'zombie', 8,  0.5,  ''],
-    [0, '第1关 · 试炼', 2.0, 1, 'runner', 3,  1.2,  ''],
-    [0, '第1关 · 试炼', 2.0, 2, 'brute',  2,  1.6,  ''],
-    [0, '第1关 · 试炼', 2.0, 2, 'zombie', 8,  0.45, ''],
+    [0, '第1关 · 试炼', 2.0, 'level_1', 0, 'zombie', 6,  0.7,  ''],
+    [0, '第1关 · 试炼', 2.0, 'level_1', 1, 'zombie', 8,  0.5,  ''],
+    [0, '第1关 · 试炼', 2.0, 'level_1', 1, 'runner', 3,  1.2,  ''],
+    [0, '第1关 · 试炼', 2.0, 'level_1', 2, 'brute',  2,  1.6,  ''],
+    [0, '第1关 · 试炼', 2.0, 'level_1', 2, 'zombie', 8,  0.45, ''],
     // 第2关
-    [1, '第2关 · 猛攻', 1.8, 0, 'runner', 8,  0.45, ''],
-    [1, '第2关 · 猛攻', 1.8, 1, 'zombie', 12, 0.4,  180],
-    [1, '第2关 · 猛攻', 1.8, 1, 'runner', 4,  1.0,  ''],
-    [1, '第2关 · 猛攻', 1.8, 2, 'brute',  4,  1.3,  460],
-    [1, '第2关 · 猛攻', 1.8, 3, 'brute',  3,  1.5,  460],
-    [1, '第2关 · 猛攻', 1.8, 3, 'runner', 8,  0.4,  ''],
-    [1, '第2关 · 猛攻', 1.8, 3, 'zombie', 10, 0.4,  ''],
+    [1, '第2关 · 猛攻', 1.8, 'level_2', 0, 'runner', 8,  0.45, ''],
+    [1, '第2关 · 猛攻', 1.8, 'level_2', 1, 'zombie', 12, 0.4,  180],
+    [1, '第2关 · 猛攻', 1.8, 'level_2', 1, 'runner', 4,  1.0,  ''],
+    [1, '第2关 · 猛攻', 1.8, 'level_2', 2, 'brute',  4,  1.3,  460],
+    [1, '第2关 · 猛攻', 1.8, 'level_2', 3, 'brute',  3,  1.5,  460],
+    [1, '第2关 · 猛攻', 1.8, 'level_2', 3, 'runner', 8,  0.4,  ''],
+    [1, '第2关 · 猛攻', 1.8, 'level_2', 3, 'zombie', 10, 0.4,  ''],
 ];
 
 // —— Misc sheet：散落标量/键值（点分 key）——

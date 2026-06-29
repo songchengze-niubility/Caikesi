@@ -52,6 +52,7 @@ export interface Wave {
 export interface Level {
     name: string;
     waveGap: number;       // 波与波之间的间隔（秒）
+    dropGroup: string;     // 胜利奖励掉落组 id；具体权重见 drop.xlsx
     waves: Wave[];
 }
 

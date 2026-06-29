@@ -2,7 +2,10 @@
 // 一张「源清单」(SOURCES) 描述：哪个 xlsx → 哪个 parser → 生成哪个产物。
 // `npm run config` 会遍历所有源依次导出，每源独立校验、独立产物。
 //
-// 目前只有 battle 一个模块（tools/config-xlsx/battle.xlsx → battle.config.generated.ts）。
+// 目前包含 battle/equip/drop 三个模块：
+// - tools/config-xlsx/battle.xlsx → battle.config.generated.ts
+// - tools/config-xlsx/equip.xlsx  → equip.config.generated.ts
+// - tools/config-xlsx/drop.xlsx   → drop.config.generated.ts
 // 【加新模块（如掉装备）】：① 写一个 buildXxxConfig(wb) 解析函数；
 //   ② 在 SOURCES 末尾加一行 {name,xlsxRel,outRel,exportVar,build}。主流程不用改。
 //
@@ -50,6 +53,8 @@ function checkStatRanges(st: Record<string, number>, where: string) {
 
 // ============ 通用小工具（任意模块解析器复用）============
 type Cell = unknown;
+const STAT_KEYS = ['hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce'];
+const STAT_KEY_SET = new Set(STAT_KEYS);
 
 // 把单元格转成数字；空/非法 → null
 function num(c: Cell): number | null {
@@ -127,7 +132,6 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
     // —— Stats ——
     const { rows: statsRows } = sheetToRows(wb, 'Stats');
     const stats: Record<string, Record<string, number>> = {};
-    const STAT_KEYS = ['hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce'];
     for (const r of statsRows) {
         const cls = reqStr(r['class'], `Stats`);
         if (cls in stats) err(`Stats: class "${cls}" 重复定义`);
@@ -180,11 +184,12 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
     // —— Levels（拍平行 → 嵌套 Level[]）——
     const { rows: lvlRows } = sheetToRows(wb, 'Levels');
     // 先按 levelIndex 聚合（同时校验同关 waveGap/levelName 一致）
-    const levelMap = new Map<number, { name: string; waveGap: number; waves: Map<number, { spawns: unknown[] }> }>();
+    const levelMap = new Map<number, { name: string; waveGap: number; dropGroup: string; waves: Map<number, { spawns: unknown[] }> }>();
     for (const r of lvlRows) {
         const li = reqNum(r['levelIndex'], `Levels.levelIndex`);
         const name = reqStr(r['levelName'], `Levels@level${li}.levelName`);
         const waveGap = reqNum(r['waveGap'], `Levels@level${li}.waveGap`);
+        const dropGroup = reqStr(r['dropGroup'], `Levels@level${li}.dropGroup`);
         const wi = reqNum(r['waveIndex'], `Levels@level${li} wave${r['waveIndex']}.waveIndex`);
         const type = reqStr(r['type'], `Levels@level${li} wave${wi}.type`);
         const count = reqNum(r['count'], `Levels@level${li} wave${wi}.count`);
@@ -196,12 +201,13 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
 
         let lvl = levelMap.get(li);
         if (!lvl) {
-            lvl = { name, waveGap, waves: new Map() };
+            lvl = { name, waveGap, dropGroup, waves: new Map() };
             levelMap.set(li, lvl);
         } else {
             // 同关一致性
             if (lvl.name !== name) err(`Levels: level${li} 的 levelName 不一致（${lvl.name} vs ${name}）`);
             if (lvl.waveGap !== waveGap) err(`Levels: level${li} 的 waveGap 不一致（${lvl.waveGap} vs ${waveGap}）`);
+            if (lvl.dropGroup !== dropGroup) err(`Levels: level${li} 的 dropGroup 不一致（${lvl.dropGroup} vs ${dropGroup}）`);
         }
         let wv = lvl.waves.get(wi);
         if (!wv) { wv = { spawns: [] }; lvl.waves.set(wi, wv); }
@@ -223,7 +229,7 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
             if (wi !== idx) err(`Levels@level${li}: waveIndex 必须从 0 连续递增（期望 ${idx}，得到 ${wi}）`);
         });
         const waves = wiSorted.map(wi => ({ spawns: lvl.waves.get(wi)!.spawns }));
-        return { name: lvl.name, waveGap: lvl.waveGap, waves };
+        return { name: lvl.name, waveGap: lvl.waveGap, dropGroup: lvl.dropGroup, waves };
     });
     if (levels.length === 0) err('Levels: 没有任何关卡');
 
@@ -300,6 +306,166 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
     return { config, summary };
 }
 
+// ============ equip 模块解析器 ============
+// 读 equip.xlsx 的 3 sheet → 装备属性配置。结构：
+// qualities[quality] = { label, multiplier, rollMin, rollMax, extraStats }
+// slotBonuses[slot][stat] = baseValue
+// affixes[] = { stat, value }
+function buildEquipConfig(wb: XLSX.WorkBook): { config: unknown; summary: string } {
+    const VALID_QUALITIES = new Set(['common', 'fine', 'rare', 'epic', 'legend']);
+    const VALID_SLOTS = new Set(['weapon', 'helmet', 'chest', 'pants', 'shoes']);
+
+    const { rows: qualityRows } = sheetToRows(wb, 'Qualities');
+    const qualities: Record<string, unknown> = {};
+    const qualityKeys = new Set<string>();
+    for (const r of qualityRows) {
+        const q = reqStr(r['quality'], 'Qualities.quality');
+        if (!VALID_QUALITIES.has(q)) err(`Qualities: quality "${q}" 非法`);
+        if (qualityKeys.has(q)) err(`Qualities: quality "${q}" 重复定义`);
+        qualityKeys.add(q);
+        const multiplier = reqNum(r['multiplier'], `Qualities[${q}].multiplier`);
+        const rollMin = reqNum(r['rollMin'], `Qualities[${q}].rollMin`);
+        const rollMax = reqNum(r['rollMax'], `Qualities[${q}].rollMax`);
+        const extraStats = reqNum(r['extraStats'], `Qualities[${q}].extraStats`);
+        if (multiplier <= 0) warn(`Qualities[${q}].multiplier = ${multiplier} 应 > 0`);
+        if (rollMin <= 0 || rollMax <= 0 || rollMin > rollMax) err(`Qualities[${q}]: rollMin/rollMax 必须 >0 且 min<=max`);
+        if (extraStats < 0) warn(`Qualities[${q}].extraStats = ${extraStats} 为负`);
+        qualities[q] = {
+            label: reqStr(r['label'], `Qualities[${q}].label`),
+            multiplier,
+            rollMin,
+            rollMax,
+            extraStats,
+        };
+    }
+    for (const q of VALID_QUALITIES) if (!qualityKeys.has(q)) err(`Qualities: 缺少品质 "${q}"`);
+
+    const { rows: bonusRows } = sheetToRows(wb, 'SlotBonuses');
+    const slotBonuses: Record<string, Record<string, number>> = {};
+    let bonusCount = 0;
+    for (const r of bonusRows) {
+        const slot = reqStr(r['slot'], 'SlotBonuses.slot');
+        const stat = reqStr(r['stat'], `SlotBonuses[${slot}].stat`);
+        const value = reqNum(r['value'], `SlotBonuses[${slot}.${stat}].value`);
+        if (!VALID_SLOTS.has(slot)) err(`SlotBonuses: slot "${slot}" 非法`);
+        if (!STAT_KEY_SET.has(stat)) err(`SlotBonuses: stat "${stat}" 不在 CombatStats 中`);
+        if (value < 0) warn(`SlotBonuses[${slot}.${stat}].value = ${value} 为负`);
+        if (!slotBonuses[slot]) slotBonuses[slot] = {};
+        if (slotBonuses[slot][stat] !== undefined) err(`SlotBonuses: ${slot}.${stat} 重复定义`);
+        slotBonuses[slot][stat] = value;
+        bonusCount++;
+    }
+    for (const slot of VALID_SLOTS) if (!slotBonuses[slot]) err(`SlotBonuses: 缺少部位 "${slot}"`);
+
+    const { rows: affixRows } = sheetToRows(wb, 'Affixes');
+    const affixes: unknown[] = [];
+    const affixStats = new Set<string>();
+    for (const r of affixRows) {
+        const stat = reqStr(r['stat'], 'Affixes.stat');
+        const value = reqNum(r['value'], `Affixes[${stat}].value`);
+        if (!STAT_KEY_SET.has(stat)) err(`Affixes: stat "${stat}" 不在 CombatStats 中`);
+        if (value <= 0) warn(`Affixes[${stat}].value = ${value} 应 > 0`);
+        if (affixStats.has(stat)) err(`Affixes: stat "${stat}" 重复定义`);
+        affixStats.add(stat);
+        affixes.push({ stat, value });
+    }
+    if (affixes.length === 0) err('Affixes: 至少需要 1 条可抽取词条');
+
+    const config = { qualities, slotBonuses, affixes };
+    const summary = `qualities=${Object.keys(qualities).length} slots=${Object.keys(slotBonuses).length} bonuses=${bonusCount} affixes=${affixes.length}`;
+    return { config, summary };
+}
+
+// ============ drop 模块解析器 ============
+// 读 drop.xlsx 的 3 sheet → 掉落配置。
+// DropGroups: group, itemCount, qualityGroup, slotGroup
+// QualityWeights: group, quality, weight
+// SlotWeights: group, slot, weight
+function buildDropConfig(wb: XLSX.WorkBook): { config: unknown; summary: string } {
+    const VALID_QUALITIES = ['common', 'fine', 'rare', 'epic', 'legend'];
+    const VALID_SLOTS = ['weapon', 'helmet', 'chest', 'pants', 'shoes'];
+    const validQualitySet = new Set(VALID_QUALITIES);
+    const validSlotSet = new Set(VALID_SLOTS);
+
+    const { rows: groupRows } = sheetToRows(wb, 'DropGroups');
+    const groupDefs: Record<string, { itemCount: number; qualityGroup: string; slotGroup: string }> = {};
+    for (const r of groupRows) {
+        const group = reqStr(r['group'], 'DropGroups.group');
+        if (groupDefs[group]) err(`DropGroups: group "${group}" 重复定义`);
+        const itemCount = reqNum(r['itemCount'], `DropGroups[${group}].itemCount`);
+        if (itemCount < 1) warn(`DropGroups[${group}].itemCount = ${itemCount}（胜利奖励通常应 ≥ 1）`);
+        groupDefs[group] = {
+            itemCount,
+            qualityGroup: reqStr(r['qualityGroup'], `DropGroups[${group}].qualityGroup`),
+            slotGroup: reqStr(r['slotGroup'], `DropGroups[${group}].slotGroup`),
+        };
+    }
+    if (Object.keys(groupDefs).length === 0) err('DropGroups: 至少需要 1 个掉落组');
+
+    const { rows: qualityRows } = sheetToRows(wb, 'QualityWeights');
+    const qualityWeightGroups: Record<string, Record<string, number>> = {};
+    const qualitySeen = new Set<string>();
+    for (const r of qualityRows) {
+        const group = reqStr(r['group'], 'QualityWeights.group');
+        const quality = reqStr(r['quality'], `QualityWeights[${group}].quality`);
+        const key = `${group}.${quality}`;
+        if (!validQualitySet.has(quality)) err(`QualityWeights[${group}]: quality "${quality}" 非法`);
+        if (qualitySeen.has(key)) err(`QualityWeights: ${key} 重复定义`);
+        qualitySeen.add(key);
+        const weight = reqNum(r['weight'], `QualityWeights[${key}].weight`);
+        if (weight < 0) err(`QualityWeights[${key}].weight 不可为负`);
+        if (!qualityWeightGroups[group]) qualityWeightGroups[group] = {};
+        qualityWeightGroups[group][quality] = weight;
+    }
+
+    const { rows: slotRows } = sheetToRows(wb, 'SlotWeights');
+    const slotWeightGroups: Record<string, Record<string, number>> = {};
+    const slotSeen = new Set<string>();
+    for (const r of slotRows) {
+        const group = reqStr(r['group'], 'SlotWeights.group');
+        const slot = reqStr(r['slot'], `SlotWeights[${group}].slot`);
+        const key = `${group}.${slot}`;
+        if (!validSlotSet.has(slot)) err(`SlotWeights[${group}]: slot "${slot}" 非法`);
+        if (slotSeen.has(key)) err(`SlotWeights: ${key} 重复定义`);
+        slotSeen.add(key);
+        const weight = reqNum(r['weight'], `SlotWeights[${key}].weight`);
+        if (weight < 0) err(`SlotWeights[${key}].weight 不可为负`);
+        if (!slotWeightGroups[group]) slotWeightGroups[group] = {};
+        slotWeightGroups[group][slot] = weight;
+    }
+
+    function completeWeights(kind: 'QualityWeights' | 'SlotWeights', group: string, keys: string[], src: Record<string, Record<string, number>>) {
+        const found = src[group];
+        if (!found) {
+            err(`${kind}: 缺少权重组 "${group}"`);
+            return Object.fromEntries(keys.map(k => [k, 0]));
+        }
+        const out: Record<string, number> = {};
+        let total = 0;
+        for (const k of keys) {
+            if (found[k] === undefined) err(`${kind}[${group}]: 缺少 "${k}" 权重`);
+            const weight = found[k] ?? 0;
+            out[k] = weight;
+            total += Math.max(0, weight);
+        }
+        if (total <= 0) err(`${kind}[${group}]: 权重总和必须 > 0`);
+        return out;
+    }
+
+    const groups: Record<string, unknown> = {};
+    for (const [group, def] of Object.entries(groupDefs)) {
+        groups[group] = {
+            itemCount: def.itemCount,
+            qualityWeights: completeWeights('QualityWeights', def.qualityGroup, VALID_QUALITIES, qualityWeightGroups),
+            slotWeights: completeWeights('SlotWeights', def.slotGroup, VALID_SLOTS, slotWeightGroups),
+        };
+    }
+
+    const config = { groups };
+    const summary = `groups=${Object.keys(groups).length} qualityWeightGroups=${Object.keys(qualityWeightGroups).length} slotWeightGroups=${Object.keys(slotWeightGroups).length}`;
+    return { config, summary };
+}
+
 // ============ 源清单（加模块就在这里加一行）============
 interface ConfigSource {
     name: string;        // 模块名（日志/报错用）
@@ -315,6 +481,20 @@ const SOURCES: ConfigSource[] = [
         outRel: '../assets/scripts/config/battle.config.generated.ts',
         exportVar: 'generatedBattleConfig',
         build: buildBattleConfig,
+    },
+    {
+        name: 'equip',
+        xlsxRel: 'config-xlsx/equip.xlsx',
+        outRel: '../assets/scripts/config/equip.config.generated.ts',
+        exportVar: 'generatedEquipConfig',
+        build: buildEquipConfig,
+    },
+    {
+        name: 'drop',
+        xlsxRel: 'config-xlsx/drop.xlsx',
+        outRel: '../assets/scripts/config/drop.config.generated.ts',
+        exportVar: 'generatedDropConfig',
+        build: buildDropConfig,
     },
 ];
 
