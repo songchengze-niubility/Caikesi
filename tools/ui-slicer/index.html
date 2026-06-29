@@ -1,0 +1,763 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>UI Slicer</title>
+<style>
+  * { box-sizing: border-box; }
+  html,body { margin:0; height:100%; font:13px/1.4 system-ui,sans-serif; color:#222; }
+  #app { display:flex; flex-direction:column; height:100vh; }
+  #toolbar { display:flex; align-items:center; gap:8px; padding:6px 10px; background:#2b2b2b; color:#eee; }
+  #toolbar button { padding:4px 10px; cursor:pointer; }
+  #toolbar .spacer { flex:1; }
+  #toolbar .tip { color:#9a9a9a; font-size:12px; }
+  #main { flex:1; display:flex; min-height:0; }
+  #stage { flex:1; position:relative; background:#3a3a3a; overflow:hidden; }
+  #canvas { display:block; width:100%; height:100%; }
+  #hint { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+          color:#bbb; pointer-events:none; }
+  #side { width:240px; background:#f4f4f4; border-left:1px solid #ccc; display:flex; flex-direction:column; }
+  #sideHead { padding:6px 10px; color:#666; border-bottom:1px solid #ddd; }
+  #boxList { flex:1; overflow:auto; margin:0; padding:0; list-style:none; }
+  #boxList li { padding:5px 10px; cursor:pointer; border-bottom:1px solid #e3e3e3; white-space:nowrap;
+                overflow:hidden; text-overflow:ellipsis; }
+  #boxList li.sel { background:#1e90ff; color:#fff; }
+  #selPanel { border-top:1px solid #ccc; padding:8px 10px; }
+  #selPanel.hidden { display:none; }
+  #selName { width:100%; margin-bottom:6px; }
+  #selPreviewWrap { margin-bottom:6px; padding:6px; border:1px solid #ccc; min-height:60px; max-height:240px;
+    overflow:auto; display:flex; align-items:center; justify-content:center;
+    background-color:#fff;
+    background-image:linear-gradient(45deg,#e6e6e6 25%,transparent 25%),linear-gradient(-45deg,#e6e6e6 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e6e6e6 75%),linear-gradient(-45deg,transparent 75%,#e6e6e6 75%);
+    background-size:16px 16px; background-position:0 0,0 8px,8px -8px,-8px 0; }
+  #selPreview { display:block; image-rendering:pixelated; box-shadow:0 0 0 1px rgba(0,0,0,.15); }
+  #cutRow { display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+  #cutRow label { display:flex; align-items:center; gap:4px; white-space:nowrap; }
+  #cutRow input[type=range] { flex:1; min-width:40px; }
+  #cutRow button { padding:2px 6px; cursor:pointer; }
+  #pickBgBtn.active { background:#1e90ff; color:#fff; }
+  #bgSwatch { width:18px; height:18px; border:1px solid #999; border-radius:3px; flex:0 0 auto;
+    background-image:linear-gradient(45deg,#ccc 25%,transparent 25%),linear-gradient(-45deg,#ccc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#ccc 75%),linear-gradient(-45deg,transparent 75%,#ccc 75%);
+    background-size:8px 8px; background-position:0 0,0 4px,4px -4px,-4px 0; }
+  #whiteTolVal { width:24px; text-align:right; font-variant-numeric:tabular-nums; }
+  #brushRow { display:flex; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap; }
+  #brushRow input[type=range] { flex:1; min-width:40px; }
+  #brushRow button { padding:2px 8px; cursor:pointer; }
+  #brushBtn.active { background:#1e90ff; color:#fff; }
+  #brushEraseBtn.restore { background:#2bb673; color:#fff; }
+  #selDims { color:#666; margin-bottom:6px; font-variant-numeric:tabular-nums; }
+  #selPanel button { margin-right:6px; }
+  button:disabled { opacity:.4; cursor:default; }
+</style>
+
+<div id="app">
+  <div id="toolbar">
+    <button id="openBtn">打开图片</button>
+    <input id="fileInput" type="file" accept="image/*" hidden>
+    <span id="zoomLabel">缩放 100%</span>
+    <button id="fitBtn">适配</button>
+    <span class="tip">空格+拖=平移 · 滚轮=缩放 · 方向键=微调 · Del=删除 · 去底/容差/吸管/画笔在右侧每框单独设</span>
+    <span class="spacer"></span>
+    <button id="pickDirBtn">选择文件夹</button>
+    <span id="dirLabel" class="tip">默认下载夹</span>
+    <button id="downloadAllBtn">下载全部</button>
+  </div>
+  <div id="main">
+    <div id="stage">
+      <canvas id="canvas"></canvas>
+      <div id="hint">拖一张 UI 图进来,或点"打开图片"</div>
+    </div>
+    <div id="side">
+      <div id="sideHead">组件(框=文件名)</div>
+      <ul id="boxList"></ul>
+      <div id="selPanel" class="hidden">
+        <input id="selName" placeholder="组件名">
+        <div id="selPreviewWrap"><canvas id="selPreview" width="1" height="1"></canvas></div>
+        <div id="cutRow">
+          <label><input type="checkbox" id="removeWhite"> 去底</label>
+          <button id="pickBgBtn" type="button" title="吸管:点这里,再点图上要去掉的底色">吸管</button>
+          <span id="bgSwatch" title="当前去除的底色"></span>
+          <input type="range" id="whiteTol" min="0" max="120" value="40">
+          <span id="whiteTolVal">40</span>
+        </div>
+        <div id="brushRow">
+          <button id="brushBtn" type="button">✏️ 画笔</button>
+          <button id="brushEraseBtn" type="button">擦除</button>
+          <input type="range" id="brushSize" min="2" max="80" value="16" title="笔刷大小">
+          <button id="clearMaskBtn" type="button">清除遮罩</button>
+        </div>
+        <div id="selDims">—</div>
+        <button id="dlBtn">下载</button>
+        <button id="copyBtn">复制</button>
+        <button id="delBtn">删除</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ---------- DOM ----------
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const hint = document.getElementById('hint');
+const zoomLabel = document.getElementById('zoomLabel');
+const stage = document.getElementById('stage');
+const fileInput = document.getElementById('fileInput');
+const boxList = document.getElementById('boxList');
+const selPanel = document.getElementById('selPanel');
+const selName = document.getElementById('selName');
+const selDims = document.getElementById('selDims');
+const selPreview = document.getElementById('selPreview');
+const dlBtn = document.getElementById('dlBtn');
+const copyBtn = document.getElementById('copyBtn');
+const delBtn = document.getElementById('delBtn');
+const downloadAllBtn = document.getElementById('downloadAllBtn');
+const pickDirBtn = document.getElementById('pickDirBtn');
+const dirLabel = document.getElementById('dirLabel');
+const removeWhiteEl = document.getElementById('removeWhite');
+const whiteTolEl = document.getElementById('whiteTol');
+const whiteTolVal = document.getElementById('whiteTolVal');
+const pickBgBtn = document.getElementById('pickBgBtn');
+const bgSwatch = document.getElementById('bgSwatch');
+const brushBtn = document.getElementById('brushBtn');
+const brushEraseBtn = document.getElementById('brushEraseBtn');
+const brushSizeEl = document.getElementById('brushSize');
+const clearMaskBtn = document.getElementById('clearMaskBtn');
+
+// ---------- state ----------
+const state = {
+  img:null, imgName:'image', imgW:0, imgH:0,
+  scale:1, offsetX:0, offsetY:0,
+  boxes:[], selectedId:null, nextIndex:1,
+  spaceDown:false,
+  defaultRemoveWhite:true, defaultTol:40, defaultBgColor:[255,255,255],   // 新框继承的默认(sticky)
+  brushMode:false, brushSize:16, brushErase:true,
+  pickingColor:false,
+  dirHandle:null,   // File System Access 目录句柄(选了就写进去,否则走浏览器默认下载)
+};
+const masks = new Map();   // boxId -> canvas(alpha: 不透明=保留, 透明=擦除)
+const canCopy = !!(navigator.clipboard && window.ClipboardItem);
+
+// ---------- coordinate transforms (screen = image*scale + offset) ----------
+function imageToScreen(ix,iy){ return { x: ix*state.scale + state.offsetX, y: iy*state.scale + state.offsetY }; }
+function screenToImage(sx,sy){ return { x: (sx-state.offsetX)/state.scale, y: (sy-state.offsetY)/state.scale }; }
+function pointerPos(e){ const r = canvas.getBoundingClientRect(); return { sx:e.clientX-r.left, sy:e.clientY-r.top }; }
+
+// ---------- box model ----------
+function getBox(id){ return state.boxes.find(b=>b.id===id); }
+function clampToImage(b){
+  b.x = Math.max(0, Math.min(b.x, state.imgW));
+  b.y = Math.max(0, Math.min(b.y, state.imgH));
+  b.w = Math.max(0, Math.min(b.w, state.imgW - b.x));
+  b.h = Math.max(0, Math.min(b.h, state.imgH - b.y));
+  return b;
+}
+function snapBox(b){ b.x=Math.round(b.x); b.y=Math.round(b.y); b.w=Math.round(b.w); b.h=Math.round(b.h); return b; }
+function addBox(x,y,w,h){
+  const b = { id:'b'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+              name:'comp_'+state.nextIndex++, x, y, w, h,
+              removeWhite:state.defaultRemoveWhite, tol:state.defaultTol,
+              bgColor:state.defaultBgColor.slice() };
+  snapBox(clampToImage(b));
+  state.boxes.push(b);
+  state.selectedId = b.id;
+  saveLS(); syncSelPanel();
+  return b;
+}
+function selectBox(id){ state.selectedId = id; render(); syncSelPanel(); }
+function deleteBox(id){
+  state.boxes = state.boxes.filter(b=>b.id!==id);
+  masks.delete(id);
+  if(state.selectedId===id) state.selectedId = null;
+  saveLS(); render(); syncSelPanel();
+}
+
+// ---------- rendering ----------
+const HSIZE = 7;
+function handlePoints(b){
+  const a = imageToScreen(b.x, b.y);
+  const w = b.w*state.scale, h = b.h*state.scale;
+  return {
+    nw:{x:a.x,     y:a.y},     n:{x:a.x+w/2, y:a.y},     ne:{x:a.x+w, y:a.y},
+    w_:{x:a.x,     y:a.y+h/2},                            e:{x:a.x+w, y:a.y+h/2},
+    sw:{x:a.x,     y:a.y+h},   s:{x:a.x+w/2, y:a.y+h},   se:{x:a.x+w, y:a.y+h},
+  };
+}
+function drawHandles(b){
+  const pts = handlePoints(b);
+  ctx.fillStyle = '#fff'; ctx.strokeStyle = '#1e90ff'; ctx.lineWidth = 1;
+  for(const k in pts){
+    ctx.fillRect(pts[k].x-HSIZE/2, pts[k].y-HSIZE/2, HSIZE, HSIZE);
+    ctx.strokeRect(pts[k].x-HSIZE/2, pts[k].y-HSIZE/2, HSIZE, HSIZE);
+  }
+}
+function render(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(!state.img) return;
+  const tl = imageToScreen(0,0);
+  ctx.drawImage(state.img, tl.x, tl.y, state.imgW*state.scale, state.imgH*state.scale);
+  for(const b of state.boxes){
+    const p = imageToScreen(b.x, b.y);
+    const w = b.w*state.scale, h = b.h*state.scale;
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = (b.id===state.selectedId) ? '#1e90ff' : '#ff3b30';
+    ctx.strokeRect(Math.round(p.x)+0.5, Math.round(p.y)+0.5, Math.round(w), Math.round(h));
+    if(b.id===state.selectedId && !state.brushMode) drawHandles(b);
+  }
+  if(state.brushMode){
+    const b = getBox(state.selectedId);
+    if(b && masks.has(b.id)){
+      const ov = brushOverlayCanvas(masks.get(b.id));
+      const p = imageToScreen(b.x, b.y);
+      ctx.imageSmoothingEnabled = state.scale < 1;
+      ctx.drawImage(ov, p.x, p.y, b.w*state.scale, b.h*state.scale);
+    }
+    if(brushCursor){
+      ctx.strokeStyle = '#1e90ff'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(brushCursor.x, brushCursor.y, state.brushSize/2, 0, Math.PI*2); ctx.stroke();
+    }
+  }
+  zoomLabel.textContent = '缩放 ' + Math.round(state.scale*100) + '%';
+}
+function drawPreview(m){
+  const a = imageToScreen(Math.min(m.x0,m.cur.x), Math.min(m.y0,m.cur.y));
+  ctx.strokeStyle = '#1e90ff'; ctx.lineWidth = 1;
+  ctx.strokeRect(Math.round(a.x)+0.5, Math.round(a.y)+0.5,
+                 Math.round(Math.abs(m.cur.x-m.x0)*state.scale),
+                 Math.round(Math.abs(m.cur.y-m.y0)*state.scale));
+}
+
+// ---------- viewport ----------
+function resizeCanvas(){
+  const r = stage.getBoundingClientRect();
+  canvas.width = Math.max(1, Math.round(r.width));
+  canvas.height = Math.max(1, Math.round(r.height));
+  render();
+}
+function fitView(){
+  const pad = 24;
+  const sx = (canvas.width - pad*2) / state.imgW;
+  const sy = (canvas.height - pad*2) / state.imgH;
+  state.scale = Math.min(sx, sy);
+  state.offsetX = (canvas.width - state.imgW*state.scale)/2;
+  state.offsetY = (canvas.height - state.imgH*state.scale)/2;
+}
+window.addEventListener('resize', resizeCanvas);
+fitBtn.addEventListener('click', ()=>{ if(state.img){ fitView(); render(); }});
+canvas.addEventListener('wheel', e => {
+  if(!state.img) return;
+  e.preventDefault();
+  const { sx, sy } = pointerPos(e);
+  const before = screenToImage(sx, sy);
+  const factor = e.deltaY < 0 ? 1.1 : 1/1.1;
+  state.scale = Math.max(0.02, Math.min(40, state.scale*factor));
+  state.offsetX = sx - before.x*state.scale;
+  state.offsetY = sy - before.y*state.scale;
+  render();
+}, { passive:false });
+
+// ---------- pointer dispatch (pan / draw / move / resize / paint) ----------
+let mode = null;
+let brushCursor = null;
+canvas.addEventListener('pointerdown', e => {
+  if(!state.img) return;
+  const { sx, sy } = pointerPos(e);
+  // pan: middle button, or space + left button
+  if(e.button===1 || (e.button===0 && state.spaceDown)){
+    mode = { kind:'pan', sx:e.clientX, sy:e.clientY, ox:state.offsetX, oy:state.offsetY };
+    canvas.style.cursor = 'grabbing';
+    canvas.setPointerCapture(e.pointerId); e.preventDefault(); return;
+  }
+  if(e.button!==0) return;
+  // eyedropper: sample the clicked color as the selected box's bg-removal color
+  if(state.pickingColor){
+    const b = getBox(state.selectedId);
+    if(b){
+      const p = screenToImage(sx, sy);
+      if(p.x>=0 && p.y>=0 && p.x<state.imgW && p.y<state.imgH){
+        b.bgColor = samplePixel(p.x, p.y);
+        b.removeWhite = true;
+        state.defaultBgColor = b.bgColor.slice();
+        state.defaultRemoveWhite = true;
+      }
+    }
+    setPicking(false);
+    saveLS(); saveSettings(); syncSelPanel(); render();
+    return;
+  }
+  // brush mode swallows box-editing: paint the selected box's mask
+  if(state.brushMode){
+    const b = getBox(state.selectedId);
+    if(b){
+      const p = screenToImage(sx, sy);
+      mode = { kind:'paint', last:p };
+      paintSeg(b, p.x, p.y, p.x, p.y);
+      updatePreview(b); render();
+      canvas.setPointerCapture(e.pointerId);
+    }
+    return;
+  }
+  const sel = getBox(state.selectedId);
+  if(sel){
+    const h = hitHandle(sel, sx, sy);
+    if(h){ mode = { kind:'resize', handle:h, startImg:screenToImage(sx,sy), orig:{...sel} };
+           canvas.setPointerCapture(e.pointerId); return; }
+  }
+  const hit = hitBox(sx, sy);
+  if(hit){ selectBox(hit.id);
+           mode = { kind:'move', startImg:screenToImage(sx,sy), orig:{...hit} };
+           canvas.setPointerCapture(e.pointerId); return; }
+  selectBox(null);
+  const p = screenToImage(sx, sy);
+  mode = { kind:'draw', x0:p.x, y0:p.y, cur:{x:p.x,y:p.y} };
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+  const { sx, sy } = pointerPos(e);
+  if(state.brushMode) brushCursor = { x:sx, y:sy };
+  if(!mode){
+    if(state.img && state.brushMode){ canvas.style.cursor = 'none'; render(); return; }
+    if(state.img && !state.spaceDown){
+      const sel = getBox(state.selectedId);
+      const h = sel && hitHandle(sel, sx, sy);
+      canvas.style.cursor = h ? handleCursor(h) : (hitBox(sx,sy) ? 'move' : 'crosshair');
+    }
+    return;
+  }
+  if(mode.kind==='paint'){
+    const b = getBox(state.selectedId); if(!b) return;
+    const p = screenToImage(sx, sy);
+    paintSeg(b, mode.last.x, mode.last.y, p.x, p.y);
+    mode.last = p;
+    updatePreview(b); render();
+    return;
+  }
+  if(mode.kind==='pan'){
+    state.offsetX = mode.ox + (e.clientX - mode.sx);
+    state.offsetY = mode.oy + (e.clientY - mode.sy);
+    render(); return;
+  }
+  if(mode.kind==='draw'){
+    mode.cur = screenToImage(sx, sy);
+    render(); drawPreview(mode); return;
+  }
+  const cur = screenToImage(sx, sy);
+  const dx = cur.x - mode.startImg.x, dy = cur.y - mode.startImg.y;
+  const b = getBox(state.selectedId); if(!b) return;
+  const o = mode.orig;
+  if(mode.kind==='move'){ b.x = o.x + dx; b.y = o.y + dy; }
+  else {
+    let x1=o.x, y1=o.y, x2=o.x+o.w, y2=o.y+o.h; const h = mode.handle;
+    if(h.includes('w')) x1 = o.x + dx;       if(h.includes('e')) x2 = o.x + o.w + dx;
+    if(h.includes('n')) y1 = o.y + dy;       if(h.includes('s')) y2 = o.y + o.h + dy;
+    b.x = Math.min(x1,x2); b.y = Math.min(y1,y2); b.w = Math.abs(x2-x1); b.h = Math.abs(y2-y1);
+  }
+  clampToImage(b); render(); syncSelPanel();
+});
+canvas.addEventListener('pointerup', e => {
+  if(!mode) return;
+  if(mode.kind==='draw'){
+    const x = Math.min(mode.x0, mode.cur.x), y = Math.min(mode.y0, mode.cur.y);
+    const w = Math.abs(mode.cur.x - mode.x0), h = Math.abs(mode.cur.y - mode.y0);
+    if(w>=3 && h>=3) addBox(x,y,w,h);
+  } else if(mode.kind==='move' || mode.kind==='resize'){
+    const b = getBox(state.selectedId); if(b){ snapBox(b); saveLS(); }
+  } else if(mode.kind==='paint'){
+    saveLS();
+  }
+  mode = null;
+  canvas.style.cursor = state.brushMode ? 'none' : (state.spaceDown ? 'grab' : 'crosshair');
+  try{ canvas.releasePointerCapture(e.pointerId); }catch(_){}
+  render(); syncSelPanel();
+});
+
+function hitHandle(b, sx, sy){
+  const pts = handlePoints(b);
+  for(const k in pts){ if(Math.abs(sx-pts[k].x)<=HSIZE && Math.abs(sy-pts[k].y)<=HSIZE) return k; }
+  return null;
+}
+function hitBox(sx, sy){
+  const p = screenToImage(sx, sy);
+  for(let i=state.boxes.length-1; i>=0; i--){
+    const b = state.boxes[i];
+    if(p.x>=b.x && p.x<=b.x+b.w && p.y>=b.y && p.y<=b.y+b.h) return b;
+  }
+  return null;
+}
+function handleCursor(h){
+  return ({ n:'ns-resize', s:'ns-resize', e:'ew-resize', w_:'ew-resize',
+            nw:'nwse-resize', se:'nwse-resize', ne:'nesw-resize', sw:'nesw-resize' })[h] || 'default';
+}
+
+// ---------- keyboard: space-pan, nudge, delete ----------
+window.addEventListener('keydown', e => {
+  const editing = /INPUT|TEXTAREA/.test(document.activeElement.tagName);
+  if(e.code==='Space' && !editing){
+    state.spaceDown = true;
+    if(!mode) canvas.style.cursor = 'grab';
+    e.preventDefault(); return;
+  }
+  if(editing) return;
+  if(e.key==='b' || e.key==='B'){ setBrushMode(!state.brushMode); e.preventDefault(); return; }
+  if(state.brushMode && (e.key==='[' || e.key===']')){
+    state.brushSize = Math.max(2, Math.min(80, state.brushSize + (e.key===']'?2:-2)));
+    brushSizeEl.value = state.brushSize; saveSettings(); render(); e.preventDefault(); return;
+  }
+  const b = getBox(state.selectedId); if(!b) return;
+  const step = e.shiftKey ? 10 : 1;
+  switch(e.key){
+    case 'ArrowLeft':  b.x -= step; break;
+    case 'ArrowRight': b.x += step; break;
+    case 'ArrowUp':    b.y -= step; break;
+    case 'ArrowDown':  b.y += step; break;
+    case 'Delete': case 'Backspace': deleteBox(b.id); e.preventDefault(); return;
+    default: return;
+  }
+  clampToImage(snapBox(b)); saveLS(); render(); syncSelPanel(); e.preventDefault();
+});
+window.addEventListener('keyup', e => {
+  if(e.code==='Space'){ state.spaceDown = false; if(!mode) canvas.style.cursor = 'crosshair'; }
+});
+
+// ---------- sidebar list + selected panel ----------
+function safeName(s){ return (s||'comp').trim().replace(/[\\/:*?"<>|]+/g,'_') || 'comp'; }
+function renderList(){
+  boxList.innerHTML = '';
+  state.boxes.forEach(b => {
+    const li = document.createElement('li');
+    li.textContent = b.name;
+    if(b.id===state.selectedId) li.className = 'sel';
+    li.addEventListener('click', ()=> selectBox(b.id));
+    boxList.appendChild(li);
+  });
+}
+// live preview = exactly what the box exports (real cropped pixels)
+function updatePreview(b){
+  if(!state.img || !b) return;
+  const oc = cropCanvas(b);                         // 与导出完全一致(含去白)
+  const w = oc.width, h = oc.height;
+  const maxW = 210, maxH = 210, maxUp = 8;          // 放大上限,小元件也看得清
+  const ds = Math.min(maxW/w, maxH/h, maxUp);
+  const dw = Math.max(1, Math.round(w*ds)), dh = Math.max(1, Math.round(h*ds));
+  selPreview.width = dw; selPreview.height = dh;
+  const p = selPreview.getContext('2d');
+  p.imageSmoothingEnabled = ds < 1;                 // 缩小时平滑,放大时保持像素清晰
+  p.clearRect(0,0,dw,dh);
+  p.drawImage(oc, 0, 0, w, h, 0, 0, dw, dh);
+}
+function syncSelPanel(){
+  renderList();
+  const b = getBox(state.selectedId);
+  if(!b){ selPanel.classList.add('hidden'); updateExportEnabled(); return; }
+  selPanel.classList.remove('hidden');
+  if(document.activeElement !== selName) selName.value = b.name;
+  removeWhiteEl.checked = b.removeWhite;
+  whiteTolEl.value = b.tol; whiteTolVal.textContent = b.tol;
+  whiteTolEl.disabled = !b.removeWhite;
+  bgSwatch.style.backgroundColor = 'rgb(' + (b.bgColor || state.defaultBgColor).join(',') + ')';
+  selDims.innerHTML = `位置 x ${Math.round(b.x)} y ${Math.round(b.y)}<br>输出 <b>${Math.round(b.w)} × ${Math.round(b.h)}</b> px`;
+  updatePreview(b);
+  updateExportEnabled();
+}
+selName.addEventListener('input', ()=>{ const b=getBox(state.selectedId); if(b){ b.name=selName.value; saveLS(); renderList(); }});
+delBtn.addEventListener('click', ()=>{ if(state.selectedId) deleteBox(state.selectedId); });
+
+// ---------- export: download / clipboard / download all ----------
+// 边缘 flood-fill 去白:只把"与裁切块边相连、且接近白(容差内)"的像素设为透明,
+// 不碰组件内部的白(白图标/白字/白高光),所以不会挖空内部。
+function floodFillColor(imgData, target, tol){
+  const data = imgData.data, w = imgData.width, h = imgData.height, N = w*h;
+  const tr = target[0], tg = target[1], tb = target[2];   // 切比雪夫距离:白色[255,255,255]时与旧"≥255-tol"等价
+  const visited = new Uint8Array(N);
+  const stack = new Int32Array(N); let sp = 0;
+  const match = p => { const i=p*4; return data[i+3]!==0 &&
+    Math.abs(data[i]-tr)<=tol && Math.abs(data[i+1]-tg)<=tol && Math.abs(data[i+2]-tb)<=tol; };
+  const push = p => { if(!visited[p]){ visited[p]=1; if(match(p)){ stack[sp++]=p; data[p*4+3]=0; } } };
+  for(let x=0;x<w;x++){ push(x); push((h-1)*w+x); }
+  for(let y=0;y<h;y++){ push(y*w); push(y*w+w-1); }
+  while(sp>0){
+    const p = stack[--sp], x = p%w, y = (p-x)/w;
+    if(x>0) push(p-1); if(x<w-1) push(p+1); if(y>0) push(p-w); if(y<h-1) push(p+w);
+  }
+}
+function cropCanvas(b){
+  const x = Math.max(0, Math.min(b.x, state.imgW)), y = Math.max(0, Math.min(b.y, state.imgH));
+  const w = Math.max(1, Math.min(b.w, state.imgW - x)), h = Math.max(1, Math.min(b.h, state.imgH - y));
+  const c = document.createElement('canvas'); c.width = Math.round(w); c.height = Math.round(h);
+  const cc = c.getContext('2d');
+  cc.drawImage(state.img, x, y, w, h, 0, 0, c.width, c.height);
+  const mask = masks.get(b.id);
+  if(mask){
+    cc.globalCompositeOperation = 'destination-in';
+    cc.imageSmoothingEnabled = false;
+    cc.drawImage(mask, 0, 0, c.width, c.height);
+    cc.globalCompositeOperation = 'source-over';
+  }
+  const rw  = (b.removeWhite !== undefined) ? b.removeWhite : state.defaultRemoveWhite;
+  const tol = (b.tol !== undefined) ? b.tol : state.defaultTol;
+  const bg  = b.bgColor || state.defaultBgColor;
+  if(rw){
+    const id = cc.getImageData(0, 0, c.width, c.height);
+    floodFillColor(id, bg, tol);
+    cc.putImageData(id, 0, 0);
+  }
+  return c;
+}
+function blobOf(b){ return new Promise(res => cropCanvas(b).toBlob(res, 'image/png')); }
+async function downloadBox(b, fname){
+  const name = (fname || safeName(b.name)) + '.png';
+  const blob = await blobOf(b);
+  if(state.dirHandle && await ensureDirPermission(state.dirHandle)){
+    try{ await writeToDir(state.dirHandle, name, blob);
+         dirLabel.textContent = '📁 ' + state.dirHandle.name; return; }
+    catch(err){ console.warn('写入所选文件夹失败,回退浏览器下载', err); }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
+}
+async function copyBox(b){
+  if(!canCopy){ alert('复制图片需 Chrome 或 Edge'); return; }
+  await navigator.clipboard.write([ new ClipboardItem({ 'image/png': await blobOf(b) }) ]);
+}
+async function downloadAll(){
+  const used = new Map();
+  for(const b of state.boxes){
+    const n = safeName(b.name); const c = (used.get(n)||0)+1; used.set(n, c);
+    await downloadBox(b, c>1 ? `${n}_${c}` : n);
+  }
+}
+function updateExportEnabled(){
+  const sel = !!getBox(state.selectedId);
+  downloadAllBtn.disabled = !(state.img && state.boxes.length>0);
+  dlBtn.disabled = !sel;
+  copyBtn.disabled = !sel || !canCopy;
+}
+dlBtn.addEventListener('click', ()=>{ const b=getBox(state.selectedId); if(b) downloadBox(b); });
+copyBtn.addEventListener('click', ()=>{ const b=getBox(state.selectedId); if(b) copyBox(b); });
+downloadAllBtn.addEventListener('click', downloadAll);
+if(!canCopy) copyBtn.title = '复制图片需 Chrome 或 Edge';
+
+// ---------- download folder (File System Access API) ----------
+const canFS = 'showDirectoryPicker' in window;
+async function ensureDirPermission(handle){
+  if(!handle) return false;
+  const opts = { mode:'readwrite' };
+  try{
+    if(await handle.queryPermission(opts) === 'granted') return true;
+    if(await handle.requestPermission(opts) === 'granted') return true;
+  }catch(_){}
+  return false;
+}
+async function writeToDir(handle, filename, blob){
+  const fh = await handle.getFileHandle(filename, { create:true });
+  const w = await fh.createWritable();
+  await w.write(blob); await w.close();
+}
+// 一个 key 的极简 IndexedDB(目录句柄不能进 localStorage,但可结构化克隆进 IDB)
+function idb(op, key, val){
+  return new Promise((res, rej)=>{
+    const o = indexedDB.open('uislice', 1);
+    o.onupgradeneeded = ()=> o.result.createObjectStore('kv');
+    o.onerror = ()=> rej(o.error);
+    o.onsuccess = ()=>{
+      const db = o.result, tx = db.transaction('kv', op==='get'?'readonly':'readwrite');
+      const st = tx.objectStore('kv');
+      const rq = op==='get' ? st.get(key) : st.put(val, key);
+      rq.onsuccess = ()=>{ const r = rq.result; tx.oncomplete = ()=>{ db.close(); res(r); }; };
+      rq.onerror = ()=> rej(rq.error);
+      if(op!=='get') tx.oncomplete = ()=>{ db.close(); res(); };
+    };
+  });
+}
+async function pickDir(){
+  if(!canFS){ alert('选择文件夹需 Chrome 或 Edge;其他浏览器仍可用默认下载'); return; }
+  try{
+    const handle = await window.showDirectoryPicker({ mode:'readwrite' });
+    state.dirHandle = handle;
+    dirLabel.textContent = '📁 ' + handle.name;
+    try{ await idb('put', 'dirHandle', handle); }catch(_){}
+  }catch(err){
+    if(err && err.name !== 'AbortError'){   // AbortError=用户取消,静默
+      alert('打开文件夹选择失败(部分 file:// 环境会拦截):' + (err.message||err) + '\n仍可用浏览器默认下载。');
+    }
+  }
+}
+pickDirBtn.addEventListener('click', pickDir);
+if(!canFS){ pickDirBtn.disabled = true; pickDirBtn.title = '选择文件夹需 Chrome 或 Edge'; }
+else{
+  idb('get', 'dirHandle').then(h=>{ if(h){ state.dirHandle = h; dirLabel.textContent = '📁 ' + h.name + '(首次下载会询问授权)'; } }).catch(()=>{});
+}
+
+// ---------- per-box white-removal controls (also update the sticky default for new boxes) ----------
+function saveSettings(){ try{ localStorage.setItem('uislice:settings',
+  JSON.stringify({ defaultRemoveWhite:state.defaultRemoveWhite, defaultTol:state.defaultTol,
+                   defaultBgColor:state.defaultBgColor,
+                   brushSize:state.brushSize, brushErase:state.brushErase })); }catch(_){} }
+function restoreSettings(){
+  try{ const d = JSON.parse(localStorage.getItem('uislice:settings')||'{}');
+    if(typeof d.defaultRemoveWhite==='boolean') state.defaultRemoveWhite = d.defaultRemoveWhite;
+    if(typeof d.defaultTol==='number') state.defaultTol = d.defaultTol;
+    if(Array.isArray(d.defaultBgColor) && d.defaultBgColor.length===3) state.defaultBgColor = d.defaultBgColor;
+    if(typeof d.brushSize==='number') state.brushSize = d.brushSize;
+    if(typeof d.brushErase==='boolean') state.brushErase = d.brushErase;
+  }catch(_){}
+  brushSizeEl.value = state.brushSize;
+  brushEraseBtn.textContent = state.brushErase ? '擦除' : '还原';
+  brushEraseBtn.classList.toggle('restore', !state.brushErase);
+}
+removeWhiteEl.addEventListener('change', ()=>{
+  const b = getBox(state.selectedId); if(!b) return;
+  b.removeWhite = removeWhiteEl.checked;
+  state.defaultRemoveWhite = b.removeWhite;
+  whiteTolEl.disabled = !b.removeWhite;
+  saveLS(); saveSettings(); updatePreview(b);
+});
+whiteTolEl.addEventListener('input', ()=>{
+  const b = getBox(state.selectedId); if(!b) return;
+  b.tol = +whiteTolEl.value; whiteTolVal.textContent = whiteTolEl.value;
+  state.defaultTol = b.tol;
+  saveLS(); saveSettings(); updatePreview(b);
+});
+
+// 吸管:从源图取 1px 颜色作为该框要去除的底色
+function samplePixel(ix, iy){
+  const c = document.createElement('canvas'); c.width = 1; c.height = 1;
+  const cc = c.getContext('2d');
+  cc.drawImage(state.img, Math.floor(ix), Math.floor(iy), 1, 1, 0, 0, 1, 1);
+  const d = cc.getImageData(0, 0, 1, 1).data;
+  return [d[0], d[1], d[2]];
+}
+function setPicking(on){
+  state.pickingColor = on;
+  pickBgBtn.classList.toggle('active', on);
+  canvas.style.cursor = on ? 'crosshair' : (state.brushMode ? 'none' : 'crosshair');
+}
+pickBgBtn.addEventListener('click', ()=>{ if(getBox(state.selectedId)) setPicking(!state.pickingColor); });
+
+// ---------- eraser brush (per-box mask) ----------
+// mask canvas: 不透明=保留, 透明=擦除。按需创建,框尺寸变了就缩放已有内容。
+function ensureMask(b){
+  const w = Math.max(1, Math.round(b.w)), h = Math.max(1, Math.round(b.h));
+  let m = masks.get(b.id);
+  if(!m){
+    m = document.createElement('canvas'); m.width = w; m.height = h;
+    const mc = m.getContext('2d'); mc.fillStyle = '#fff'; mc.fillRect(0,0,w,h);
+    masks.set(b.id, m);
+  } else if(m.width!==w || m.height!==h){
+    const tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
+    const tc = tmp.getContext('2d'); tc.imageSmoothingEnabled = false;
+    tc.drawImage(m, 0, 0, w, h);
+    masks.set(b.id, tmp); m = tmp;
+  }
+  return m;
+}
+function paintSeg(b, x0, y0, x1, y1){
+  const m = ensureMask(b), mc = m.getContext('2d');
+  const r = Math.max(0.5, (state.brushSize/2)/state.scale);   // 屏幕px → 图像px
+  mc.globalCompositeOperation = state.brushErase ? 'destination-out' : 'source-over';
+  mc.strokeStyle = '#fff'; mc.fillStyle = '#fff';
+  mc.lineCap = 'round'; mc.lineJoin = 'round'; mc.lineWidth = 2*r;
+  mc.beginPath(); mc.moveTo(x0-b.x, y0-b.y); mc.lineTo(x1-b.x, y1-b.y); mc.stroke();
+  mc.beginPath(); mc.arc(x1-b.x, y1-b.y, r, 0, Math.PI*2); mc.fill();
+  mc.globalCompositeOperation = 'source-over';
+}
+// 红色提示层:擦掉的区域盖半透明红
+function brushOverlayCanvas(m){
+  const ov = document.createElement('canvas'); ov.width = m.width; ov.height = m.height;
+  const oc = ov.getContext('2d');
+  oc.fillStyle = 'rgba(255,40,40,0.5)'; oc.fillRect(0,0,ov.width,ov.height);
+  oc.globalCompositeOperation = 'destination-out'; oc.drawImage(m, 0, 0);
+  return ov;
+}
+function clearMask(b){ masks.delete(b.id); delete b.mask; }
+function loadMaskFromDataURL(b){
+  const img = new Image();
+  img.onload = ()=>{
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    c.getContext('2d').drawImage(img, 0, 0);
+    masks.set(b.id, c);
+    render(); if(state.selectedId===b.id) updatePreview(b);
+  };
+  img.src = b.mask;
+}
+function setBrushMode(on){
+  state.brushMode = on;
+  brushBtn.classList.toggle('active', on);
+  canvas.style.cursor = on ? 'none' : 'crosshair';
+  if(!on) brushCursor = null;
+  render();
+}
+brushBtn.addEventListener('click', ()=> setBrushMode(!state.brushMode));
+brushSizeEl.addEventListener('input', ()=>{ state.brushSize = +brushSizeEl.value; saveSettings(); render(); });
+brushEraseBtn.addEventListener('click', ()=>{
+  state.brushErase = !state.brushErase;
+  brushEraseBtn.textContent = state.brushErase ? '擦除' : '还原';
+  brushEraseBtn.classList.toggle('restore', !state.brushErase);
+  saveSettings();
+});
+clearMaskBtn.addEventListener('click', ()=>{
+  const b = getBox(state.selectedId); if(!b) return;
+  clearMask(b); saveLS(); updatePreview(b); render();
+});
+
+// ---------- localStorage (per image name) ----------
+function lsKey(){ return 'uislice:' + state.imgName; }
+function saveLS(){
+  if(!state.img) return;
+  const boxes = state.boxes.map(b => {
+    const m = masks.get(b.id);
+    // 有活遮罩用它;还没异步加载回来的,保留原 dataURL,避免误删
+    return { ...b, mask: m ? m.toDataURL('image/png') : b.mask };
+  });
+  try{ localStorage.setItem(lsKey(), JSON.stringify({ boxes, nextIndex:state.nextIndex })); }catch(_){}
+}
+function restoreLS(){
+  try{
+    const raw = localStorage.getItem(lsKey()); if(!raw) return;
+    const d = JSON.parse(raw);
+    if(Array.isArray(d.boxes)){
+      state.boxes = d.boxes; state.nextIndex = d.nextIndex || d.boxes.length+1;
+      state.boxes.forEach(b => {
+        if(b.removeWhite === undefined) b.removeWhite = state.defaultRemoveWhite;
+        if(b.tol === undefined) b.tol = state.defaultTol;
+        if(!Array.isArray(b.bgColor)) b.bgColor = [255,255,255];   // 旧框=去白
+        if(b.mask) loadMaskFromDataURL(b);
+      });
+    }
+  }catch(_){}
+}
+
+// ---------- image loading ----------
+function loadImageFromFile(file){
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    state.img = img;
+    state.imgName = file.name.replace(/\.[^.]+$/, '') || 'image';
+    state.imgW = img.naturalWidth; state.imgH = img.naturalHeight;
+    state.boxes = []; state.selectedId = null; state.nextIndex = 1;
+    masks.clear();
+    restoreLS();
+    hint.style.display = 'none';
+    canvas.style.cursor = 'crosshair';
+    fitView(); render(); syncSelPanel();
+  };
+  img.src = url;
+}
+openBtn.addEventListener('click', ()=> fileInput.click());
+fileInput.addEventListener('change', e => { if(e.target.files[0]) loadImageFromFile(e.target.files[0]); });
+stage.addEventListener('dragover', e => e.preventDefault());
+stage.addEventListener('drop', e => {
+  e.preventDefault();
+  const f = [...e.dataTransfer.files].find(f => f.type.startsWith('image/'));
+  if(f) loadImageFromFile(f);
+});
+
+// ---------- boot ----------
+restoreSettings();
+resizeCanvas();
+updateExportEnabled();
+</script>

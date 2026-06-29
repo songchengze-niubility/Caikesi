@@ -1,0 +1,7 @@
+ui/components/*
+ui/backgrounds/*
+ui/full-reference/*
+
+!ui/components/.gitkeep
+!ui/backgrounds/.gitkeep
+!ui/full-reference/.gitkeep

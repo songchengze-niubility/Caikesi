@@ -9,7 +9,8 @@
     "test:inventory": "tsx tools/inventory-test.ts",
     "test:art": "tsx tools/art-test.ts",
     "check:art": "tsx tools/check-art.ts",
-    "art:placeholder": "tsx tools/make-placeholder-art.ts"
+    "art:placeholder": "tsx tools/make-placeholder-art.ts",
+    "ui:slicer": "start tools/ui-slicer/index.html"
   },
   "devDependencies": {
     "tsx": "^4.22.4",

@@ -25,6 +25,7 @@ ai/
 | `skills/配置与关卡.md` | 改数值/加怪/编关卡/改导表时 | **数值由 Excel 管理**（编辑 xlsx→`npm run config`）、配置块结构、怪物类型、关卡、调参面板 |
 | `skills/性能约束.md` | 新增系统、写每帧逻辑、铺量、接美术、做性能评审时 | 微信小游戏/Cocos 性能底线：热路径、池化、渲染、资源、UI、真机验证 |
 | `skills/开发收尾.md` | 开发告一段落/交接/提交前 | 更新记忆、归档设计日志、刷新交接摘要、提交 |
+| `skills/UI与美术产出管线.md` | 用户发来 GPT 网页生图/提示词、要整理 Figma、总结风格或保存 UI/美术示意图时 | 上游视觉协作：GPT 网页生图 → Figma 整理 → 风格记忆 → `docs/visual/` 归档 → 下一轮提示词回流 |
 | `skills/美术资源管线.md` | 加/换美术、改 ArtManifest、派 Codex 美术任务时 | 目录约定、登记、编辑器导入、校验、缺图回退 |
 
 > 新增技能时：在 `skills/` 加文件并补 frontmatter（name/description/when），并在本表加一行。技能多了（>15）按领域分子文件夹（combat/ ui/ data/ ...）。
@@ -40,12 +41,13 @@ ai/
 
 | 想知道 | 看哪（唯一权威） |
 |--------|------|
-| 数值（改/看值） | `tools/config-xlsx/battle.xlsx`（真源）→ `npm run config` 生成产物 |
+| 数值（改/看值） | `tools/config-xlsx/battle.xlsx` / `equip.xlsx` / `drop.xlsx`（真源）→ `npm run config` 生成产物 |
 | 字段含义/类型 | `assets/scripts/config/BattleConfig.ts` 注释（只剩类型定义） |
 | 改了什么、何时 | git 提交记录 |
 | 为什么这么设计 | `ai/memory/设计日志.md` |
 | 当前进度/待办 | `ai/memory/项目状态.md` |
 | 某模块在哪、负责啥 | `ai/memory/代码地图.md` |
+| UI/美术参考、提示词、待审核导出 | `docs/visual/README.md` |
 | 怎么做某类改动 | `ai/skills/*.md`（按索引挑） |
 
 > 写记忆前先问："这事实的权威源是哪个？我是在补权威，还是在抄一份副本？" 是副本 → 改成一句话 + 指向权威。防膨胀的归档线见 `ai/skills/开发收尾.md` 第 2 步。
