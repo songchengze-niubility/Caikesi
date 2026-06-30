@@ -94,7 +94,7 @@ export class BattleEntry extends Component {
     private _styleScale = 1;
     private _stageW = 0;
     private _stageH = 0;
-    private _solSprite: Partial<Record<SoldierClass, { node: Node; anim: FrameAnimPlayer }>> = {};
+    private _solSprite: Partial<Record<SoldierClass, { node: Node; anim: FrameAnimPlayer; visualHeight: number }>> = {};
 
     // 颜色（占位）—— 按职业区分
     private _cClass: Record<SoldierClass, Color> = {
@@ -180,11 +180,19 @@ export class BattleEntry extends Component {
                 const n = new Node('Sol_' + cls);
                 n.layer = this.node.layer;
                 const ut = n.addComponent(UITransform);
-                const size = BattleConfig.classes[cls].size;
-                ut.setContentSize(size, size);
+                const visualBox = this._soldierVisualBox(cls, fr.frames[0]);
+                ut.setContentSize(visualBox.w, visualBox.h);
                 const sp2 = n.addComponent(Sprite);
+                sp2.sizeMode = Sprite.SizeMode.CUSTOM;
+                const blendNode = new Node('SolBlend_' + cls);
+                blendNode.layer = this.node.layer;
+                blendNode.addComponent(UITransform).setContentSize(visualBox.w, visualBox.h);
+                blendNode.setPosition(0, 0, 0);
+                const blendSprite = blendNode.addComponent(Sprite);
+                blendSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+                n.addChild(blendNode);
                 this._battleRoot.addChild(n);
-                this._solSprite[cls] = { node: n, anim: new FrameAnimPlayer(sp2, fr.frames, fr.fps, fr.loop) };
+                this._solSprite[cls] = { node: n, anim: new FrameAnimPlayer(sp2, fr.frames, fr.fps, fr.loop, fr.pingpong, blendSprite, fr.blend), visualHeight: visualBox.h };
             }
 
             this._buildStyledUi();
@@ -276,6 +284,13 @@ export class BattleEntry extends Component {
         this._lastComplete = null;
         this._statusLabel.string = '';
         this._rewardLabel.string = '';
+    }
+
+    private _soldierVisualBox(cls: SoldierClass, frame: SpriteFrame): { w: number; h: number } {
+        const h = cls === 'dps' ? 180 : BattleConfig.classes[cls].size;
+        const rect = frame.rect;
+        const aspect = Math.max(1, rect.width) / Math.max(1, rect.height);
+        return { w: h * aspect, h };
     }
 
     private _onTap() {
@@ -669,7 +684,8 @@ export class BattleEntry extends Component {
 
             // 士兵头顶血条
             const w = size;
-            const by = sol.y + size / 2 + 6;
+            const visualHeight = art ? art.visualHeight : size;
+            const by = sol.y + visualHeight / 2 + 6;
             g.fillColor = this._cEnemyHpBg;
             g.rect(sol.x - w / 2, by, w, 5);
             g.fill();

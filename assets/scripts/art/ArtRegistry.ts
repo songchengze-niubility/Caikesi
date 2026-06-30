@@ -34,7 +34,7 @@ export class ArtRegistry<T> {
         return this.cache.get(entry.path) ?? null;
     }
 
-    getFrames(key: string): { frames: T[]; fps: number; loop: boolean } | null {
+    getFrames(key: string): { frames: T[]; fps: number; loop: boolean; pingpong: boolean; blend: number } | null {
         const entry = ArtManifest[key];
         if (!entry || entry.type !== 'frames') { this.missing.add(key); return null; }
         const frames: T[] = [];
@@ -43,7 +43,7 @@ export class ArtRegistry<T> {
             if (a == null) { this.missing.add(key); return null; }   // 任一帧缺 → 整体回退
             frames.push(a);
         }
-        return { frames, fps: entry.fps, loop: entry.loop };
+        return { frames, fps: entry.fps, loop: entry.loop, pingpong: entry.pingpong ?? false, blend: entry.blend ?? 0 };
     }
 
     missingKeys(): string[] { return [...this.missing]; }

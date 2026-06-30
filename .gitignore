@@ -8,10 +8,13 @@ local/
 build/
 profiles/
 native
+output/
 #//////////////////////////
 # NPM
 #//////////////////////////
 node_modules/
+__pycache__/
+*.py[cod]
 
 #//////////////////////////
 # VSCode

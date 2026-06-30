@@ -16,7 +16,9 @@
     "seed:equip": "tsx tools/seed-equip-xlsx.ts",
     "seed:drop": "tsx tools/seed-drop-xlsx.ts",
     "art:placeholder": "tsx tools/make-placeholder-art.ts",
-    "ui:slicer": "start tools/ui-slicer/index.html"
+    "ui:slicer": "start tools/ui-slicer/index.html",
+    "sprite:keyframes": "python tools/sprite-keyframe-tool.py",
+    "sprite:keyframes:ui": "python tools/sprite-keyframe-ui.py --open"
   },
   "devDependencies": {
     "tsx": "^4.22.4",

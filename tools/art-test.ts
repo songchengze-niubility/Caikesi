@@ -1,7 +1,7 @@
 // 资源管线纯逻辑单测（tsx）。art 下的 Manifest/Registry/FrameClock 不依赖 cc，可直接 import。
 import * as assert from 'node:assert/strict';
 import { entryFiles, ArtEntry } from '../assets/scripts/art/ArtManifest';
-import { frameAt } from '../assets/scripts/art/FrameClock';
+import { frameAt, frameBlendAt } from '../assets/scripts/art/FrameClock';
 import { ArtRegistry } from '../assets/scripts/art/ArtRegistry';
 
 let pass = 0, fail = 0;
@@ -20,10 +20,34 @@ test('entryFiles：frames 返回编号帧路径', () => {
     assert.deepEqual(entryFiles(e), ['art/char/tank/idle/idle_0', 'art/char/tank/idle/idle_1', 'art/char/tank/idle/idle_2']);
 });
 
+test('entryFiles: frames can use custom prefix', () => {
+    const e: ArtEntry = { type: 'frames', dir: 'art/char/dps/attack_01', prefix: 'attack_01', frames: 3, fps: 12, loop: false };
+    assert.deepEqual(entryFiles(e), ['art/char/dps/attack_01/attack_01_0', 'art/char/dps/attack_01/attack_01_1', 'art/char/dps/attack_01/attack_01_2']);
+});
+
 test('frameAt：loop 循环回绕', () => {
     assert.equal(frameAt(0, 6, 4, true), 0);
     assert.equal(frameAt(0.5, 6, 4, true), 3);   // floor(0.5*6)=3
     assert.equal(frameAt(1.0, 6, 4, true), 2);   // floor(6)=6, 6%4=2
+});
+
+test('frameAt: pingpong loop mirrors instead of jumping to frame 0', () => {
+    assert.equal(frameAt(0, 1, 4, true, true), 0);
+    assert.equal(frameAt(1, 1, 4, true, true), 1);
+    assert.equal(frameAt(2, 1, 4, true, true), 2);
+    assert.equal(frameAt(3, 1, 4, true, true), 3);
+    assert.equal(frameAt(4, 1, 4, true, true), 2);
+    assert.equal(frameAt(5, 1, 4, true, true), 1);
+    assert.equal(frameAt(6, 1, 4, true, true), 0);
+});
+
+test('frameBlendAt: blends toward next frame near the frame boundary', () => {
+    const before = frameBlendAt(0.4, 1, 4, true, false, 0.5);
+    assert.deepEqual(before, { from: 0, to: 1, alpha: 0 });
+    const during = frameBlendAt(0.75, 1, 4, true, false, 0.5);
+    assert.equal(during.from, 0);
+    assert.equal(during.to, 1);
+    assert.ok(during.alpha > 0 && during.alpha < 1);
 });
 
 test('frameAt：不循环则停在末帧', () => {
@@ -55,6 +79,8 @@ test('ArtRegistry：getFrames 返回全部帧 + fps/loop', async () => {
     assert.equal(r.frames.length, 4);
     assert.equal(r.fps, 6);
     assert.equal(r.loop, true);
+    assert.equal(r.pingpong, false);
+    assert.equal(r.blend, 0);
 });
 
 test('ArtRegistry：未登记键 → null 且记入 missing', async () => {

@@ -1,0 +1,1107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>序列帧拆帧台</title>
+  <style>
+    :root {
+      --bg: #f5f6f4;
+      --panel: #ffffff;
+      --ink: #202426;
+      --muted: #65706d;
+      --line: #d8ddd8;
+      --field: #f9faf8;
+      --red: #c9472b;
+      --blue: #2f5e9e;
+      --teal: #24715d;
+      --amber: #a86516;
+      --shadow: 0 18px 46px rgba(27, 32, 30, 0.11);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(90deg, rgba(32, 36, 38, 0.045) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(32, 36, 38, 0.035) 1px, transparent 1px),
+        var(--bg);
+      background-size: 28px 28px;
+      color: var(--ink);
+      font-family: "Microsoft YaHei UI", "Segoe UI", Arial, sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .shell {
+      width: min(1480px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 24px 0;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(26px, 3vw, 42px);
+      line-height: 1.05;
+      font-weight: 850;
+    }
+
+    .signal {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--teal);
+      box-shadow: 0 0 0 4px rgba(36, 113, 93, 0.14);
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 420px minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfa;
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .panel-mark {
+      color: var(--muted);
+      font-family: Consolas, "SFMono-Regular", monospace;
+      font-size: 12px;
+    }
+
+    form {
+      padding: 18px;
+    }
+
+    .field-stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    .dropzone {
+      position: relative;
+      display: grid;
+      gap: 8px;
+      min-height: 104px;
+      padding: 15px;
+      border: 1px dashed #aeb8b2;
+      border-radius: 8px;
+      background: var(--field);
+      cursor: pointer;
+      transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+    }
+
+    .dropzone:hover,
+    .dropzone.dragging {
+      border-color: var(--blue);
+      background: #eef4fb;
+      transform: translateY(-1px);
+    }
+
+    .dropzone input {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .drop-main {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+    }
+
+    .drop-icon {
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      background: var(--ink);
+      color: white;
+      font-size: 18px;
+      font-weight: 900;
+    }
+
+    .file-name {
+      min-height: 18px;
+      color: var(--muted);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .section-label {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    label.control {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .control span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      width: 100%;
+      min-width: 0;
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--field);
+      color: var(--ink);
+      padding: 0 10px;
+      outline: none;
+    }
+
+    input:focus-visible,
+    button:focus-visible {
+      outline: 3px solid rgba(47, 94, 158, 0.28);
+      outline-offset: 2px;
+    }
+
+    .check-row {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--field);
+      padding: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .check input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--teal);
+    }
+
+    .action-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      margin-top: 18px;
+    }
+
+    .primary {
+      height: 44px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--red);
+      color: white;
+      padding: 0 18px;
+      font-weight: 850;
+      cursor: pointer;
+      transition: transform 150ms ease, filter 150ms ease;
+    }
+
+    .primary:hover {
+      filter: brightness(0.96);
+      transform: translateY(-1px);
+    }
+
+    .primary:disabled {
+      cursor: wait;
+      filter: saturate(0.2);
+      transform: none;
+    }
+
+    .ghost {
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      padding: 0 12px;
+      font-weight: 750;
+      cursor: pointer;
+    }
+
+    .status {
+      min-width: 0;
+      color: var(--muted);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .result-body {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+      padding: 18px;
+    }
+
+    .preview-stage {
+      display: grid;
+      place-items: center;
+      min-height: 280px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background-color: #e9ece7;
+      background-image:
+        linear-gradient(45deg, #d5dad3 25%, transparent 25%),
+        linear-gradient(-45deg, #d5dad3 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #d5dad3 75%),
+        linear-gradient(-45deg, transparent 75%, #d5dad3 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+      overflow: auto;
+    }
+
+    .preview-stage.compact {
+      min-height: 160px;
+    }
+
+    .stage-label {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .preview-stage img {
+      max-width: 100%;
+      image-rendering: auto;
+    }
+
+    .anim-panel {
+      display: grid;
+      gap: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfa;
+      padding: 12px;
+    }
+
+    .anim-stage {
+      display: grid;
+      place-items: center;
+      min-height: 260px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background-color: #e9ece7;
+      background-image:
+        linear-gradient(45deg, #d5dad3 25%, transparent 25%),
+        linear-gradient(-45deg, #d5dad3 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #d5dad3 75%),
+        linear-gradient(-45deg, transparent 75%, #d5dad3 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+      overflow: hidden;
+    }
+
+    .anim-stage[data-bg="dark"] {
+      background: #202729;
+    }
+
+    .anim-stage[data-bg="light"] {
+      background: #f4f0e8;
+    }
+
+    .anim-stage canvas {
+      max-width: 100%;
+      height: auto;
+    }
+
+    .anim-controls {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+      align-items: end;
+    }
+
+    .empty {
+      color: var(--muted);
+      font-weight: 750;
+    }
+
+    .result-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .stat {
+      border-left: 4px solid var(--blue);
+      background: #f7f9fb;
+      padding: 12px;
+      border-radius: 6px;
+      min-width: 0;
+    }
+
+    .stat:nth-child(2) {
+      border-left-color: var(--teal);
+    }
+
+    .stat:nth-child(3) {
+      border-left-color: var(--amber);
+    }
+
+    .stat-value {
+      font-size: 22px;
+      line-height: 1.1;
+      font-weight: 900;
+      overflow-wrap: anywhere;
+    }
+
+    .stat-label {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .path-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .path {
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--field);
+      padding: 8px 10px;
+      color: var(--muted);
+      font-family: Consolas, "SFMono-Regular", monospace;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+      min-width: 0;
+    }
+
+    .thumbs {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+      gap: 10px;
+    }
+
+    .thumb {
+      display: grid;
+      place-items: center;
+      aspect-ratio: 1;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #eef1ed;
+      overflow: hidden;
+    }
+
+    .thumb img {
+      max-width: 100%;
+      max-height: 100%;
+    }
+
+    .log {
+      display: none;
+      max-height: 150px;
+      overflow: auto;
+      margin: 0;
+      padding: 12px;
+      border-radius: 6px;
+      background: #202426;
+      color: #edf1ee;
+      font: 12px/1.45 Consolas, "SFMono-Regular", monospace;
+      white-space: pre-wrap;
+    }
+
+    .log.visible {
+      display: block;
+    }
+
+    .import-panel {
+      display: grid;
+      gap: 12px;
+      border-top: 1px solid var(--line);
+      padding-top: 16px;
+    }
+
+    @media (max-width: 1060px) {
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .shell {
+        width: min(100vw - 20px, 1480px);
+        padding: 14px 0;
+      }
+
+      .topbar,
+      .grid,
+      .check-row,
+      .result-grid,
+      .path-row,
+      .action-row {
+        grid-template-columns: 1fr;
+      }
+
+      .signal {
+        white-space: normal;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        transition: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="topbar">
+      <div>
+        <h1>序列帧拆帧台</h1>
+      </div>
+      <div class="signal"><span class="dot"></span><span id="serverState">本地服务已连接</span></div>
+    </div>
+
+    <div class="workspace">
+      <section class="panel">
+        <div class="panel-head">
+          <h2 class="panel-title">输入</h2>
+          <span class="panel-mark">white bg / video</span>
+        </div>
+
+        <form id="processForm">
+          <div class="field-stack">
+            <label class="control">
+              <span>输出名称</span>
+              <input name="job_name" type="text" value="hero_attack_01" autocomplete="off">
+            </label>
+
+            <label class="dropzone" data-dropzone>
+              <input name="character" type="file" accept="image/png,image/jpeg,image/webp">
+              <span class="drop-main"><span class="drop-icon">P</span>小人图片</span>
+              <span class="file-name" data-file-name>未选择</span>
+            </label>
+
+            <label class="dropzone" data-dropzone>
+              <input name="video" type="file" accept="video/*">
+              <span class="drop-main"><span class="drop-icon">V</span>参考视频</span>
+              <span class="file-name" data-file-name>未选择</span>
+            </label>
+
+            <p class="section-label">视频</p>
+            <div class="grid">
+              <label class="control"><span>采样 FPS</span><input name="sample_fps" type="number" min="1" max="60" step="1" value="12"></label>
+              <label class="control"><span>前几秒</span><input name="video_seconds" type="number" min="0" max="60" step="0.1" value="1"></label>
+              <label class="control"><span>变化阈值</span><input name="diff_threshold" type="number" min="1" max="80" step="1" value="12"></label>
+              <label class="control"><span>最小间隔</span><input name="min_gap" type="number" min="1" max="30" step="1" value="2"></label>
+              <label class="control"><span>最多关键帧</span><input name="max_keyframes" type="number" min="0" max="120" step="1" value="24"></label>
+              <label class="control"><span>固定关键帧数</span><input name="target_keyframes" type="number" min="0" max="120" step="1" value="0"></label>
+              <label class="control"><span>预览列数</span><input name="preview_columns" type="number" min="1" max="16" step="1" value="6"></label>
+              <label class="control">
+                <span>选帧模式</span>
+                <select name="selection_mode">
+                  <option value="diverse" selected>高精多样</option>
+                  <option value="diff">变化阈值</option>
+                  <option value="even">均匀抽帧</option>
+                </select>
+              </label>
+            </div>
+
+            <p class="section-label">抠白底</p>
+            <div class="grid">
+              <label class="control"><span>白色阈值</span><input name="white_threshold" type="number" min="180" max="255" step="1" value="245"></label>
+              <label class="control"><span>边缘柔化</span><input name="white_softness" type="number" min="0" max="100" step="1" value="28"></label>
+              <label class="control"><span>色差容忍</span><input name="chroma_tolerance" type="number" min="0" max="120" step="1" value="24"></label>
+              <label class="control"><span>透明阈值</span><input name="alpha_threshold" type="number" min="1" max="180" step="1" value="28"></label>
+              <label class="control">
+                <span>背景模式</span>
+                <select name="background_mode">
+                  <option value="auto" selected>自动</option>
+                  <option value="edge">边缘背景</option>
+                  <option value="white">纯白背景</option>
+                </select>
+              </label>
+              <label class="control"><span>边缘容忍</span><input name="edge_tolerance" type="number" min="1" max="160" step="1" value="65"></label>
+              <label class="control"><span>边缘背景柔化</span><input name="edge_softness" type="number" min="0" max="160" step="1" value="42"></label>
+              <label class="control"><span>白孔最小面积</span><input name="hole_min_area" type="number" min="1" max="5000" step="1" value="120"></label>
+              <label class="control"><span>白孔最大面积</span><input name="hole_max_area" type="number" min="100" max="200000" step="100" value="30000"></label>
+              <label class="control"><span>白边半径</span><input name="fringe_radius" type="number" min="0" max="8" step="1" value="2"></label>
+              <label class="control"><span>白边强度</span><input name="fringe_strength" type="number" min="0" max="1" step="0.05" value="0.85"></label>
+              <label class="control"><span>白边亮度阈值</span><input name="fringe_brightness" type="number" min="80" max="240" step="1" value="155"></label>
+              <label class="control"><span>输出画布</span><input name="frame_size" type="text" value="512" autocomplete="off"></label>
+              <label class="control"><span>内边距</span><input name="padding" type="number" min="0" max="64" step="1" value="8"></label>
+            </div>
+
+            <div class="check-row">
+              <label class="check"><input name="allow_upscale" type="checkbox">允许放大</label>
+              <label class="check"><input name="keep_raw_frames" type="checkbox">保留原帧</label>
+              <label class="check"><input name="anchor_stabilize" type="checkbox" checked>多点稳定</label>
+              <label class="check"><input name="scale_stabilize" type="checkbox">稳定缩放</label>
+              <label class="check"><input name="hole_cleanup" type="checkbox" checked>清理内部白孔</label>
+              <label class="check"><input name="fringe_cleanup" type="checkbox" checked>净化浅色白边</label>
+              <label class="check"><input name="no_decontaminate" type="checkbox">保留白边</label>
+            </div>
+
+            <div class="action-row">
+              <div class="status" id="statusText">待处理</div>
+              <button class="primary" id="runButton" type="submit">开始处理</button>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2 class="panel-title">结果</h2>
+          <span class="panel-mark" id="jobMark">no job</span>
+        </div>
+
+        <div class="result-body">
+          <div class="preview-stage" id="previewStage">
+            <span class="empty">预览图会显示在这里</span>
+          </div>
+
+          <p class="stage-label">源视频采样</p>
+          <div class="preview-stage compact" id="rawStage">
+            <span class="empty">源视频采样会显示在这里</span>
+          </div>
+
+          <p class="stage-label">深色底检查</p>
+          <div class="preview-stage compact" id="darkStage">
+            <span class="empty">深色底预览会显示在这里</span>
+          </div>
+
+          <div class="anim-panel">
+            <p class="stage-label">动画预览</p>
+            <div class="anim-stage" id="animStage" data-bg="checker">
+              <canvas id="animCanvas" width="420" height="280"></canvas>
+            </div>
+            <div class="anim-controls">
+              <label class="control"><span>FPS</span><input id="animFps" type="number" min="1" max="60" step="1" value="18"></label>
+              <label class="control"><span>角色高度</span><input id="animHeight" type="number" min="32" max="512" step="1" value="180"></label>
+              <label class="control"><span>混帧</span><input id="animBlend" type="number" min="0" max="0.9" step="0.05" value="0.45"></label>
+              <label class="control">
+                <span>背景</span>
+                <select id="animBg">
+                  <option value="checker" selected>棋盘</option>
+                  <option value="dark">深色</option>
+                  <option value="light">浅色</option>
+                </select>
+              </label>
+              <label class="check"><input id="animPingpong" type="checkbox" checked>往返</label>
+              <button class="ghost" id="animToggle" type="button" disabled>暂停</button>
+            </div>
+            <div class="status" id="animStatus">生成后自动播放</div>
+          </div>
+
+          <div class="result-grid">
+            <div class="stat">
+              <div class="stat-value" id="frameCount">0</div>
+              <div class="stat-label">关键帧</div>
+            </div>
+            <div class="stat">
+              <div class="stat-value" id="frameSize">--</div>
+              <div class="stat-label">画布</div>
+            </div>
+            <div class="stat">
+              <div class="stat-value" id="sharedScale">--</div>
+              <div class="stat-label">共享缩放</div>
+            </div>
+          </div>
+
+          <div class="path-row">
+            <div class="path" id="outputPath">尚未生成</div>
+            <button class="ghost" id="copyPath" type="button" disabled>复制路径</button>
+            <button class="ghost" id="openOutput" type="button" disabled>打开目录</button>
+          </div>
+
+          <div class="import-panel">
+            <p class="stage-label">导入到游戏</p>
+            <div class="grid">
+              <label class="control"><span>资源键</span><input id="importArtKey" type="text" value="char/dps/attack_01" autocomplete="off"></label>
+              <label class="control"><span>文件名前缀</span><input id="importPrefix" type="text" value="attack_01" autocomplete="off"></label>
+              <label class="control"><span>播放 FPS</span><input id="importFps" type="number" min="1" max="60" step="1" value="12"></label>
+              <label class="control"><span>混帧</span><input id="importBlend" type="number" min="0" max="0.9" step="0.05" value="0.45"></label>
+              <label class="check"><input id="importLoop" type="checkbox">循环播放</label>
+              <label class="check"><input id="importPingpong" type="checkbox" checked>往返播放</label>
+              <label class="check"><input id="importOverwrite" type="checkbox">覆盖同名前缀</label>
+            </div>
+            <div class="action-row">
+              <div class="status" id="importStatus">生成后可导入</div>
+              <button class="primary" id="importButton" type="button" disabled>导入到 Cocos</button>
+            </div>
+          </div>
+
+          <div class="preview-stage" id="stripStage">
+            <span class="empty">Strip 会显示在这里</span>
+          </div>
+
+          <div class="thumbs" id="thumbs"></div>
+
+          <pre class="log" id="logBox"></pre>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const form = document.querySelector("#processForm");
+    const runButton = document.querySelector("#runButton");
+    const statusText = document.querySelector("#statusText");
+    const previewStage = document.querySelector("#previewStage");
+    const rawStage = document.querySelector("#rawStage");
+    const darkStage = document.querySelector("#darkStage");
+    const animStage = document.querySelector("#animStage");
+    const animCanvas = document.querySelector("#animCanvas");
+    const animCtx = animCanvas.getContext("2d");
+    const animFps = document.querySelector("#animFps");
+    const animHeight = document.querySelector("#animHeight");
+    const animBlend = document.querySelector("#animBlend");
+    const animBg = document.querySelector("#animBg");
+    const animPingpong = document.querySelector("#animPingpong");
+    const animToggle = document.querySelector("#animToggle");
+    const animStatus = document.querySelector("#animStatus");
+    const stripStage = document.querySelector("#stripStage");
+    const thumbs = document.querySelector("#thumbs");
+    const outputPath = document.querySelector("#outputPath");
+    const copyPath = document.querySelector("#copyPath");
+    const openOutput = document.querySelector("#openOutput");
+    const jobMark = document.querySelector("#jobMark");
+    const frameCount = document.querySelector("#frameCount");
+    const frameSize = document.querySelector("#frameSize");
+    const sharedScale = document.querySelector("#sharedScale");
+    const logBox = document.querySelector("#logBox");
+    const importArtKey = document.querySelector("#importArtKey");
+    const importPrefix = document.querySelector("#importPrefix");
+    const importFps = document.querySelector("#importFps");
+    const importBlend = document.querySelector("#importBlend");
+    const importLoop = document.querySelector("#importLoop");
+    const importPingpong = document.querySelector("#importPingpong");
+    const importOverwrite = document.querySelector("#importOverwrite");
+    const importButton = document.querySelector("#importButton");
+    const importStatus = document.querySelector("#importStatus");
+    let lastJobId = "";
+    let lastOutputPath = "";
+    let animImages = [];
+    let animBbox = null;
+    let animPlaying = false;
+    let animElapsed = 0;
+    let animStartedAt = 0;
+    let animRaf = 0;
+
+    for (const zone of document.querySelectorAll("[data-dropzone]")) {
+      const input = zone.querySelector("input");
+      const name = zone.querySelector("[data-file-name]");
+      input.addEventListener("change", () => {
+        name.textContent = input.files.length ? input.files[0].name : "未选择";
+      });
+      zone.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        zone.classList.add("dragging");
+      });
+      zone.addEventListener("dragleave", () => zone.classList.remove("dragging"));
+      zone.addEventListener("drop", (event) => {
+        event.preventDefault();
+        zone.classList.remove("dragging");
+        if (!event.dataTransfer.files.length) return;
+        input.files = event.dataTransfer.files;
+        name.textContent = input.files[0].name;
+      });
+    }
+
+    function setStageImage(stage, url, alt) {
+      if (!url) {
+        stage.innerHTML = '<span class="empty">无输出</span>';
+        return;
+      }
+      const image = new Image();
+      image.src = `${url}?t=${Date.now()}`;
+      image.alt = alt;
+      stage.replaceChildren(image);
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function frameIndexAt(step, count, pingpong) {
+      if (count <= 0) return 0;
+      if (pingpong && count > 1) {
+        const cycle = count * 2 - 2;
+        const p = ((step % cycle) + cycle) % cycle;
+        return p < count ? p : cycle - p;
+      }
+      return ((step % count) + count) % count;
+    }
+
+    function loadAnimationImages(urls) {
+      return Promise.all(urls.map((url, index) => new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error(`动画帧加载失败：${index}`));
+        image.src = `${url}?t=${Date.now()}`;
+      })));
+    }
+
+    function calculateUnionBbox(images) {
+      if (!images.length) return null;
+      const width = images[0].naturalWidth || images[0].width;
+      const height = images[0].naturalHeight || images[0].height;
+      const off = document.createElement("canvas");
+      off.width = width;
+      off.height = height;
+      const ctx = off.getContext("2d", { willReadFrequently: true });
+      let minX = width, minY = height, maxX = 0, maxY = 0;
+      for (const image of images) {
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(image, 0, 0);
+        const data = ctx.getImageData(0, 0, width, height).data;
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            if (data[(y * width + x) * 4 + 3] <= 8) continue;
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+      if (minX > maxX || minY > maxY) return { x: 0, y: 0, w: width, h: height };
+      return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+    }
+
+    function drawAnimImage(image, bbox, x, y, w, h, alpha) {
+      animCtx.globalAlpha = alpha;
+      animCtx.drawImage(image, bbox.x, bbox.y, bbox.w, bbox.h, x, y, w, h);
+      animCtx.globalAlpha = 1;
+    }
+
+    function renderAnimation(now = performance.now()) {
+      animCtx.clearRect(0, 0, animCanvas.width, animCanvas.height);
+      if (!animImages.length || !animBbox) {
+        animStatus.textContent = "生成后自动播放";
+        return;
+      }
+
+      const fps = clamp(Number(animFps.value || 18), 1, 60);
+      const height = clamp(Number(animHeight.value || 180), 32, 512);
+      const blendWindow = clamp(Number(animBlend.value || 0), 0, 0.9);
+      const elapsed = animPlaying ? animElapsed + (now - animStartedAt) / 1000 : animElapsed;
+      const pos = Math.max(0, elapsed * fps);
+      const step = Math.floor(pos);
+      const local = pos - step;
+      const fromIndex = frameIndexAt(step, animImages.length, animPingpong.checked);
+      const toIndex = frameIndexAt(step + 1, animImages.length, animPingpong.checked);
+      const targetWidth = height * (animBbox.w / Math.max(1, animBbox.h));
+      const canvasWidth = Math.max(360, Math.ceil(targetWidth + 96));
+      const canvasHeight = Math.max(240, Math.ceil(height + 96));
+      if (animCanvas.width !== canvasWidth || animCanvas.height !== canvasHeight) {
+        animCanvas.width = canvasWidth;
+        animCanvas.height = canvasHeight;
+      }
+      const x = (animCanvas.width - targetWidth) / 2;
+      const y = (animCanvas.height - height) / 2;
+
+      let alpha = 0;
+      if (blendWindow > 0 && fromIndex !== toIndex && local >= 1 - blendWindow) {
+        const t = (local - (1 - blendWindow)) / blendWindow;
+        alpha = t * t * (3 - 2 * t);
+      }
+
+      drawAnimImage(animImages[fromIndex], animBbox, x, y, targetWidth, height, 1 - alpha);
+      if (alpha > 0) drawAnimImage(animImages[toIndex], animBbox, x, y, targetWidth, height, alpha);
+      animStatus.textContent = `${animPlaying ? "播放中" : "已暂停"} · ${fromIndex + 1}/${animImages.length} · ${fps}fps`;
+      if (animPlaying) animRaf = requestAnimationFrame(renderAnimation);
+    }
+
+    function setAnimationPlaying(next) {
+      if (!animImages.length) return;
+      if (next === animPlaying) return;
+      if (next) {
+        animPlaying = true;
+        animStartedAt = performance.now();
+        animToggle.textContent = "暂停";
+        animRaf = requestAnimationFrame(renderAnimation);
+      } else {
+        animElapsed += (performance.now() - animStartedAt) / 1000;
+        animPlaying = false;
+        animToggle.textContent = "播放";
+        cancelAnimationFrame(animRaf);
+        renderAnimation();
+      }
+    }
+
+    async function startAnimationPreview(urls) {
+      cancelAnimationFrame(animRaf);
+      animImages = [];
+      animBbox = null;
+      animElapsed = 0;
+      animPlaying = false;
+      animToggle.disabled = true;
+      animStatus.textContent = urls.length ? "正在加载动画帧..." : "没有关键帧";
+      animCtx.clearRect(0, 0, animCanvas.width, animCanvas.height);
+      if (!urls.length) return;
+      try {
+        animImages = await loadAnimationImages(urls);
+        animBbox = calculateUnionBbox(animImages);
+        animToggle.disabled = false;
+        setAnimationPlaying(true);
+      } catch (error) {
+        animStatus.textContent = String(error);
+      }
+    }
+
+    function setBusy(isBusy) {
+      runButton.disabled = isBusy;
+      runButton.textContent = isBusy ? "处理中" : "开始处理";
+      statusText.textContent = isBusy ? "正在生成..." : "待处理";
+    }
+
+    function suggestedVideoFps(video) {
+      const keyframes = Array.isArray(video?.keyframes) ? video.keyframes : [];
+      if (keyframes.length > 1) {
+        const first = Number(keyframes[0]?.time_sec);
+        const last = Number(keyframes[keyframes.length - 1]?.time_sec);
+        const span = last - first;
+        if (Number.isFinite(span) && span > 0) {
+          return clamp(Math.round((keyframes.length - 1) / span), 1, 60);
+        }
+      }
+      if (Number.isFinite(Number(video?.sample_fps))) {
+        return clamp(Math.round(Number(video.sample_fps)), 1, 60);
+      }
+      return null;
+    }
+
+    function renderResult(data) {
+      lastJobId = data.jobId;
+      lastOutputPath = data.outputDir;
+      jobMark.textContent = data.jobId;
+      outputPath.textContent = data.outputDir;
+      copyPath.disabled = false;
+      openOutput.disabled = false;
+      importButton.disabled = data.files.keyframes.length === 0;
+      importStatus.textContent = data.files.keyframes.length ? "可以导入到 assets/resources/art" : "没有关键帧可导入";
+
+      const video = data.manifest.video;
+      const character = data.manifest.character;
+      const normalization = video?.normalization || character?.normalization || {};
+      const count = video?.selected_keyframe_count || data.files.keyframes.length || 0;
+      const recommendedFps = suggestedVideoFps(video);
+      if (recommendedFps) {
+        animFps.value = String(recommendedFps);
+        importFps.value = String(recommendedFps);
+      }
+      frameCount.textContent = String(count);
+      frameSize.textContent = Array.isArray(normalization.frame_size) ? normalization.frame_size.join("x") : "--";
+      sharedScale.textContent = typeof normalization.shared_scale === "number"
+        ? normalization.shared_scale.toFixed(3)
+        : "--";
+
+      setStageImage(previewStage, data.files.preview || data.files.characterFrame || data.files.characterTransparent, "预览");
+      setStageImage(rawStage, data.files.rawPreview, "源视频采样");
+      setStageImage(darkStage, data.files.darkPreview, "深色底检查");
+      setStageImage(stripStage, data.files.strip, "序列帧条");
+      startAnimationPreview(data.files.keyframes);
+
+      thumbs.replaceChildren();
+      for (const [index, url] of data.files.keyframes.entries()) {
+        const item = document.createElement("a");
+        item.className = "thumb";
+        item.href = url;
+        item.target = "_blank";
+        item.rel = "noreferrer";
+        const image = new Image();
+        image.src = `${url}?t=${Date.now()}`;
+        image.alt = `key_${String(index).padStart(3, "0")}`;
+        item.appendChild(image);
+        thumbs.appendChild(item);
+      }
+
+      const logs = [data.stdout, data.stderr].filter(Boolean).join("\n").trim();
+      logBox.textContent = logs;
+      logBox.classList.toggle("visible", Boolean(logs));
+      statusText.textContent = "处理完成";
+    }
+
+    function renderError(data) {
+      statusText.textContent = data.error || "处理失败";
+      const detail = [data.error, data.stdout, data.stderr].filter(Boolean).join("\n\n");
+      logBox.textContent = detail;
+      logBox.classList.add("visible");
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      setBusy(true);
+      logBox.classList.remove("visible");
+      try {
+        const response = await fetch("/api/process", {
+          method: "POST",
+          body: new FormData(form),
+        });
+        const data = await response.json();
+        if (!response.ok || !data.ok) {
+          renderError(data);
+          return;
+        }
+        renderResult(data);
+      } catch (error) {
+        renderError({ error: String(error) });
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    copyPath.addEventListener("click", async () => {
+      if (!lastOutputPath) return;
+      await navigator.clipboard.writeText(lastOutputPath);
+      statusText.textContent = "路径已复制";
+    });
+
+    openOutput.addEventListener("click", async () => {
+      if (!lastJobId) return;
+      const response = await fetch("/api/open-output", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: lastJobId }),
+      });
+      statusText.textContent = response.ok ? "目录已打开" : "打开目录失败";
+    });
+
+    animToggle.addEventListener("click", () => {
+      setAnimationPlaying(!animPlaying);
+    });
+
+    for (const control of [animFps, animHeight, animBlend, animPingpong]) {
+      control.addEventListener("input", () => {
+        if (control === animFps) importFps.value = animFps.value;
+        if (control === animBlend) importBlend.value = animBlend.value;
+        if (control === animPingpong) importPingpong.checked = animPingpong.checked;
+        renderAnimation();
+      });
+      control.addEventListener("change", () => {
+        if (control === animFps) importFps.value = animFps.value;
+        if (control === animBlend) importBlend.value = animBlend.value;
+        if (control === animPingpong) importPingpong.checked = animPingpong.checked;
+        renderAnimation();
+      });
+    }
+
+    animBg.addEventListener("change", () => {
+      animStage.dataset.bg = animBg.value;
+    });
+
+    importButton.addEventListener("click", async () => {
+      if (!lastJobId) return;
+      importButton.disabled = true;
+      importStatus.textContent = "正在导入...";
+      try {
+        const response = await fetch("/api/import-art", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jobId: lastJobId,
+            artKey: importArtKey.value,
+            prefix: importPrefix.value,
+            fps: Number(importFps.value || 12),
+            loop: importLoop.checked,
+            pingpong: importPingpong.checked,
+            blend: Number(importBlend.value || 0),
+            overwrite: importOverwrite.checked,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok || !data.ok) {
+          importStatus.textContent = data.error || "导入失败";
+          logBox.textContent = JSON.stringify(data, null, 2);
+          logBox.classList.add("visible");
+          return;
+        }
+        importStatus.textContent = `已导入 ${data.frames} 帧：${data.artKey}`;
+        outputPath.textContent = data.dir;
+      } catch (error) {
+        importStatus.textContent = String(error);
+      } finally {
+        importButton.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
