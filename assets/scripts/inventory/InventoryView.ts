@@ -31,6 +31,7 @@ interface TouchState {
 const CELL = 92, GAP = 8, COLS = 3;
 const ROW = CELL + GAP;
 const DRAG_THRESHOLD = 10;
+const PRESS_SCALE = 0.94;
 
 export class InventoryView {
     private root: Node;
@@ -41,6 +42,7 @@ export class InventoryView {
     private scroll: Record<ListZone, number> = { backpack: 0, warehouse: 0 };
     private touch: TouchState | null = null;
     private sel: { zone: Zone; id?: string; slot?: EquipSlot } | null = null;
+    private pressed: Hot | null = null;
     private activeChar: CharacterId = CHARACTERS[0];   // 当前选中的角色（装备栏归它）
     private toast = '';
     private toastT = 0;
@@ -75,7 +77,10 @@ export class InventoryView {
         if (this.root.active) {
             this.root.setSiblingIndex(this.parent.children.length - 1);  // 置顶，盖住战斗渲染与按钮
             this.sel = null;
+            this.pressed = null;
             this.render();
+        } else {
+            this.pressed = null;
         }
     }
     refresh(): void { if (this.root.active) this.render(); }
@@ -117,11 +122,13 @@ export class InventoryView {
         let cx = -this.halfW + 150;
         for (const c of CHARACTERS) {
             const on = c === this.activeChar;
+            const hot = { x: cx, y: charY, w: 96, h: 40, kind: 'char', char: c } as Hot;
+            const r = this.pressRect(cx, charY, 96, 40, this.isPressed(hot));
             g.fillColor = on ? new Color(90, 120, 160) : new Color(55, 60, 72);
-            g.roundRect(cx, charY, 96, 40, 6); g.fill();
-            if (on) { g.strokeColor = new Color(255, 230, 120); g.lineWidth = 3; g.roundRect(cx, charY, 96, 40, 6); g.stroke(); }
+            g.roundRect(r.x, r.y, r.w, r.h, 6); g.fill();
+            if (on) { g.strokeColor = new Color(255, 230, 120); g.lineWidth = 3; g.roundRect(r.x, r.y, r.w, r.h, 6); g.stroke(); }
             lbl(cx + 48, charY + 20, CHARACTER_LABEL[c], 18);
-            this.hots.push({ x: cx, y: charY, w: 96, h: 40, kind: 'char', char: c });
+            this.hots.push(hot);
             cx += 104;
         }
 
@@ -133,14 +140,15 @@ export class InventoryView {
         let ex = -ew / 2;
         for (const slot of SLOTS) {
             const it = eq[slot];
-            this.drawCell(g, ex, topY, it, this.sel?.zone === 'equipped' && this.sel.slot === slot);
+            const hot = { x: ex, y: topY, w: CELL, h: CELL, kind: 'cell', zone: 'equipped', slot } as Hot;
+            this.drawCell(g, ex, topY, it, this.sel?.zone === 'equipped' && this.sel.slot === slot, this.isPressed(hot));
             lbl(ex + CELL / 2, topY + CELL + 2, SLOT_LABEL[slot], 14, new Color(170, 170, 180));
             if (it) {
                 lbl(ex + CELL / 2, topY + CELL / 2 + 12, it.name, 15);
                 const st = formatEquipStats(it.stats);
                 if (st) lbl(ex + CELL / 2, topY + CELL / 2 - 12, st, 12);
             }
-            this.hots.push({ x: ex, y: topY, w: CELL, h: CELL, kind: 'cell', zone: 'equipped', slot });
+            this.hots.push(hot);
             ex += CELL + GAP;
         }
 
@@ -158,9 +166,11 @@ export class InventoryView {
         this.drawGrid(g, lbl, 'warehouse', rightX, midTop, gridBottom, `仓库 ${this.model.warehouse.length}/${this.model.maxWarehouse}`, this.model.warehouse);
 
         const btn = (x: number, s: string, kind: string) => {
-            g.fillColor = new Color(60, 66, 80); g.roundRect(x, by, 110, 44, 8); g.fill();
+            const hot = { x, y: by, w: 110, h: 44, kind } as Hot;
+            const r = this.pressRect(x, by, 110, 44, this.isPressed(hot));
+            g.fillColor = new Color(60, 66, 80); g.roundRect(r.x, r.y, r.w, r.h, 8); g.fill();
             lbl(x + 55, by + 22, s, 18);
-            this.hots.push({ x, y: by, w: 110, h: 44, kind });
+            this.hots.push(hot);
         };
         btn(-this.halfW + 20, '掉落', 'drop');
         btn(-this.halfW + 140, '转移', 'transfer');
@@ -201,11 +211,12 @@ export class InventoryView {
             const y = gridTop - CELL - r * ROW + drawScroll;
             if (y < yBottom || y > gridTop - CELL) continue;
             const it = list[i];
-            this.drawCell(g, x, y, it, this.sel?.zone === zone && this.sel.id === it.id);
+            const hot = { x, y, w: CELL, h: CELL, kind: 'cell', zone, id: it.id } as Hot;
+            this.drawCell(g, x, y, it, this.sel?.zone === zone && this.sel.id === it.id, this.isPressed(hot));
             lbl(x + CELL / 2, y + CELL / 2 + 12, it.name, 15);
             const st = formatEquipStats(it.stats);
             if (st) lbl(x + CELL / 2, y + CELL / 2 - 12, st, 12);
-            this.hots.push({ x, y, w: CELL, h: CELL, kind: 'cell', zone, id: it.id });
+            this.hots.push(hot);
         }
 
         if (maxScroll > 0) {
@@ -230,12 +241,35 @@ export class InventoryView {
         this.scroll[zone] = Math.max(0, Math.min(area.maxScroll, snapped));
     }
 
-    private drawCell(g: Graphics, x: number, y: number, it: EquipItem | null, selected: boolean) {
+    private pressRect(x: number, y: number, w: number, h: number, pressed: boolean): { x: number; y: number; w: number; h: number } {
+        if (!pressed) return { x, y, w, h };
+        const nw = w * PRESS_SCALE;
+        const nh = h * PRESS_SCALE;
+        return { x: x + (w - nw) / 2, y: y + (h - nh) / 2, w: nw, h: nh };
+    }
+
+    private sameHot(a: Hot | null, b: Hot | null): boolean {
+        if (!a || !b) return false;
+        return a.kind === b.kind && a.zone === b.zone && a.id === b.id && a.slot === b.slot && a.char === b.char;
+    }
+
+    private isPressed(hot: Hot): boolean {
+        return this.sameHot(this.pressed, hot);
+    }
+
+    private clearPressed(render = true) {
+        if (!this.pressed) return;
+        this.pressed = null;
+        if (render) this.render();
+    }
+
+    private drawCell(g: Graphics, x: number, y: number, it: EquipItem | null, selected: boolean, pressed = false) {
+        const r = this.pressRect(x, y, CELL, CELL, pressed);
         if (it) { const c = QUALITY_COLOR[it.quality]; g.fillColor = new Color(c[0], c[1], c[2], 220); }
         else g.fillColor = new Color(50, 54, 64, 200);
-        g.roundRect(x, y, CELL, CELL, 6); g.fill();
+        g.roundRect(r.x, r.y, r.w, r.h, 6); g.fill();
         g.strokeColor = selected ? new Color(255, 230, 120) : new Color(90, 96, 110);
-        g.lineWidth = selected ? 4 : 2; g.roundRect(x, y, CELL, CELL, 6); g.stroke();
+        g.lineWidth = selected ? 4 : 2; g.roundRect(r.x, r.y, r.w, r.h, 6); g.stroke();
     }
 
     private drawDragPreview(g: Graphics, lbl: (x: number, y: number, s: string, size?: number, c?: Color) => void) {
@@ -341,6 +375,7 @@ export class InventoryView {
         if (!this.root.active) return;
         const p = this.localPoint(e);
         const hit = this.hitAt(p);
+        this.pressed = hit;
         this.touch = {
             startX: p.x, startY: p.y, lastX: p.x, lastY: p.y,
             hit,
@@ -349,6 +384,7 @@ export class InventoryView {
             scrolling: false,
             drag: null,
         };
+        if (hit) this.render();
     }
 
     private onTouchMove(e: EventTouch) {
@@ -359,6 +395,9 @@ export class InventoryView {
         const stepY = p.y - this.touch.lastY;
         const dist2 = dx * dx + dy * dy;
         if (dist2 > DRAG_THRESHOLD * DRAG_THRESHOLD) this.touch.moved = true;
+        if (this.pressed && (this.touch.moved || !this.sameHot(this.pressed, this.hitAt(p)))) {
+            this.clearPressed();
+        }
 
         if (!this.touch.drag && !this.touch.scrolling && this.touch.moved) {
             const item = this.itemFromHot(this.touch.hit);
@@ -404,6 +443,7 @@ export class InventoryView {
         const p = this.localPoint(e);
         const t = this.touch;
         this.touch = null;
+        this.pressed = null;
         if (t.drag) {
             this.finishDrag(t.drag, p);
             return;
@@ -413,13 +453,14 @@ export class InventoryView {
             this.render();
             return;
         }
-        if (t.moved) return;
+        if (t.moved) { this.render(); return; }
         this.handleTap(t.hit);
     }
 
     private onTouchCancel() {
         if (!this.touch) return;
         this.touch = null;
+        this.pressed = null;
         this.render();
     }
 

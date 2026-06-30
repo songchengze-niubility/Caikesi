@@ -151,6 +151,12 @@ def parse_args() -> argparse.Namespace:
         help="Disable multi-point body-anchor stabilization during normalization.",
     )
     parser.add_argument(
+        "--anchor-mode",
+        choices=("foot", "body"),
+        default="foot",
+        help="Anchor used to lock frames after background removal. foot locks body X and floor Y; body preserves center mass.",
+    )
+    parser.add_argument(
         "--stabilize-search-radius",
         type=int,
         default=48,
@@ -495,6 +501,27 @@ def body_anchor_point(
     return anchor_x, (top + bottom) / 2.0
 
 
+def foot_anchor_point(
+    image: Image.Image,
+    bbox: tuple[int, int, int, int],
+    alpha_threshold: int,
+) -> tuple[float, float]:
+    _, _, _, bottom = bbox
+    anchor_x = body_anchor_x(image, bbox, alpha_threshold)
+    return anchor_x, float(bottom)
+
+
+def action_anchor_point(
+    image: Image.Image,
+    bbox: tuple[int, int, int, int],
+    alpha_threshold: int,
+    anchor_mode: str,
+) -> tuple[float, float]:
+    if anchor_mode == "body":
+        return body_anchor_point(image, bbox, alpha_threshold)
+    return foot_anchor_point(image, bbox, alpha_threshold)
+
+
 def alpha_mask(image: Image.Image, alpha_threshold: int) -> np.ndarray:
     return np.asarray(image.convert("RGBA"))[:, :, 3] > alpha_threshold
 
@@ -732,9 +759,12 @@ def normalize_images(
     allow_upscale: bool,
     alpha_threshold: int,
     stabilize_anchor: bool = True,
+    anchor_mode: str = "foot",
     stabilize_search_radius: int = 48,
     scale_stabilize: bool = False,
 ) -> tuple[list[tuple[str, Image.Image, dict[str, Any]]], dict[str, Any]]:
+    if anchor_mode not in {"foot", "body"}:
+        fail(f"Unsupported anchor mode: {anchor_mode}")
     bboxes: list[tuple[int, int, int, int] | None] = [
         alpha_bbox(image, alpha_threshold)
         for _, image in images
@@ -777,31 +807,31 @@ def normalize_images(
             frame_scales = detected_frame_scales if scale_stabilize else [1.0 for _ in images]
             source_anchor_x = float(alignment_info["anchor_x"])
             match_anchor_y = float(alignment_info["anchor_y"])
-            body_anchors = [
-                body_anchor_point(image, bbox, alpha_threshold) if bbox is not None else None
+            action_anchors = [
+                action_anchor_point(image, bbox, alpha_threshold, anchor_mode) if bbox is not None else None
                 for (_, image), bbox in zip(images, bboxes)
             ]
-            transformed_body_anchors: list[tuple[float, float] | None] = [None for _ in images]
-            for index, (bbox, body_anchor, offset, frame_scale) in enumerate(
-                zip(bboxes, body_anchors, frame_offsets, frame_scales)
+            transformed_action_anchors: list[tuple[float, float] | None] = [None for _ in images]
+            for index, (bbox, action_anchor, offset, frame_scale) in enumerate(
+                zip(bboxes, action_anchors, frame_offsets, frame_scales)
             ):
-                if bbox is None or body_anchor is None:
+                if bbox is None or action_anchor is None:
                     continue
-                body_anchor_x_value, body_anchor_y_value = body_anchor
-                transformed_body_anchors[index] = (
-                    source_anchor_x + offset[0] + frame_scale * (body_anchor_x_value - source_anchor_x),
-                    match_anchor_y + offset[1] + frame_scale * (body_anchor_y_value - match_anchor_y),
+                action_anchor_x_value, action_anchor_y_value = action_anchor
+                transformed_action_anchors[index] = (
+                    source_anchor_x + offset[0] + frame_scale * (action_anchor_x_value - source_anchor_x),
+                    match_anchor_y + offset[1] + frame_scale * (action_anchor_y_value - match_anchor_y),
                 )
-            valid_body_anchors = [item for item in transformed_body_anchors if item is not None]
-            if valid_body_anchors:
-                body_reference_x = float(np.median([item[0] for item in valid_body_anchors]))
-                body_reference_y = float(np.median([item[1] for item in valid_body_anchors]))
-                source_anchor_x = body_reference_x
-                for index, transformed_anchor in enumerate(transformed_body_anchors):
+            valid_action_anchors = [item for item in transformed_action_anchors if item is not None]
+            if valid_action_anchors:
+                action_reference_x = float(np.median([item[0] for item in valid_action_anchors]))
+                action_reference_y = float(np.median([item[1] for item in valid_action_anchors]))
+                source_anchor_x = action_reference_x
+                for index, transformed_anchor in enumerate(transformed_action_anchors):
                     if transformed_anchor is None:
                         continue
-                    correction_x = body_reference_x - transformed_anchor[0]
-                    correction_y = body_reference_y - transformed_anchor[1]
+                    correction_x = action_reference_x - transformed_anchor[0]
+                    correction_y = action_reference_y - transformed_anchor[1]
                     anchor_corrections[index] = (correction_x, correction_y)
                     offset = frame_offsets[index]
                     frame_offsets[index] = (offset[0] + correction_x, offset[1] + correction_y)
@@ -922,7 +952,7 @@ def normalize_images(
             bbox = alpha_bbox(image, alpha_threshold)
             if bbox is None:
                 continue
-            anchor_x, anchor_y = body_anchor_point(image, bbox, alpha_threshold)
+            anchor_x, anchor_y = action_anchor_point(image, bbox, alpha_threshold, anchor_mode)
             output_anchors.append((index, anchor_x, anchor_y))
 
         if output_anchors:
@@ -959,7 +989,7 @@ def normalize_images(
                 bbox = alpha_bbox(image, alpha_threshold)
                 if bbox is None:
                     continue
-                after_anchors.append(body_anchor_point(image, bbox, alpha_threshold))
+                after_anchors.append(action_anchor_point(image, bbox, alpha_threshold, anchor_mode))
             after_x = [item[0] for item in after_anchors]
             after_y = [item[1] for item in after_anchors]
             output_position_calibration = {
@@ -981,7 +1011,8 @@ def normalize_images(
     info = {
         "frame_size": [canvas_w, canvas_h],
         "padding": padding,
-        "anchor": "stable-points-bottom-center" if source_anchor_x is not None else "bottom-center",
+        "anchor": f"stable-points-{anchor_mode}" if source_anchor_x is not None else "bottom-center",
+        "anchor_mode": anchor_mode,
         "source_anchor": [round(source_anchor_x, 4), round(source_anchor_y, 4)]
         if source_anchor_x is not None and source_anchor_y is not None
         else None,
@@ -1001,7 +1032,7 @@ def normalize_images(
                 round(max(float(item) for item in alignment_info["scales"]), 4),
             ],
             "scale_stabilize": scale_stabilize,
-            "body_anchor_correction_range": [
+            "action_anchor_correction_range": [
                 [round(min(item[0] for item in anchor_corrections), 4), round(max(item[0] for item in anchor_corrections), 4)],
                 [round(min(item[1] for item in anchor_corrections), 4), round(max(item[1] for item in anchor_corrections), 4)],
             ],
@@ -1092,14 +1123,23 @@ def make_raw_preview(paths: list[Path], out_path: Path, columns: int, cell_size:
     preview.save(out_path)
 
 
-def extract_video_frames(video: Path, frames_dir: Path, sample_fps: float, video_seconds: float) -> list[Path]:
-    if shutil.which("ffmpeg") is None:
-        fail("ffmpeg is required for video extraction, but it was not found in PATH.")
+def ffmpeg_executable() -> str:
+    exe = shutil.which("ffmpeg")
+    if exe:
+        return exe
+    try:
+        import imageio_ffmpeg
 
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        fail("ffmpeg is required for video extraction. Run `npm run sprite:keyframes:deps` or install ffmpeg in PATH.")
+
+
+def extract_video_frames(video: Path, frames_dir: Path, sample_fps: float, video_seconds: float) -> list[Path]:
     clear_pngs(frames_dir)
     frame_pattern = frames_dir / "frame_%05d.png"
     command = [
-        "ffmpeg",
+        ffmpeg_executable(),
         "-hide_banner",
         "-loglevel",
         "error",
@@ -1380,6 +1420,7 @@ def process_character(args: argparse.Namespace, manifest: dict[str, Any]) -> Non
         allow_upscale=args.allow_upscale,
         alpha_threshold=args.alpha_threshold,
         stabilize_anchor=not args.no_anchor_stabilize,
+        anchor_mode=args.anchor_mode,
         stabilize_search_radius=args.stabilize_search_radius,
         scale_stabilize=args.scale_stabilize,
     )
@@ -1461,6 +1502,7 @@ def process_video(args: argparse.Namespace, manifest: dict[str, Any]) -> None:
         allow_upscale=args.allow_upscale,
         alpha_threshold=args.alpha_threshold,
         stabilize_anchor=not args.no_anchor_stabilize,
+        anchor_mode=args.anchor_mode,
         stabilize_search_radius=args.stabilize_search_radius,
         scale_stabilize=args.scale_stabilize,
     )
@@ -1538,6 +1580,7 @@ def main() -> None:
             "padding": args.padding,
             "allow_upscale": args.allow_upscale,
             "anchor_stabilize": not args.no_anchor_stabilize,
+            "anchor_mode": args.anchor_mode,
             "stabilize_search_radius": args.stabilize_search_radius,
             "scale_stabilize": args.scale_stabilize,
         },

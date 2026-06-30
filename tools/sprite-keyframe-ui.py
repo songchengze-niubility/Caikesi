@@ -20,13 +20,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
+from PIL import Image
+
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "sprite-keyframe-tool.py"
 HTML = ROOT / "tools" / "sprite-keyframe-ui.html"
 OUT_ROOT = ROOT / "output" / "sprite-keyframes" / "ui"
+PREVIEW_ROOT = ROOT / "temp" / "sprite-keyframes" / "ui-preview"
 RESOURCES_ROOT = ROOT / "assets" / "resources"
 MANIFEST_PATH = ROOT / "assets" / "scripts" / "art" / "ArtManifest.ts"
+ALPHA_BBOX_THRESHOLD = 8
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,6 +50,11 @@ def safe_slug(text: str, fallback: str = "sprite-job") -> str:
     return slug[:48] or fallback
 
 
+def safe_job_id(text: str) -> str:
+    job_id = re.sub(r"[^a-zA-Z0-9._-]+", "-", text.strip()).strip(".-_")
+    return job_id[:128]
+
+
 def safe_filename(text: str, fallback: str) -> str:
     filename = re.sub(r"[^a-zA-Z0-9._-]+", "_", text.strip()).strip("._")
     return filename[:96] or fallback
@@ -57,9 +66,27 @@ def inside(base: Path, target: Path) -> bool:
     return target_resolved == base_resolved or base_resolved in target_resolved.parents
 
 
-def output_url(path: Path) -> str:
-    relative = path.resolve().relative_to(OUT_ROOT.resolve()).as_posix()
-    return "/outputs/" + quote(relative)
+def served_url(base: Path, prefix: str, path: Path) -> str:
+    relative = path.resolve().relative_to(base.resolve()).as_posix()
+    return prefix + quote(relative)
+
+
+def job_dir(job_id: str) -> Path | None:
+    preview_dir = PREVIEW_ROOT / job_id
+    output_dir = OUT_ROOT / job_id
+    if inside(PREVIEW_ROOT, preview_dir) and preview_dir.exists():
+        return preview_dir
+    if inside(OUT_ROOT, output_dir) and output_dir.exists():
+        return output_dir
+    return None
+
+
+def job_file_url(path: Path) -> str:
+    if inside(PREVIEW_ROOT, path):
+        return served_url(PREVIEW_ROOT, "/previews/", path)
+    if inside(OUT_ROOT, path):
+        return served_url(OUT_ROOT, "/outputs/", path)
+    raise ValueError(f"文件不在可预览目录中：{path}")
 
 
 def open_folder(path: Path) -> None:
@@ -119,17 +146,215 @@ def upsert_manifest_entry(key: str, entry: str) -> None:
     MANIFEST_PATH.write_text(text, encoding="utf-8", newline="")
 
 
+def alpha_bbox(path: Path, threshold: int = ALPHA_BBOX_THRESHOLD) -> tuple[int, int, int, int] | None:
+    with Image.open(path) as image:
+        alpha = image.convert("RGBA").getchannel("A")
+        mask = alpha.point(lambda value: 255 if value > threshold else 0)
+        box = mask.getbbox()
+    if box is None:
+        return None
+    left, top, right, bottom = box
+    return left, top, right - left, bottom - top
+
+
+def shared_alpha_bbox(paths: list[Path], threshold: int = ALPHA_BBOX_THRESHOLD) -> tuple[int, int, int, int]:
+    min_x: int | None = None
+    min_y: int | None = None
+    max_x: int | None = None
+    max_y: int | None = None
+    fallback_size: tuple[int, int] | None = None
+    for path in paths:
+        with Image.open(path) as image:
+            fallback_size = image.size
+        box = alpha_bbox(path, threshold)
+        if box is None:
+            continue
+        x, y, w, h = box
+        right = x + w
+        bottom = y + h
+        min_x = x if min_x is None else min(min_x, x)
+        min_y = y if min_y is None else min(min_y, y)
+        max_x = right if max_x is None else max(max_x, right)
+        max_y = bottom if max_y is None else max(max_y, bottom)
+    if min_x is None or min_y is None or max_x is None or max_y is None:
+        width, height = fallback_size or (1, 1)
+        return 0, 0, width, height
+    return min_x, min_y, max_x - min_x, max_y - min_y
+
+
+def crop_sequence_to_shared_bbox(sources: list[Path], targets: list[Path]) -> dict[str, int]:
+    if len(sources) != len(targets):
+        raise ValueError("source/target frame count mismatch.")
+    x, y, width, height = shared_alpha_bbox(sources)
+    for source, target in zip(sources, targets):
+        with Image.open(source) as image:
+            cropped = image.convert("RGBA").crop((x, y, x + width, y + height))
+            cropped.save(target)
+    return {"x": x, "y": y, "width": width, "height": height}
+
+
+def clear_pngs(folder: Path) -> None:
+    folder.mkdir(parents=True, exist_ok=True)
+    for path in folder.glob("*.png"):
+        path.unlink()
+
+
+def checkerboard(size: tuple[int, int], block: int = 16) -> Image.Image:
+    width, height = size
+    base = Image.new("RGBA", size, (238, 238, 238, 255))
+    alt = Image.new("RGBA", (block, block), (204, 204, 204, 255))
+    for y in range(0, height, block):
+        for x in range(0, width, block):
+            if ((x // block) + (y // block)) % 2:
+                base.alpha_composite(alt, (x, y))
+    return base
+
+
+def make_sequence_strip(paths: list[Path], out_path: Path) -> None:
+    if not paths:
+        return
+    frames = [Image.open(path).convert("RGBA") for path in paths]
+    width = sum(frame.width for frame in frames)
+    height = max(frame.height for frame in frames)
+    strip = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    x = 0
+    for frame in frames:
+        strip.alpha_composite(frame, (x, height - frame.height))
+        x += frame.width
+    strip.save(out_path)
+
+
+def make_sequence_preview(paths: list[Path], out_path: Path, columns: int, color: tuple[int, int, int] | None = None) -> None:
+    if not paths:
+        return
+    columns = max(1, columns)
+    frames = [Image.open(path).convert("RGBA") for path in paths]
+    cell_w = max(frame.width for frame in frames)
+    cell_h = max(frame.height for frame in frames)
+    rows = (len(frames) + columns - 1) // columns
+    if color is None:
+        preview = Image.new("RGBA", (cell_w * columns, cell_h * rows), (255, 255, 255, 255))
+    else:
+        preview = Image.new("RGBA", (cell_w * columns, cell_h * rows), (*color, 255))
+    for index, frame in enumerate(frames):
+        x = (index % columns) * cell_w
+        y = (index // columns) * cell_h
+        cell = checkerboard((cell_w, cell_h)) if color is None else Image.new("RGBA", (cell_w, cell_h), (*color, 255))
+        cell.alpha_composite(frame, ((cell_w - frame.width) // 2, cell_h - frame.height))
+        preview.alpha_composite(cell, (x, y))
+    preview.save(out_path)
+
+
+def build_game_preview_frames(keyframes: list[Path], out_dir: Path, columns: int) -> tuple[list[Path], dict[str, int]]:
+    clear_pngs(out_dir)
+    targets = [out_dir / f"key_{index:03d}.png" for index in range(len(keyframes))]
+    crop = crop_sequence_to_shared_bbox(keyframes, targets)
+    make_sequence_strip(targets, out_dir.parent / "game_keyframes_strip.png")
+    make_sequence_preview(targets, out_dir.parent / "game_keyframes_preview.png", columns)
+    make_sequence_preview(targets, out_dir.parent / "game_keyframes_preview_dark.png", columns, (42, 48, 50))
+    return targets, crop
+
+
+def copy_sequence_frames(sources: list[Path], targets: list[Path]) -> None:
+    if len(sources) != len(targets):
+        raise ValueError("source/target frame count mismatch.")
+    for source, target in zip(sources, targets):
+        shutil.copyfile(source, target)
+
+
+def patch_cocos_sprite_meta(meta_path: Path, width: int, height: int) -> bool:
+    if not meta_path.exists():
+        return False
+    data = json.loads(meta_path.read_text(encoding="utf-8"))
+    sprite_meta = None
+    for sub_meta in data.get("subMetas", {}).values():
+        if sub_meta.get("importer") == "sprite-frame":
+            sprite_meta = sub_meta
+            break
+    if not sprite_meta:
+        return False
+
+    user_data = sprite_meta.setdefault("userData", {})
+    half_w = width / 2
+    half_h = height / 2
+    user_data.update(
+        {
+            "trimThreshold": 1,
+            "rotated": False,
+            "offsetX": 0,
+            "offsetY": 0,
+            "trimX": 0,
+            "trimY": 0,
+            "width": width,
+            "height": height,
+            "rawWidth": width,
+            "rawHeight": height,
+            "trimType": "custom",
+        }
+    )
+    user_data["vertices"] = {
+        "rawPosition": [-half_w, -half_h, 0, half_w, -half_h, 0, -half_w, half_h, 0, half_w, half_h, 0],
+        "indexes": [0, 1, 2, 2, 1, 3],
+        "uv": [0, height, width, height, 0, 0, width, 0],
+        "nuv": [0, 0, 1, 0, 0, 1, 1, 1],
+        "minPos": [-half_w, -half_h, 0],
+        "maxPos": [half_w, half_h, 0],
+    }
+    meta_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+    return True
+
+
+def patch_existing_cocos_metas(files: list[Path]) -> int:
+    patched = 0
+    for path in files:
+        with Image.open(path) as image:
+            width, height = image.size
+        if patch_cocos_sprite_meta(path.with_suffix(path.suffix + ".meta"), width, height):
+            patched += 1
+    return patched
+
+
+def existing_art_dirs() -> list[dict[str, str]]:
+    root = RESOURCES_ROOT / "art" / "char"
+    if not root.exists():
+        return []
+    items: list[dict[str, str]] = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_dir():
+            continue
+        rel = path.relative_to(RESOURCES_ROOT / "art").as_posix()
+        parts = rel.split("/")
+        if len(parts) < 3:
+            continue
+        action = parts[-1]
+        items.append(
+            {
+                "artKey": rel,
+                "label": rel,
+                "prefix": safe_asset_part(action, "frame"),
+                "dir": str(path),
+            }
+        )
+    return items
+
+
 class SpriteUiHandler(BaseHTTPRequestHandler):
     server_version = "SpriteKeyframeUI/1.0"
 
     def log_message(self, format: str, *args) -> None:  # noqa: A002
         print("[%s] %s" % (self.log_date_time_string(), format % args))
 
+    def send_cors_headers(self) -> None:
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
     def send_json(self, status: int, payload: dict) -> None:
         data = json_bytes(payload)
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
+        self.send_cors_headers()
         self.end_headers()
         self.wfile.write(data)
 
@@ -143,8 +368,14 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", mime)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        self.send_cors_headers()
         self.end_headers()
         self.wfile.write(data)
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(204)
+        self.send_cors_headers()
+        self.end_headers()
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -154,10 +385,21 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
         if parsed.path == "/healthz":
             self.send_json(200, {"ok": True})
             return
+        if parsed.path == "/api/art-dirs":
+            self.send_json(200, {"ok": True, "dirs": existing_art_dirs()})
+            return
         if parsed.path.startswith("/outputs/"):
             relative = unquote(parsed.path[len("/outputs/") :])
             target = OUT_ROOT / relative
             if not inside(OUT_ROOT, target):
+                self.send_error(403)
+                return
+            self.send_file(target)
+            return
+        if parsed.path.startswith("/previews/"):
+            relative = unquote(parsed.path[len("/previews/") :])
+            target = PREVIEW_ROOT / relative
+            if not inside(PREVIEW_ROOT, target):
                 self.send_error(403)
                 return
             self.send_file(target)
@@ -171,6 +413,9 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/open-output":
             self.handle_open_output()
+            return
+        if parsed.path == "/api/export-output":
+            self.handle_export_output()
             return
         if parsed.path == "/api/import-art":
             self.handle_import_art()
@@ -222,12 +467,12 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
     def handle_process(self) -> None:
         try:
             fields, files = self.parse_multipart()
-            OUT_ROOT.mkdir(parents=True, exist_ok=True)
+            PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
 
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             job_label = safe_slug(fields.get("job_name", ""), "sprite-job")
             job_id = f"{timestamp}-{job_label}-{secrets.token_hex(3)}"
-            out_dir = OUT_ROOT / job_id
+            out_dir = PREVIEW_ROOT / job_id
             upload_dir = out_dir / "_input"
             upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -266,6 +511,7 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
                 "fringe_brightness": "155",
                 "frame_size": "512",
                 "padding": "8",
+                "anchor_mode": "foot",
                 "preview_columns": "6",
             }
             for name, default_value in option_defaults.items():
@@ -302,25 +548,50 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
             manifest_path = out_dir / "manifest.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
             keyframes = sorted((out_dir / "keyframes").glob("*.png"))
+            game_keyframes: list[Path] = []
+            game_crop: dict[str, int] | None = None
+            if keyframes:
+                try:
+                    preview_columns = int(form_value(fields, "preview_columns", "6"))
+                except ValueError:
+                    preview_columns = 6
+                game_keyframes, game_crop = build_game_preview_frames(keyframes, out_dir / "game_keyframes", preview_columns)
+                manifest["game_import"] = {
+                    "cropMode": "shared-alpha-bbox",
+                    "crop": game_crop,
+                    "framesDir": str(out_dir / "game_keyframes"),
+                    "note": "These frames match the PNGs copied by /api/import-art when available.",
+                }
+                manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
             files_payload = {
-                "manifest": output_url(manifest_path) if manifest_path.exists() else None,
-                "characterTransparent": output_url(out_dir / "character_transparent.png")
+                "manifest": job_file_url(manifest_path) if manifest_path.exists() else None,
+                "characterTransparent": job_file_url(out_dir / "character_transparent.png")
                 if (out_dir / "character_transparent.png").exists()
                 else None,
-                "characterFrame": output_url(out_dir / "character_frame.png")
+                "characterFrame": job_file_url(out_dir / "character_frame.png")
                 if (out_dir / "character_frame.png").exists()
                 else None,
-                "strip": output_url(out_dir / "keyframes_strip.png") if (out_dir / "keyframes_strip.png").exists() else None,
-                "preview": output_url(out_dir / "keyframes_preview.png")
+                "strip": job_file_url(out_dir / "keyframes_strip.png") if (out_dir / "keyframes_strip.png").exists() else None,
+                "preview": job_file_url(out_dir / "keyframes_preview.png")
                 if (out_dir / "keyframes_preview.png").exists()
                 else None,
-                "rawPreview": output_url(out_dir / "raw_frames_preview.png")
+                "rawPreview": job_file_url(out_dir / "raw_frames_preview.png")
                 if (out_dir / "raw_frames_preview.png").exists()
                 else None,
-                "darkPreview": output_url(out_dir / "keyframes_preview_dark.png")
+                "darkPreview": job_file_url(out_dir / "keyframes_preview_dark.png")
                 if (out_dir / "keyframes_preview_dark.png").exists()
                 else None,
-                "keyframes": [output_url(path) for path in keyframes],
+                "gameStrip": job_file_url(out_dir / "game_keyframes_strip.png")
+                if (out_dir / "game_keyframes_strip.png").exists()
+                else None,
+                "gamePreview": job_file_url(out_dir / "game_keyframes_preview.png")
+                if (out_dir / "game_keyframes_preview.png").exists()
+                else None,
+                "gameDarkPreview": job_file_url(out_dir / "game_keyframes_preview_dark.png")
+                if (out_dir / "game_keyframes_preview_dark.png").exists()
+                else None,
+                "keyframes": [job_file_url(path) for path in keyframes],
+                "gameKeyframes": [job_file_url(path) for path in game_keyframes],
             }
 
             self.send_json(
@@ -328,7 +599,9 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
                 {
                     "ok": True,
                     "jobId": job_id,
-                    "outputDir": str(out_dir),
+                    "previewDir": str(out_dir),
+                    "outputDir": None,
+                    "exported": False,
                     "manifest": manifest,
                     "files": files_payload,
                     "stdout": result.stdout,
@@ -341,7 +614,7 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
     def handle_open_output(self) -> None:
         try:
             payload = json.loads(self.read_body().decode("utf-8"))
-            job_id = safe_slug(str(payload.get("jobId", "")), "")
+            job_id = safe_job_id(str(payload.get("jobId", "")))
             if not job_id:
                 self.send_json(400, {"ok": False, "error": "缺少 jobId。"})
                 return
@@ -354,22 +627,61 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
         except Exception as exc:  # noqa: BLE001
             self.send_json(500, {"ok": False, "error": str(exc)})
 
-    def handle_import_art(self) -> None:
+    def handle_export_output(self) -> None:
         try:
             payload = json.loads(self.read_body().decode("utf-8"))
-            job_id = safe_slug(str(payload.get("jobId", "")), "")
+            job_id = safe_job_id(str(payload.get("jobId", "")))
             if not job_id:
                 self.send_json(400, {"ok": False, "error": "缺少 jobId。"})
                 return
 
-            job_dir = OUT_ROOT / job_id
-            if not inside(OUT_ROOT, job_dir) or not job_dir.exists():
+            source_dir = job_dir(job_id)
+            if source_dir is None:
+                self.send_json(404, {"ok": False, "error": "找不到这次预览结果。"})
+                return
+
+            OUT_ROOT.mkdir(parents=True, exist_ok=True)
+            target_dir = OUT_ROOT / job_id
+            if not inside(OUT_ROOT, target_dir):
+                self.send_json(403, {"ok": False, "error": "目标输出目录非法。"})
+                return
+            if source_dir.resolve() == target_dir.resolve():
+                self.send_json(200, {"ok": True, "jobId": job_id, "outputDir": str(target_dir)})
+                return
+            if target_dir.exists():
+                shutil.rmtree(target_dir)
+            shutil.copytree(source_dir, target_dir)
+            self.send_json(
+                200,
+                {
+                    "ok": True,
+                    "jobId": job_id,
+                    "outputDir": str(target_dir),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.send_json(500, {"ok": False, "error": str(exc)})
+
+    def handle_import_art(self) -> None:
+        try:
+            payload = json.loads(self.read_body().decode("utf-8"))
+            job_id = safe_job_id(str(payload.get("jobId", "")))
+            if not job_id:
+                self.send_json(400, {"ok": False, "error": "缺少 jobId。"})
+                return
+
+            job_dir_path = job_dir(job_id)
+            if job_dir_path is None:
                 self.send_json(404, {"ok": False, "error": "找不到这次生成结果。"})
                 return
 
-            keyframes_dir = job_dir / "keyframes"
+            keyframes_dir = job_dir_path / "keyframes"
             keyframes = sorted(keyframes_dir.glob("*.png"))
-            if not keyframes:
+            game_keyframes_dir = job_dir_path / "game_keyframes"
+            game_keyframes = sorted(game_keyframes_dir.glob("*.png"))
+            source_frames = game_keyframes if game_keyframes and len(game_keyframes) == len(keyframes) else keyframes
+            source_mode = "game-preview" if source_frames == game_keyframes else "keyframes"
+            if not source_frames:
                 self.send_json(400, {"ok": False, "error": "这次生成结果里没有 keyframes。"})
                 return
 
@@ -394,7 +706,7 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
                 return
             target_dir.mkdir(parents=True, exist_ok=True)
 
-            target_files = [target_dir / f"{prefix}_{index}.png" for index in range(len(keyframes))]
+            target_files = [target_dir / f"{prefix}_{index}.png" for index in range(len(source_frames))]
             existing = [path for path in target_files if path.exists()]
             if dry_run:
                 self.send_json(
@@ -406,11 +718,13 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
                         "dir": str(target_dir),
                         "manifestDir": relative_dir,
                         "prefix": prefix,
-                        "frames": len(keyframes),
+                        "frames": len(source_frames),
                         "fps": fps,
                         "loop": loop,
                         "pingpong": pingpong,
                         "blend": blend,
+                        "cropMode": "shared-alpha-bbox",
+                        "sourceMode": source_mode,
                         "existing": [str(path) for path in existing],
                         "files": [str(path) for path in target_files],
                     },
@@ -431,12 +745,22 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
                 for path in target_dir.glob(f"{prefix}_*.png"):
                     path.unlink()
 
-            for source, target in zip(keyframes, target_files):
-                shutil.copy2(source, target)
+            if source_mode == "game-preview":
+                copy_sequence_frames(source_frames, target_files)
+                manifest_path = job_dir_path / "manifest.json"
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
+                crop = manifest.get("game_import", {}).get("crop")
+                if not isinstance(crop, dict):
+                    with Image.open(source_frames[0]) as image:
+                        width, height = image.size
+                    crop = {"x": 0, "y": 0, "width": width, "height": height}
+            else:
+                crop = crop_sequence_to_shared_bbox(source_frames, target_files)
+            patched_metas = patch_existing_cocos_metas(target_files)
 
             entry = (
                 f"{{ type: 'frames', dir: {ts_string(relative_dir)}, "
-                f"prefix: {ts_string(prefix)}, frames: {len(keyframes)}, fps: {fps}, loop: {str(loop).lower()}"
+                f"prefix: {ts_string(prefix)}, frames: {len(source_frames)}, fps: {fps}, loop: {str(loop).lower()}"
                 f"{', pingpong: true' if pingpong else ''}"
                 f"{f', blend: {blend:g}' if blend > 0 else ''} }}"
             )
@@ -450,11 +774,15 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
                     "dir": str(target_dir),
                     "manifestDir": relative_dir,
                     "prefix": prefix,
-                    "frames": len(keyframes),
+                    "frames": len(source_frames),
                     "fps": fps,
                     "loop": loop,
                     "pingpong": pingpong,
                     "blend": blend,
+                    "cropMode": "shared-alpha-bbox",
+                    "sourceMode": source_mode,
+                    "crop": crop,
+                    "patchedMetas": patched_metas,
                     "files": [str(path) for path in target_files],
                 },
             )
@@ -464,7 +792,7 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
 
 def run() -> None:
     args = parse_args()
-    OUT_ROOT.mkdir(parents=True, exist_ok=True)
+    PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
 
     last_error: OSError | None = None
     for port in range(args.port, args.port + 20):

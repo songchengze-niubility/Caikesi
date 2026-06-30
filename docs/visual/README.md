@@ -7,6 +7,7 @@
 ## 目录
 
 - `references/`：用户发来的原始参考图、GPT 网页生成图、截图。
+- `staging/`：临时美术资源池，存放尚未审核或尚未决定用途的角色、怪物、特效、UI、背景草稿；不作为游戏运行资源。
 - `prompts/`：每轮提示词记录，包含原 prompt、改写 prompt、结果评价；新记录可从 `prompts/TEMPLATE.md` 复制。
 - `exports/ui/`：通过审核后需要追溯的 UI 示意图，以及人工整理的 UI 拆件记录（组件 PNG、预览、alpha/坐标记录）。
 - `exports/art/`：Figma 导出的角色、怪物、背景、图标、特效等美术示意。

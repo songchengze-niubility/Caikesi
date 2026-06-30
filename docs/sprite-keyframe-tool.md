@@ -4,6 +4,15 @@
 
 ## 可视化界面
 
+首次使用先安装 Python 依赖：
+
+```bash
+npm run sprite:keyframes:deps
+```
+
+> Windows 上请通过 `py -3` 启动。本机的 `python` 可能是 Microsoft Store 占位符，会直接退出，导致页面打不开。
+> 处理视频需要 ffmpeg；依赖脚本会安装 `imageio-ffmpeg` 作为兜底，不要求系统 PATH 里已有 ffmpeg。
+
 ```bash
 npm run sprite:keyframes:ui
 ```
@@ -14,26 +23,35 @@ npm run sprite:keyframes:ui
 http://127.0.0.1:8765
 ```
 
-界面输出默认写入：
+界面处理结果默认只写入临时预览缓存，不算正式导出：
+
+```text
+temp/sprite-keyframes/ui-preview/
+```
+
+确认预览后，可以在界面里点“导出到 output”再写入正式输出目录：
 
 ```text
 output/sprite-keyframes/ui/
 ```
 
-生成后可以在界面里直接导入到 Cocos 资源目录：
+也可以不导出，直接在界面里导入到 Cocos 资源目录。导入时优先从“目标文件夹”下拉里选择已有目录；要新建动作目录时，再手动填写资源键和文件名前缀：
 
 ```text
-资源键：char/dps/attack_01
+目标文件夹：char/001/attack_01
+资源键：char/001/attack_01
 文件名前缀：attack_01
 播放 FPS：12
 循环播放：攻击动作通常不勾选
 ```
 
-导入后会复制关键帧到：
+导入时会先按所有帧的共同透明边界裁切成同一尺寸，再写入 Cocos 资源目录：
 
 ```text
 assets/resources/art/char/dps/attack_01/
 ```
+
+处理完成后，网页结果区会额外生成并播放 `game_keyframes/`：这批帧已经按导入游戏时的共同透明边界裁切，动画预览、深色底检查、strip 和缩略图都会优先使用它。也就是说，页面上的动画预览现在对应的是即将写进 `assets/resources/art/...` 的 PNG，而不是导入前的 512 统一画布临时帧。
 
 并自动写入：
 
@@ -56,6 +74,10 @@ attack_01_1.png
 attack_01_2.png
 ...
 ```
+
+如果目标帧已经被 Cocos 导入并存在 `.png.meta`，导入器还会把这些 sprite-frame `.meta` 改成 `trimType: "custom"` 的全帧尺寸，避免 Cocos 再按每一帧单独自动裁切。这样工具里的动画预览和游戏里的运行预览会使用同一套裁切边界。
+
+如果输出名称很长，导入/导出也会保留完整 `jobId` 查找目录，不再截断后报“找不到这次生成结果”。
 
 ## 推荐命令
 
@@ -88,7 +110,7 @@ npm run sprite:keyframes -- --video path/to/reference.mp4 --out output/sprite-ke
 ```text
 output/sprite-keyframes/<name>/
   character_transparent.png   # 小人抠白底后的透明图
-  character_frame.png         # 底部中心锚点归一化的小人图
+  character_frame.png         # 按当前锚点模式归一化的小人图
   keyframes/
     key_000.png
     key_001.png
@@ -97,6 +119,13 @@ output/sprite-keyframes/<name>/
   keyframes_strip.png         # 横向透明序列帧条
   keyframes_preview.png       # 棋盘格预览图
   keyframes_preview_dark.png  # 深色底预览图，用来检查白边残留
+  game_keyframes/             # 与导入到 Cocos 相同裁切边界的游戏预览帧
+    key_000.png
+    key_001.png
+    ...
+  game_keyframes_strip.png
+  game_keyframes_preview.png
+  game_keyframes_preview_dark.png
   manifest.json               # 抽帧参数、时间点、归一化信息
 ```
 
@@ -123,12 +152,13 @@ output/sprite-keyframes/<name>/
 - `--target-keyframes 8`：强制整理成接近指定数量的关键帧。
 - `--frame-size 512`：输出统一画布尺寸；也支持 `320x256`；设为 `0` 表示自动尺寸。
 - `--padding 8`：角色离画布边缘的安全距离。
-- `--no-anchor-stabilize`：关闭多点主体稳定。默认会从角色上/中/下多个横带估计身体核心锚点，并把每帧主体锁到统一位置，适合待机、原地跑、原地攻击；如果想保留视频里真实横向冲刺位移再关闭。
+- `--anchor-mode foot`：锚点模式。默认 `foot` 会用身体核心锁横向、用脚底落地线锁纵向，最适合待机、跑动、站桩攻击；`body` 会锁身体中心，适合角色大幅离地的素材。
+- `--no-anchor-stabilize`：关闭多点主体稳定。默认会先估计主体稳定偏移，再按 `anchor-mode` 把每帧锁到统一位置；如果想保留视频里真实横向冲刺位移再关闭。
 - `--scale-stabilize`：额外启用每帧缩放稳定，默认关闭。待机动作通常不要开，避免角色忽大忽小；只有参考视频真的有远近缩放抖动时再试。
 - `--alpha-threshold 28`：裁切主体时忽略很淡的透明边缘。视频压缩导致整屏被裁进去时，可以调高到 `40-80`。
 - `--keep-raw-frames`：保留从视频里采样出来的原始帧。
 
 ## 约定
 
-关键帧输出会使用统一画布、共享缩放、多点主体稳定和输出后位置校验。这样后续把素材放入
-`assets/resources/art/char/<role>/<action>/` 时，不会因为头发、衣摆、武器、抠底边界变化或 AI 视频里的轻微身体漂移，导致角色中心被重新计算后左右/上下抽搐。
+关键帧输出会使用统一画布、共享缩放、多点主体稳定和输出后位置校验；导入到
+`assets/resources/art/char/<role>/<action>/` 时，再统一裁成共同透明边界并修补已有 Cocos `.meta` 为全帧 custom。这样不会因为头发、衣摆、武器、抠底边界变化、AI 视频里的轻微身体漂移，或 Cocos 每帧自动裁切，导致角色中心被重新计算后左右/上下抽搐。

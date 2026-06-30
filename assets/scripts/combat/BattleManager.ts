@@ -7,6 +7,11 @@ import { BattleConfig, SoldierClass, AttackType, CombatStats } from '../config/B
 import { calcDamage, DamageResult } from './CombatFormula';
 import type { EffectiveStatsMap } from './EffectiveStats';
 
+export type UnitAction = 'idle' | 'run' | 'attack' | 'death';
+
+const ATTACK_ACTION_HOLD = 0.32;
+const DEATH_ACTION_HOLD = 0.9;
+
 // 一名士兵（战斗属性走统一 stats；可由装备层生成 effective stats）
 export interface Soldier {
     cls: SoldierClass;
@@ -24,6 +29,9 @@ export interface Soldier {
     healPerSec: number;   // 每秒治疗量（非治疗为 0）
     cd: number;           // 攻击冷却
     alive: boolean;
+    action: UnitAction;   // 渲染层按它切换 idle/run/attack/death 等动作
+    actionTime: number;   // 当前动作已持续时间（死亡淡出/调试用）
+    actionLock: number;   // 短动作锁，避免攻击刚触发就被 idle/run 覆盖
 }
 
 // 一只敌人（属性/移动/外观来自其怪物类型 EnemyType）
@@ -40,6 +48,9 @@ export interface Enemy {
     maxHp: number;
     atkCd: number;        // 贴身攻击冷却
     alive: boolean;
+    action: UnitAction;
+    actionTime: number;
+    actionLock: number;
 }
 
 // 一颗子弹（携带开火者的属性引用，命中时结算）
@@ -127,6 +138,9 @@ export class BattleManager {
                 healPerSec: cdef.healPerSec,
                 cd: Math.random() * Math.max(cdef.fireInterval, 0.3),
                 alive: true,
+                action: 'idle',
+                actionTime: 0,
+                actionLock: 0,
             });
         });
     }
@@ -144,6 +158,7 @@ export class BattleManager {
 
     tick(dt: number) {
         if (this.phase === 'won' || this.phase === 'lost') return;
+        this._updateActionClocks(dt);
         this._updateSpawning(dt);
         this._updateMovement(dt);
         this._updateFiring(dt);
@@ -151,6 +166,7 @@ export class BattleManager {
         this._updateEnemies(dt);
         this._updateHealing(dt);
         this._updateFloats(dt);
+        this._cleanupDeadEnemies();
         this._checkWinLose();
     }
 
@@ -203,7 +219,49 @@ export class BattleManager {
             x: this.halfW, y: 0, hp, maxHp: hp,
             atkCd: t.attackInterval * 0.5,
             alive: true,
+            action: 'run',
+            actionTime: 0,
+            actionLock: 0,
         });
+    }
+
+    private _updateActionClocks(dt: number) {
+        for (const u of [...this.soldiers, ...this.enemies]) {
+            u.actionTime += dt;
+            if (u.actionLock > 0) u.actionLock = Math.max(0, u.actionLock - dt);
+            if (u.alive && u.actionLock <= 0 && u.action !== 'idle') this._setAction(u, 'idle');
+        }
+    }
+
+    private _setAction(u: Soldier | Enemy, action: UnitAction, lock = 0) {
+        if (u.action !== action) {
+            u.action = action;
+            u.actionTime = 0;
+        }
+        if (lock > u.actionLock) u.actionLock = lock;
+    }
+
+    private _markDead(u: Soldier | Enemy) {
+        if (!u.alive) return;
+        u.hp = 0;
+        u.alive = false;
+        this._setAction(u, 'death', DEATH_ACTION_HOLD);
+    }
+
+    private _forceIdle(u: Soldier | Enemy) {
+        u.action = 'idle';
+        u.actionTime = 0;
+        u.actionLock = 0;
+    }
+
+    private _idleLivingSoldiers() {
+        for (const s of this.soldiers) {
+            if (s.alive) this._forceIdle(s);
+        }
+    }
+
+    private _cleanupDeadEnemies() {
+        this.enemies = this.enemies.filter(e => e.alive || e.actionLock > 0);
     }
 
     // —— 移动：近战冲向最近的怪贴脸，没怪了退回站位；远程/治疗守在原位 ——
@@ -218,7 +276,8 @@ export class BattleManager {
 
             const target = this._frontmostEnemy();   // 盯最前面那只，守住阵线不追后排
             if (!target) {
-                this._moveToward(s, s.homeX, s.homeY, s.moveSpeed * dt);  // 没怪：退守
+                const moved = this._moveToward(s, s.homeX, s.homeY, s.moveSpeed * dt);  // 没怪：退守
+                if (moved && s.actionLock <= 0) this._setAction(s, 'run');
                 continue;
             }
 
@@ -234,15 +293,18 @@ export class BattleManager {
                 const limitX = Math.min(s.homeX + s.advanceLimit, lineLimit);
                 if (nx > limitX) nx = limitX;
                 s.x = nx; s.y = ny;
+                if (step > 0.01 && s.actionLock <= 0) this._setAction(s, 'run');
             }
         }
     }
 
-    private _moveToward(s: Soldier, tx: number, ty: number, step: number) {
+    private _moveToward(s: Soldier, tx: number, ty: number, step: number): boolean {
         const dx = tx - s.x, dy = ty - s.y;
         const d = Math.hypot(dx, dy);
-        if (d <= step || d === 0) { s.x = tx; s.y = ty; return; }
+        if (d === 0) return false;
+        if (d <= step) { s.x = tx; s.y = ty; return true; }
         s.x += (dx / d) * step; s.y += (dy / d) * step;
+        return true;
     }
 
     // —— 自动攻击：近战贴身劈、远程发子弹（都瞄最近敌人，受 range 限制）；治疗不攻击 ——
@@ -272,8 +334,10 @@ export class BattleManager {
             s.cd = s.fireInterval / Math.max(0.01, s.stats.attackSpeed);  // 攻速缩短间隔
 
             if (s.attackType === 'melee') {
+                this._setAction(s, 'attack', ATTACK_ACTION_HOLD);
                 this._applyDamage(s.stats, target);   // 近战：走完整公式
             } else {
+                this._setAction(s, 'attack', ATTACK_ACTION_HOLD);
                 this._fireBullet(s, target);    // 远程：发子弹（命中再结算）
             }
         }
@@ -351,16 +415,17 @@ export class BattleManager {
             if (e.x > front) {
                 e.x -= e.speed * dt;               // 各怪按自己的速度向左推进
                 if (e.x < front) e.x = front;
+                if (e.actionLock <= 0) this._setAction(e, 'run');
             } else {
                 // 到达防线：贴身攻击。所有到达的怪都各自攻击，可叠在一起一起打
                 e.atkCd -= dt;
                 if (e.atkCd <= 0) {
                     e.atkCd = e.attackInterval / Math.max(0.01, e.stats.attackSpeed);
+                    this._setAction(e, 'attack', ATTACK_ACTION_HOLD);
                     this._enemyAttack(e);
                 }
             }
         }
-        this.enemies = this.enemies.filter(e => e.alive);
     }
 
     private _enemyAttack(e: Enemy) {
@@ -378,11 +443,11 @@ export class BattleManager {
     }
 
     // —— 统一伤害结算：算伤害 → 扣血 → 飘字 → 判死 ——
-    private _applyDamage(att: CombatStats, defender: { stats: CombatStats; x: number; y: number; hp: number; alive: boolean }) {
+    private _applyDamage(att: CombatStats, defender: Soldier | Enemy) {
         const r = calcDamage(att, defender.stats);
         defender.hp -= r.damage;
         this._spawnFloat(defender.x, defender.y, r);
-        if (defender.hp <= 0) defender.alive = false;
+        if (defender.hp <= 0) this._markDead(defender);
     }
 
     // 生成一条战斗飘字
@@ -422,6 +487,7 @@ export class BattleManager {
             const target = this._mostHurtAlly();
             if (!target) continue;
             target.hp = Math.min(target.maxHp, target.hp + h.healPerSec * dt);
+            this._setAction(h, 'attack', ATTACK_ACTION_HOLD);
             this.healBeams.push({ fromX: h.x, fromY: h.y, toX: target.x, toY: target.y });
         }
     }
@@ -445,6 +511,7 @@ export class BattleManager {
         if (!waveCleared) return;
 
         if (this.waveIndex >= this.level.waves.length - 1) {
+            this._idleLivingSoldiers();
             this.phase = 'won';                  // 通关本关
         } else if (this.phase !== 'gap') {
             this.gapTimer = this.level.waveGap;  // 进入波次间隔，结束后开下一波

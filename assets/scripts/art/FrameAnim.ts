@@ -4,18 +4,35 @@ import { frameAt, frameBlendAt } from './FrameClock';
 
 export class FrameAnimPlayer {
     private elapsed = 0;
+    private frames: SpriteFrame[] = [];
+    private fps = 1;
+    private loop = true;
+    private pingpong = false;
+    private blend = 0;
+
     constructor(
         private sprite: Sprite,
-        private frames: SpriteFrame[],
-        private fps: number,
-        private loop: boolean,
-        private pingpong = false,
+        frames: SpriteFrame[],
+        fps: number,
+        loop: boolean,
+        pingpong = false,
         private blendSprite: Sprite | null = null,
-        private blend = 0,
+        blend = 0,
     ) {
-        if (frames.length) sprite.spriteFrame = frames[0];
-        if (blendSprite) blendSprite.node.active = false;
+        this.setClip(frames, fps, loop, pingpong, blend);
     }
+
+    setClip(frames: SpriteFrame[], fps: number, loop: boolean, pingpong = false, blend = 0): void {
+        this.frames = frames;
+        this.fps = fps;
+        this.loop = loop;
+        this.pingpong = pingpong;
+        this.blend = blend;
+        this.elapsed = 0;
+        if (frames.length) this.sprite.spriteFrame = frames[0];
+        if (this.blendSprite) this.blendSprite.node.active = false;
+    }
+
     update(dt: number): void {
         if (this.frames.length <= 1) return;
         this.elapsed += dt;

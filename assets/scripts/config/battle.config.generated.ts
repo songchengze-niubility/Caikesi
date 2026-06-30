@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/battle.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/battle.xlsx
-// 生成时间：2026-06-28T05:50:27.536Z
+// 生成时间：2026-06-30T16:18:49.695Z
 
 /* eslint-disable */
 // @ts-nocheck
@@ -25,7 +25,7 @@ export const generatedBattleConfig = {
             "hp": 90,
             "atk": 28,
             "def": 2,
-            "range": 320,
+            "range": 90,
             "attackSpeed": 1.3,
             "critRate": 0.25,
             "critDmg": 1,
@@ -248,10 +248,10 @@ export const generatedBattleConfig = {
             "size": 74
         },
         "dps": {
-            "attackType": "ranged",
+            "attackType": "melee",
             "fireInterval": 0.33,
-            "moveSpeed": 0,
-            "advanceLimit": 0,
+            "moveSpeed": 300,
+            "advanceLimit": 80,
             "healPerSec": 0,
             "size": 52
         },
@@ -265,9 +265,7 @@ export const generatedBattleConfig = {
         }
     },
     "roster": [
-        "tank",
-        "dps",
-        "healer"
+        "dps"
     ],
     "layout": {
         "frontMargin": 360,

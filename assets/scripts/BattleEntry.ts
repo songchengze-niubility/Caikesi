@@ -4,9 +4,11 @@
 
 import { _decorator, Component, Node, Graphics, Color, UITransform, Mask, Label, view, ResolutionPolicy, Sprite, SpriteFrame, EventTouch, Vec3 } from 'cc';
 import { BattleManager } from './combat/BattleManager';
+import type { UnitAction } from './combat/BattleManager';
 import { Background } from './combat/Background';
 import { BattleConfig, SoldierClass } from './config/BattleConfig';
 import { mountConfigPanel } from './debug/ConfigPanel';
+import { mountActionPreviewPanel, type ActionPreviewRequest } from './debug/ActionPreviewPanel';
 import { createArtRegistry } from './art/CocosArtLoader';
 import { ArtRegistry } from './art/ArtRegistry';
 import { FrameAnimPlayer } from './art/FrameAnim';
@@ -66,6 +68,79 @@ const STYLED_UI_SPRITES: { key: string; rect: UiRect; name: string }[] = [
 
 const STYLED_UI_KEYS = STYLED_UI_SPRITES.map(s => s.key);
 
+const BOOT_UI_RECTS = {
+    background: { x: 0, y: 0, w: 941, h: 1672 },
+    loadingRing: { x: 275, y: 943, w: 409, h: 332 },
+    loadingProgress: { x: 40, y: 1331, w: 900, h: 90 },
+    fade: { x: 0, y: 1168, w: 941, h: 504 },
+    notice: { x: 15, y: 2, w: 89, h: 245 },
+    title: { x: 123, y: 307, w: 711, h: 283 },
+    startButton: { x: 229, y: 1266, w: 466, h: 135 },
+    ageRating: { x: 22, y: 1452, w: 144, h: 181 },
+};
+
+const BOOT_LOADING_UI_SPRITES: { key: string; rect: UiRect; name: string }[] = [
+    { key: 'ui/boot/background', rect: BOOT_UI_RECTS.background, name: 'BootLoadingBackground' },
+    { key: 'ui/boot/loading_ring', rect: BOOT_UI_RECTS.loadingRing, name: 'BootLoadingRing' },
+    { key: 'ui/boot/loading_progress', rect: BOOT_UI_RECTS.loadingProgress, name: 'BootLoadingProgress' },
+];
+
+const BOOT_UI_SPRITES: { key: string; rect: UiRect; name: string }[] = [
+    { key: 'ui/boot/background', rect: BOOT_UI_RECTS.background, name: 'BootBackground' },
+    { key: 'ui/boot/bottom_fade', rect: BOOT_UI_RECTS.fade, name: 'BootBottomFade' },
+    { key: 'ui/boot/notice', rect: BOOT_UI_RECTS.notice, name: 'BootNotice' },
+    { key: 'ui/boot/title', rect: BOOT_UI_RECTS.title, name: 'BootTitleArt' },
+    { key: 'ui/boot/start_button', rect: BOOT_UI_RECTS.startButton, name: 'BootStartButtonArt' },
+    { key: 'ui/boot/age_rating', rect: BOOT_UI_RECTS.ageRating, name: 'BootAgeRating' },
+];
+
+const BOOT_LOADING_UI_KEYS = [...new Set(BOOT_LOADING_UI_SPRITES.map(s => s.key))];
+const BOOT_UI_KEYS = BOOT_UI_SPRITES.map(s => s.key);
+const PRESS_SCALE = 0.94;
+const SOLDIER_ACTION_ORDER: UnitAction[] = ['idle', 'run', 'attack', 'death'];
+const SOLDIER_ACTION_ART: Record<SoldierClass, Record<UnitAction, string>> = {
+    tank: {
+        idle: 'char/tank/idle',
+        run: 'char/tank/run',
+        attack: 'char/tank/attack',
+        death: 'char/tank/death',
+    },
+    dps: {
+        idle: 'char/dps/idle',
+        run: 'char/dps/run',
+        attack: 'char/dps/attack',
+        death: 'char/dps/death',
+    },
+    healer: {
+        idle: 'char/healer/idle',
+        run: 'char/healer/run',
+        attack: 'char/healer/attack',
+        death: 'char/healer/death',
+    },
+};
+const SOLDIER_ACTION_KEYS = (['tank', 'dps', 'healer'] as SoldierClass[]).reduce<string[]>((keys, cls) => {
+    for (const action of SOLDIER_ACTION_ORDER) keys.push(SOLDIER_ACTION_ART[cls][action]);
+    return keys;
+}, []);
+
+interface FrameClip {
+    frames: SpriteFrame[];
+    fps: number;
+    loop: boolean;
+    pingpong: boolean;
+    blend: number;
+}
+
+interface SoldierVisual {
+    node: Node;
+    anim: FrameAnimPlayer;
+    clips: Partial<Record<UnitAction, FrameClip>>;
+    currentAction: UnitAction | null;
+    visualHeight: number;
+}
+
+type BootPhase = 'loading' | 'ready' | 'playing';
+
 @ccclass('BattleEntry')
 export class BattleEntry extends Component {
     private _gfx: Graphics = null!;
@@ -94,7 +169,30 @@ export class BattleEntry extends Component {
     private _styleScale = 1;
     private _stageW = 0;
     private _stageH = 0;
-    private _solSprite: Partial<Record<SoldierClass, { node: Node; anim: FrameAnimPlayer; visualHeight: number }>> = {};
+    private _solSprite: Partial<Record<SoldierClass, SoldierVisual>> = {};
+    private _bootRoot: Node = null!;
+    private _bootGfx: Graphics = null!;
+    private _bootSpritesRoot: Node = null!;
+    private _bootSpriteNodes: Record<string, Node> = {};
+    private _bootTitle: Label = null!;
+    private _bootHint: Label = null!;
+    private _bootButton: Label = null!;
+    private _bootPhase: BootPhase = 'loading';
+    private _bootButtonRect: { x: number; y: number; w: number; h: number } | null = null;
+    private _gameStarted = false;
+    private _styledUiNodes: Record<string, Node> = {};
+    private _pressBaseScale = new Map<Node, Vec3>();
+    private _bootPressed = false;
+    private _pressedSettleKind: SettleHot['kind'] | null = null;
+    private _settleRewards: RewardEntry[] = [];
+    private _settleFailed = 0;
+    private _actionPreviewRoot: Node | null = null;
+    private _actionPreviewGfx: Graphics | null = null;
+    private _actionPreviewNode: Node | null = null;
+    private _actionPreviewBlendNode: Node | null = null;
+    private _actionPreviewAnim: FrameAnimPlayer | null = null;
+    private _actionPreviewLabel: Label | null = null;
+    private _actionPreviewDestroy: (() => void) | null = null;
 
     // 颜色（占位）—— 按职业区分
     private _cClass: Record<SoldierClass, Color> = {
@@ -130,6 +228,8 @@ export class BattleEntry extends Component {
         // 让本节点铺满全屏，方便接收点击（重开用）
         const ut = this.getComponent(UITransform) || this.addComponent(UITransform);
         ut.setContentSize(vs.width, vs.height);
+        this._art = createArtRegistry();
+        this._createBootView();
 
         // 战斗渲染容器：背景/色块/角色 Sprite/飘字/HUD 都放这里。
         // 背包面板作为它的兄弟、打开时置顶 → 战斗里异步/后续新建的节点永远在面板之下。
@@ -142,6 +242,7 @@ export class BattleEntry extends Component {
         stageMask.type = Mask.Type.GRAPHICS_RECT;
         this.node.addChild(this._battleRoot);
         this._battleRoot.setPosition(0, 0, 0);
+        this._battleRoot.active = false;
 
         // 背景节点：占位 Graphics 和真实 Sprite 分开，避免同一节点多个 2D 渲染组件互相抢显示。
         // BgFallback 缺图时画蓝天白云；BgSprite 成功加载 bg/main 后显示真实水墨背景。
@@ -161,47 +262,6 @@ export class BattleEntry extends Component {
         bgSpriteNode.active = false;
         this._battleRoot.addChild(bgSpriteNode);
         bgSpriteNode.setPosition(0, 0, 0);
-
-        // —— 美术资源：预载 → 有图用 Sprite，无图回退色块 ——
-        this._art = createArtRegistry();
-        void this._art.preload(['bg/main', 'char/tank/idle', 'char/dps/idle', 'char/healer/idle', ...STYLED_UI_KEYS]).then(() => {
-            const bgSf = this._art.getSprite('bg/main');
-            if (bgSf) {
-                bgSprite.spriteFrame = bgSf;
-                bgSpriteNode.getComponent(UITransform)!.setContentSize(this._halfW * 2, this._halfH * 2);
-                bgSpriteNode.active = true;
-                this._bg.setUsingSprite(true);   // 停掉渐变重画
-            }
-
-            // 角色序列帧 Sprite（有帧则建节点，无帧保留色块）
-            for (const cls of BattleConfig.roster) {
-                const fr = this._art.getFrames(`char/${cls}/idle`);
-                if (!fr) continue;
-                const n = new Node('Sol_' + cls);
-                n.layer = this.node.layer;
-                const ut = n.addComponent(UITransform);
-                const visualBox = this._soldierVisualBox(cls, fr.frames[0]);
-                ut.setContentSize(visualBox.w, visualBox.h);
-                const sp2 = n.addComponent(Sprite);
-                sp2.sizeMode = Sprite.SizeMode.CUSTOM;
-                const blendNode = new Node('SolBlend_' + cls);
-                blendNode.layer = this.node.layer;
-                blendNode.addComponent(UITransform).setContentSize(visualBox.w, visualBox.h);
-                blendNode.setPosition(0, 0, 0);
-                const blendSprite = blendNode.addComponent(Sprite);
-                blendSprite.sizeMode = Sprite.SizeMode.CUSTOM;
-                n.addChild(blendNode);
-                this._battleRoot.addChild(n);
-                this._solSprite[cls] = { node: n, anim: new FrameAnimPlayer(sp2, fr.frames, fr.fps, fr.loop, fr.pingpong, blendSprite, fr.blend), visualHeight: visualBox.h };
-            }
-
-            this._buildStyledUi();
-            this._positionStyledLabels();
-
-            // 缺失键调试浮层
-            const miss = this._art.missingKeys();
-            if (miss.length) this._makeLabel('缺图: ' + miss.join(', '), 0, -this._halfH + 110, 18);
-        });
 
         // 画布：一个居中的子节点，本地坐标 (0,0) 即屏幕中心
         const gfxNode = new Node('Gfx');
@@ -242,40 +302,53 @@ export class BattleEntry extends Component {
         this._progress = new ProgressModel(BattleConfig.levels.length, BattleConfig.startLevel);
         this._invView = new InventoryView(this.node, this._halfW, this._halfH, this._inv, (kind) => {
             void saveInventory(this._inv);   // 任何成功操作后存盘
-            if ((kind === 'equip' || kind === 'unequip') && !this._settlementOpen()) {
+            if (this._gameStarted && (kind === 'equip' || kind === 'unequip') && !this._settlementOpen()) {
                 this._startBattle(); // 穿脱后立即刷新战斗属性；结算页打开时先不打断结算
             }
         }, () => this._configuredDebugDrop());
-        void loadInventory(this._inv).then(() => loadProgress(this._progress)).then(() => {
+        const dataReady = loadInventory(this._inv).then(() => loadProgress(this._progress)).then(() => {
             this._invView.refresh();
-            this._startBattle(); // 存档装备/关卡进度加载完后，让首局吃到装备属性并进入当前关
         }).catch(() => {
-            this._startBattle(); // 读档失败时仍可进入本局，掉落会从空背包开始存
+            // 读档失败时仍允许进游戏，掉落会从空背包开始存。
         });
         this._createSettlementView();
 
         // 底部导航热区：视觉由切片提供，触摸区域保持透明。
         const noop = () => {};
-        this._makeUiHotZone('Skill01Hot', UI_RECTS.skill1, noop);
-        this._makeUiHotZone('Skill02Hot', UI_RECTS.skill2, noop);
-        this._makeUiHotZone('Skill03Hot', UI_RECTS.skill3, noop);
-        this._makeUiHotZone('NavHomeHot', UI_RECTS.navHome, noop);
-        this._makeUiHotZone('NavHeroesHot', UI_RECTS.navHeroes, noop);
-        this._makeUiHotZone('NavBattleHot', UI_RECTS.navBattle, noop);
-        this._makeUiHotZone('NavEquipmentHot', UI_RECTS.navEquipment, () => this._invView.toggle());
-        this._makeUiHotZone('NavBagHot', UI_RECTS.navBag, () => this._invView.toggle());
-        this._makeUiHotZone('NavSectHot', UI_RECTS.navSect, noop);
+        this._makeUiHotZone('Skill01Hot', UI_RECTS.skill1, noop, 'Skill01');
+        this._makeUiHotZone('Skill02Hot', UI_RECTS.skill2, noop, 'Skill02');
+        this._makeUiHotZone('Skill03Hot', UI_RECTS.skill3, noop, 'Skill03');
+        this._makeUiHotZone('NavHomeHot', UI_RECTS.navHome, noop, 'BottomNav');
+        this._makeUiHotZone('NavHeroesHot', UI_RECTS.navHeroes, noop, 'BottomNav');
+        this._makeUiHotZone('NavBattleHot', UI_RECTS.navBattle, noop, 'BottomNav');
+        this._makeUiHotZone('NavEquipmentHot', UI_RECTS.navEquipment, () => this._invView.toggle(), 'BottomNav');
+        this._makeUiHotZone('NavBagHot', UI_RECTS.navBag, () => this._invView.toggle(), 'BottomNav');
+        this._makeUiHotZone('NavSectHot', UI_RECTS.navSect, noop, 'BottomNav');
         this._makeUiHotZone('RewardCardHot', UI_RECTS.reward, () => {
             const r = this._configuredDebugDrop();
             if (r.ok) void saveInventory(this._inv);
             this._invView.refresh();   // 面板打开时即时刷新（关着则无副作用）
-        });
+        }, 'StageReward');
 
         // 挂载游戏内实时调参面板（仅网页预览生效；点「重开战斗」重置局内数值）
         mountConfigPanel(() => this._startBattle());
+        this._actionPreviewDestroy = mountActionPreviewPanel(
+            (req) => { void this._showActionPreview(req); },
+            () => this._hideActionPreview(),
+        );
+
+        const loadingArtReady = this._loadBootLoadingArt();
+        const artReady = loadingArtReady.then(() => this._loadBattleArt(bgSprite, bgSpriteNode));
+        void Promise.all([artReady, dataReady]).then(() => {
+            this._showStartScreen();
+        }).catch(() => {
+            this._showStartScreen();
+        });
+        this._bringBootToTop();
     }
 
     private _startBattle() {
+        if (!this._gameStarted) return;
         this._hideSettlement();
         const effective = this._inv ? buildEffectiveStatsMap(this._inv.equipped) : {};
         const levelIndex = this._progress ? this._progress.currentLevel : BattleConfig.startLevel;
@@ -286,14 +359,390 @@ export class BattleEntry extends Component {
         this._rewardLabel.string = '';
     }
 
+    private async _loadBattleArt(bgSprite: Sprite, bgSpriteNode: Node): Promise<void> {
+        await this._art.preload(['bg/main', ...SOLDIER_ACTION_KEYS, ...STYLED_UI_KEYS, ...BOOT_LOADING_UI_KEYS, ...BOOT_UI_KEYS]);
+
+        const bgSf = this._art.getSprite('bg/main');
+        if (bgSf) {
+            bgSprite.spriteFrame = bgSf;
+            bgSpriteNode.getComponent(UITransform)!.setContentSize(this._halfW * 2, this._halfH * 2);
+            bgSpriteNode.active = true;
+            this._bg.setUsingSprite(true);   // 停掉渐变重画
+        }
+
+        // 角色序列帧 Sprite（有帧则建节点，无帧保留色块）
+        for (const cls of BattleConfig.roster) {
+            this._buildSoldierVisual(cls);
+        }
+
+        this._buildStyledUi();
+        this._positionStyledLabels();
+
+        // 缺失键调试浮层
+        const miss = this._art.missingKeys();
+        if (miss.length) this._makeLabel('缺图: ' + miss.join(', '), 0, -this._halfH + 110, 18);
+    }
+
+    private async _loadBootLoadingArt(): Promise<void> {
+        await this._art.preload(BOOT_LOADING_UI_KEYS);
+        if (this._bootPhase === 'loading') {
+            this._drawBootLoading();
+            this._bringBootToTop();
+        }
+    }
+
+    private _soldierVisualHeight(cls: SoldierClass): number {
+        return cls === 'dps' ? 180 : BattleConfig.classes[cls].size;
+    }
+
     private _soldierVisualBox(cls: SoldierClass, frame: SpriteFrame): { w: number; h: number } {
-        const h = cls === 'dps' ? 180 : BattleConfig.classes[cls].size;
+        const h = this._soldierVisualHeight(cls);
         const rect = frame.rect;
         const aspect = Math.max(1, rect.width) / Math.max(1, rect.height);
         return { w: h * aspect, h };
     }
 
+    private _loadSoldierClips(cls: SoldierClass): Partial<Record<UnitAction, FrameClip>> {
+        const clips: Partial<Record<UnitAction, FrameClip>> = {};
+        for (const action of SOLDIER_ACTION_ORDER) {
+            const fr = this._art.getFrames(SOLDIER_ACTION_ART[cls][action]);
+            if (fr) clips[action] = fr;
+        }
+        return clips;
+    }
+
+    private _firstSoldierClip(clips: Partial<Record<UnitAction, FrameClip>>): FrameClip | null {
+        for (const action of SOLDIER_ACTION_ORDER) {
+            const clip = clips[action];
+            if (clip) return clip;
+        }
+        return null;
+    }
+
+    private _buildSoldierVisual(cls: SoldierClass) {
+        const clips = this._loadSoldierClips(cls);
+        const clip = this._firstSoldierClip(clips);
+        if (!clip) return;
+
+        const n = new Node('Sol_' + cls);
+        n.layer = this.node.layer;
+        const box = this._soldierVisualBox(cls, clip.frames[0]);
+        n.addComponent(UITransform).setContentSize(box.w, box.h);
+
+        const sprite = n.addComponent(Sprite);
+        sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+
+        const blendNode = new Node('SolBlend_' + cls);
+        blendNode.layer = this.node.layer;
+        blendNode.addComponent(UITransform).setContentSize(box.w, box.h);
+        const blendSprite = blendNode.addComponent(Sprite);
+        blendSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+        n.addChild(blendNode);
+
+        this._battleRoot.addChild(n);
+        this._placeBelowStyledUi(n);
+        this._solSprite[cls] = {
+            node: n,
+            anim: new FrameAnimPlayer(sprite, clip.frames, clip.fps, clip.loop, clip.pingpong, blendSprite, clip.blend),
+            clips,
+            currentAction: null,
+            visualHeight: box.h,
+        };
+        this._setSoldierVisualAction(cls, 'idle', true);
+    }
+
+    private _setSoldierVisualAction(cls: SoldierClass, action: UnitAction, force = false) {
+        const visual = this._solSprite[cls];
+        if (!visual || (!force && visual.currentAction === action)) return;
+        const clip = visual.clips[action] ?? visual.clips.idle ?? this._firstSoldierClip(visual.clips);
+        if (!clip) return;
+
+        const box = this._soldierVisualBox(cls, clip.frames[0]);
+        visual.node.getComponent(UITransform)!.setContentSize(box.w, box.h);
+        const blend = visual.node.getChildByName('SolBlend_' + cls);
+        if (blend) blend.getComponent(UITransform)!.setContentSize(box.w, box.h);
+        visual.visualHeight = box.h;
+        visual.currentAction = action;
+        visual.anim.setClip(clip.frames, clip.fps, clip.loop, clip.pingpong, clip.blend);
+    }
+
+    private _placeBelowStyledUi(node: Node) {
+        if (!this._uiRoot || !this._uiRoot.parent) return;
+        node.setSiblingIndex(this._uiRoot.getSiblingIndex());
+    }
+
+    private _createBootView() {
+        this._bootRoot = new Node('BootFlow');
+        this._bootRoot.layer = this.node.layer;
+        this._bootRoot.addComponent(UITransform).setContentSize(this._halfW * 2, this._halfH * 2);
+        const gfxNode = new Node('BootGfx');
+        gfxNode.layer = this.node.layer;
+        gfxNode.addComponent(UITransform);
+        this._bootGfx = gfxNode.addComponent(Graphics);
+        this._bootRoot.addChild(gfxNode);
+
+        this._bootSpritesRoot = new Node('BootSprites');
+        this._bootSpritesRoot.layer = this.node.layer;
+        this._bootSpritesRoot.addComponent(UITransform).setContentSize(this._halfW * 2, this._halfH * 2);
+        this._bootRoot.addChild(this._bootSpritesRoot);
+
+        this._bootTitle = this._makeBootLabel('BootTitle');
+        this._bootHint = this._makeBootLabel('BootHint');
+        this._bootButton = this._makeBootLabel('BootButton');
+        this._bootRoot.on(Node.EventType.TOUCH_START, this._onBootTouchStart, this);
+        this._bootRoot.on(Node.EventType.TOUCH_MOVE, this._onBootTouchMove, this);
+        this._bootRoot.on(Node.EventType.TOUCH_END, this._onBootTap, this);
+        this._bootRoot.on(Node.EventType.TOUCH_CANCEL, this._onBootTouchCancel, this);
+        this.node.addChild(this._bootRoot);
+        this._bootRoot.setPosition(0, 0, 0);
+        this._drawBootLoading();
+    }
+
+    private _makeBootLabel(name: string): Label {
+        const n = new Node(name);
+        n.layer = this.node.layer;
+        n.addComponent(UITransform);
+        const lb = n.addComponent(Label);
+        lb.horizontalAlign = Label.HorizontalAlign.CENTER;
+        lb.verticalAlign = Label.VerticalAlign.CENTER;
+        this._bootRoot.addChild(n);
+        return lb;
+    }
+
+    private _placeBootLabel(label: Label, text: string, x: number, y: number, w: number, h: number, size: number, color: Color) {
+        const ut = label.node.getComponent(UITransform)!;
+        ut.setContentSize(w, h);
+        label.node.setPosition(x, y, 0);
+        label.string = text;
+        label.fontSize = size;
+        label.lineHeight = size + 8;
+        label.color = color;
+    }
+
+    private _drawBootPanel() {
+        if (this._bootSpritesRoot) {
+            this._bootSpritesRoot.removeAllChildren();
+            this._bootSpriteNodes = {};
+        }
+        const g = this._bootGfx;
+        g.clear();
+
+        g.fillColor = new Color(20, 24, 24, 255);
+        g.rect(-this._halfW, -this._halfH, this._halfW * 2, this._halfH * 2);
+        g.fill();
+
+        const panelW = Math.min(680, this._stageW - 120);
+        const panelH = Math.min(430, this._stageH - 360);
+        const x = -panelW / 2;
+        const y = -panelH / 2;
+        g.fillColor = new Color(234, 226, 204, 248);
+        g.roundRect(x, y, panelW, panelH, 8);
+        g.fill();
+        g.strokeColor = new Color(116, 96, 72, 230);
+        g.lineWidth = 3;
+        g.roundRect(x, y, panelW, panelH, 8);
+        g.stroke();
+    }
+
+    private _drawBootLoading() {
+        this._bootPhase = 'loading';
+        this._bootButtonRect = null;
+        this._bootPressed = false;
+        this._drawBootPanel();
+        if (this._bootLoadingArtReady()) {
+            this._setBootLabelsActive(false);
+            this._drawBootArtLoadingScreen();
+            this._bringBootToTop();
+            return;
+        }
+        this._setBootLabelsActive(true);
+        this._placeBootLabel(this._bootTitle, 'Caikesi', 0, 88, 520, 80, 48, new Color(58, 48, 36));
+        this._placeBootLabel(this._bootHint, '加载战斗资源中...', 0, 18, 520, 48, 25, new Color(83, 74, 62));
+        this._placeBootLabel(this._bootButton, '请稍候', 0, -92, 240, 52, 24, new Color(132, 120, 104));
+    }
+
+    private _showStartScreen() {
+        if (this._gameStarted) return;
+        this._bootPhase = 'ready';
+        if (this._bootArtReady()) {
+            this._setBootLabelsActive(false);
+            this._drawBootArtStartScreen();
+            this._bringBootToTop();
+            return;
+        }
+
+        this._drawBootPanel();
+        this._setBootLabelsActive(true);
+        this._placeBootLabel(this._bootTitle, 'Caikesi', 0, 108, 520, 84, 50, new Color(58, 48, 36));
+        this._placeBootLabel(this._bootHint, '资源已就绪', 0, 36, 520, 48, 24, new Color(83, 74, 62));
+
+        const buttonW = 260;
+        const buttonH = 64;
+        const buttonX = -buttonW / 2;
+        const buttonY = -116;
+        this._bootButtonRect = { x: buttonX, y: buttonY, w: buttonW, h: buttonH };
+        const br = this._pressRect(buttonX, buttonY, buttonW, buttonH, this._bootPressed);
+        this._bootGfx.fillColor = new Color(74, 96, 76, 245);
+        this._bootGfx.roundRect(br.x, br.y, br.w, br.h, 8);
+        this._bootGfx.fill();
+        this._bootGfx.strokeColor = new Color(236, 220, 160, 230);
+        this._bootGfx.lineWidth = 2;
+        this._bootGfx.roundRect(br.x, br.y, br.w, br.h, 8);
+        this._bootGfx.stroke();
+        this._placeBootLabel(this._bootButton, '开始游戏', 0, buttonY + buttonH / 2, buttonW, buttonH, 28, new Color(248, 244, 226));
+        this._bringBootToTop();
+    }
+
+    private _setBootLabelsActive(active: boolean) {
+        if (this._bootTitle) this._bootTitle.node.active = active;
+        if (this._bootHint) this._bootHint.node.active = active;
+        if (this._bootButton) this._bootButton.node.active = active;
+    }
+
+    private _bootArtReady(): boolean {
+        if (!this._art) return false;
+        return BOOT_UI_KEYS.every(key => !!this._art.getSprite(key));
+    }
+
+    private _bootLoadingArtReady(): boolean {
+        if (!this._art) return false;
+        return BOOT_LOADING_UI_KEYS.every(key => !!this._art.getSprite(key));
+    }
+
+    private _drawBootArtLoadingScreen() {
+        const g = this._bootGfx;
+        g.clear();
+        g.fillColor = new Color(0, 0, 0, 255);
+        g.rect(-this._halfW, -this._halfH, this._halfW * 2, this._halfH * 2);
+        g.fill();
+
+        this._bootSpritesRoot.removeAllChildren();
+        this._bootSpriteNodes = {};
+        for (const s of BOOT_LOADING_UI_SPRITES) {
+            this._addBootSprite(s.name, s.key, s.rect);
+        }
+    }
+
+    private _drawBootArtStartScreen() {
+        const g = this._bootGfx;
+        g.clear();
+        g.fillColor = new Color(0, 0, 0, 255);
+        g.rect(-this._halfW, -this._halfH, this._halfW * 2, this._halfH * 2);
+        g.fill();
+
+        this._bootSpritesRoot.removeAllChildren();
+        this._bootSpriteNodes = {};
+        for (const s of BOOT_UI_SPRITES) {
+            const n = this._addBootSprite(s.name, s.key, s.rect);
+            if (s.name === 'BootStartButtonArt' && n && this._bootPressed) {
+                n.setScale(PRESS_SCALE, PRESS_SCALE, 1);
+            }
+        }
+
+        const r = this._sourceRect(BOOT_UI_RECTS.startButton);
+        this._bootButtonRect = { x: r.x - r.w / 2, y: r.y - r.h / 2, w: r.w, h: r.h };
+    }
+
+    private _addBootSprite(name: string, key: string, rect: UiRect): Node | null {
+        const sf = this._art.getSprite(key);
+        if (!sf) return null;
+        const n = new Node(name);
+        n.layer = this.node.layer;
+        const box = this._sourceRect(rect);
+        n.setPosition(box.x, box.y, 0);
+        n.addComponent(UITransform).setContentSize(box.w, box.h);
+        const sp = n.addComponent(Sprite);
+        sp.sizeMode = Sprite.SizeMode.CUSTOM;
+        sp.spriteFrame = sf;
+        n.getComponent(UITransform)!.setContentSize(box.w, box.h);
+        this._bootSpritesRoot.addChild(n);
+        this._bootSpriteNodes[name] = n;
+        return n;
+    }
+
+    private _bringBootToTop() {
+        if (this._bootRoot && this._bootRoot.parent) {
+            this._bootRoot.setSiblingIndex(this.node.children.length - 1);
+        }
+    }
+
+    private _pressRect(x: number, y: number, w: number, h: number, pressed: boolean): { x: number; y: number; w: number; h: number } {
+        if (!pressed) return { x, y, w, h };
+        const nw = w * PRESS_SCALE;
+        const nh = h * PRESS_SCALE;
+        return { x: x + (w - nw) / 2, y: y + (h - nh) / 2, w: nw, h: nh };
+    }
+
+    private _pressNode(node: Node | null | undefined) {
+        if (!node) return;
+        if (!this._pressBaseScale.has(node)) {
+            const s = node.scale;
+            this._pressBaseScale.set(node, new Vec3(s.x, s.y, s.z));
+        }
+        const base = this._pressBaseScale.get(node)!;
+        node.setScale(base.x * PRESS_SCALE, base.y * PRESS_SCALE, base.z);
+    }
+
+    private _releaseNode(node: Node | null | undefined) {
+        if (!node) return;
+        const base = this._pressBaseScale.get(node);
+        if (!base) return;
+        node.setScale(base.x, base.y, base.z);
+        this._pressBaseScale.delete(node);
+    }
+
+    private _bootButtonHit(e: EventTouch): boolean {
+        if (!this._bootButtonRect) return false;
+        const ui = e.getUILocation();
+        const p = this._bootRoot.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
+        const r = this._bootButtonRect;
+        return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+    }
+
+    private _onBootTouchStart(e: EventTouch) {
+        e.propagationStopped = true;
+        if (this._bootPhase !== 'ready') return;
+        this._bootPressed = this._bootButtonHit(e);
+        if (this._bootPressed) this._showStartScreen();
+    }
+
+    private _onBootTouchMove(e: EventTouch) {
+        if (this._bootPhase !== 'ready' || !this._bootPressed) return;
+        if (!this._bootButtonHit(e)) {
+            this._bootPressed = false;
+            this._showStartScreen();
+        }
+    }
+
+    private _onBootTouchCancel() {
+        if (!this._bootPressed) return;
+        this._bootPressed = false;
+        this._showStartScreen();
+    }
+
+    private _onBootTap(e: EventTouch) {
+        e.propagationStopped = true;
+        const hit = this._bootButtonHit(e);
+        if (this._bootPressed) {
+            this._bootPressed = false;
+            this._showStartScreen();
+        }
+        if (this._bootPhase !== 'ready' || !hit) return;
+        this._enterGame();
+    }
+
+    private _enterGame() {
+        if (this._gameStarted || this._bootPhase !== 'ready') return;
+        this._gameStarted = true;
+        this._bootPhase = 'playing';
+        this._bootRoot.active = false;
+        this._battleRoot.active = true;
+        this._invView.refresh();
+        this._startBattle();
+    }
+
     private _onTap() {
+        if (!this._mgr) return;
         if (this._invView && this._invView.isOpen()) return;  // 面板打开时，点击交给面板，不重开战斗
         if (this._settlementOpen()) return;                   // 结算页打开时，用结算页按钮处理
         // 仅在分出胜负后，点击重开
@@ -338,6 +787,7 @@ export class BattleEntry extends Component {
     private _buildStyledUi() {
         if (!this._uiRoot) return;
         this._uiRoot.removeAllChildren();
+        this._styledUiNodes = {};
         for (const s of STYLED_UI_SPRITES) this._addStyledSprite(s.name, s.key, s.rect);
     }
 
@@ -354,6 +804,7 @@ export class BattleEntry extends Component {
         sp.spriteFrame = sf;
         n.getComponent(UITransform)!.setContentSize(box.w, box.h);
         this._uiRoot.addChild(n);
+        this._styledUiNodes[name] = n;
     }
 
     private _sourceRect(rect: UiRect): { x: number; y: number; w: number; h: number } {
@@ -387,14 +838,34 @@ export class BattleEntry extends Component {
         label.verticalAlign = Label.VerticalAlign.CENTER;
     }
 
-    private _makeUiHotZone(name: string, rect: UiRect, onClick: () => void) {
+    private _bindPressFeedback(hitNode: Node, feedback: () => Node | null | undefined, onClick: () => void) {
+        let pressed: Node | null = null;
+        hitNode.on(Node.EventType.TOUCH_START, (e: any) => {
+            e.propagationStopped = true;
+            pressed = feedback() ?? null;
+            this._pressNode(pressed);
+        }, this);
+        hitNode.on(Node.EventType.TOUCH_END, (e: any) => {
+            e.propagationStopped = true;
+            this._releaseNode(pressed);
+            pressed = null;
+            onClick();
+        }, this);
+        const cancel = () => {
+            this._releaseNode(pressed);
+            pressed = null;
+        };
+        hitNode.on(Node.EventType.TOUCH_CANCEL, cancel, this);
+    }
+
+    private _makeUiHotZone(name: string, rect: UiRect, onClick: () => void, feedbackName?: string) {
         const n = new Node(name);
         n.layer = this.node.layer;
         const box = this._sourceRect(rect);
         n.addComponent(UITransform).setContentSize(box.w, box.h);
         this.node.addChild(n);
         n.setPosition(box.x, box.y, 0);
-        n.on(Node.EventType.TOUCH_END, (e: any) => { e.propagationStopped = true; onClick(); }, this);
+        this._bindPressFeedback(n, () => feedbackName ? this._styledUiNodes[feedbackName] : n, onClick);
     }
 
     private _createSettlementView() {
@@ -408,7 +879,10 @@ export class BattleEntry extends Component {
         this._settleRoot.addChild(gfxNode);
         this.node.addChild(this._settleRoot);
         this._settleRoot.active = false;
+        this._settleRoot.on(Node.EventType.TOUCH_START, this._onSettlementTouchStart, this);
+        this._settleRoot.on(Node.EventType.TOUCH_MOVE, this._onSettlementTouchMove, this);
         this._settleRoot.on(Node.EventType.TOUCH_END, this._onSettlementTap, this);
+        this._settleRoot.on(Node.EventType.TOUCH_CANCEL, this._onSettlementTouchCancel, this);
     }
 
     private _settlementOpen(): boolean {
@@ -417,6 +891,7 @@ export class BattleEntry extends Component {
 
     private _hideSettlement() {
         if (this._settleRoot) this._settleRoot.active = false;
+        this._pressedSettleKind = null;
     }
 
     private _settleLabel(i: number): Label {
@@ -433,6 +908,9 @@ export class BattleEntry extends Component {
 
     private _showSettlement(rewards: RewardEntry[], failed: number, complete: CompleteLevelResult) {
         this._lastComplete = complete;
+        this._settleRewards = rewards;
+        this._settleFailed = failed;
+        this._pressedSettleKind = null;
         this._settleRoot.active = true;
         this._settleRoot.setSiblingIndex(this.node.children.length - 1);
         this._renderSettlement(rewards, failed, complete);
@@ -504,6 +982,11 @@ export class BattleEntry extends Component {
         for (let i = li; i < this._settleLabels.length; i++) this._settleLabels[i].node.active = false;
     }
 
+    private _rerenderSettlement() {
+        if (!this._lastComplete || !this._settlementOpen()) return;
+        this._renderSettlement(this._settleRewards, this._settleFailed, this._lastComplete);
+    }
+
     private _settleButton(
         g: Graphics,
         lbl: (x: number, y: number, text: string, size?: number, color?: Color) => void,
@@ -515,23 +998,55 @@ export class BattleEntry extends Component {
         kind: SettleHot['kind'],
         enabled: boolean,
     ) {
+        const r = this._pressRect(x, y, w, h, enabled && this._pressedSettleKind === kind);
         g.fillColor = enabled ? new Color(67, 76, 96, 245) : new Color(48, 52, 62, 200);
-        g.roundRect(x, y, w, h, 8);
+        g.roundRect(r.x, r.y, r.w, r.h, 8);
         g.fill();
         g.strokeColor = enabled ? new Color(255, 226, 126, 220) : new Color(90, 94, 104, 180);
         g.lineWidth = 2;
-        g.roundRect(x, y, w, h, 8);
+        g.roundRect(r.x, r.y, r.w, r.h, 8);
         g.stroke();
         lbl(x + w / 2, y + h / 2, text, 18, enabled ? new Color(245, 248, 255) : new Color(145, 150, 160));
         if (enabled) this._settleHots.push({ x, y, w, h, kind });
     }
 
+    private _settlementHit(e: EventTouch): SettleHot | null {
+        if (!this._settlementOpen()) return null;
+        const ui = e.getUILocation();
+        const p = this._settleRoot.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
+        return this._settleHots.find(h => p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h) ?? null;
+    }
+
+    private _onSettlementTouchStart(e: EventTouch) {
+        if (!this._settlementOpen()) return;
+        e.propagationStopped = true;
+        const hit = this._settlementHit(e);
+        this._pressedSettleKind = hit?.kind ?? null;
+        if (this._pressedSettleKind) this._rerenderSettlement();
+    }
+
+    private _onSettlementTouchMove(e: EventTouch) {
+        if (!this._pressedSettleKind) return;
+        const hit = this._settlementHit(e);
+        if (hit?.kind === this._pressedSettleKind) return;
+        this._pressedSettleKind = null;
+        this._rerenderSettlement();
+    }
+
+    private _onSettlementTouchCancel() {
+        if (!this._pressedSettleKind) return;
+        this._pressedSettleKind = null;
+        this._rerenderSettlement();
+    }
+
     private _onSettlementTap(e: EventTouch) {
         if (!this._settlementOpen()) return;
         e.propagationStopped = true;
-        const ui = e.getUILocation();
-        const p = this._settleRoot.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
-        const hit = this._settleHots.find(h => p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h);
+        const hit = this._settlementHit(e);
+        if (this._pressedSettleKind) {
+            this._pressedSettleKind = null;
+            this._rerenderSettlement();
+        }
         if (!hit) return;
 
         if (hit.kind === 'bag') {
@@ -557,17 +1072,32 @@ export class BattleEntry extends Component {
     }
 
     update(dt: number) {
+        this._actionPreviewAnim?.update(Math.min(dt, 0.05));
         if (!this._mgr) return;
         this._bg.update(dt);   // 背景（云飘动）
         // dt 兜底，防止切后台回来一帧巨大导致瞬移
         const phaseBefore = this._mgr.phase;
         this._mgr.tick(Math.min(dt, 0.05));
         if (phaseBefore !== 'won' && this._mgr.phase === 'won') this._awardVictoryDrop();
+        this._updateSoldierVisualActions();
         this._render();
         this._renderFloats();
-        for (const k in this._solSprite) this._solSprite[k as SoldierClass]!.anim.update(Math.min(dt, 0.05));
+        this._updateSoldierAnimations(Math.min(dt, 0.05));
         this._updateLabels();
         this._invView.update(dt);
+    }
+
+    private _updateSoldierVisualActions() {
+        for (const sol of this._mgr.soldiers) {
+            this._setSoldierVisualAction(sol.cls, sol.action);
+        }
+    }
+
+    private _updateSoldierAnimations(dt: number) {
+        for (const sol of this._mgr.soldiers) {
+            const art = this._solSprite[sol.cls];
+            if (art) art.anim.update(dt);
+        }
     }
 
     // —— 战斗飘字（用 Label 池，按需复用）——
@@ -622,15 +1152,28 @@ export class BattleEntry extends Component {
 
         // 敌人（按类型上色的圆 + 头顶血条；体型/颜色随怪类型）
         for (const e of this._mgr.enemies) {
-            const er = e.radius;
+            if (!e.alive && e.action !== 'death') continue;
+            const deathFade = e.action === 'death' ? Math.max(0, 1 - e.actionTime / 0.9) : 1;
+            const actionScale = e.action === 'attack' ? 1.08 : (e.action === 'death' ? 1.12 : 1);
+            const er = e.radius * actionScale;
+            const alpha = e.action === 'death' ? Math.max(35, Math.round(180 * deathFade)) : 220;
             g.fillColor = new Color(
                 Math.max(48, Math.round(e.color[0] * 0.42)),
                 Math.max(42, Math.round(e.color[1] * 0.42)),
                 Math.max(38, Math.round(e.color[2] * 0.42)),
-                220,
+                alpha,
             );
             g.circle(e.x, e.y, er);
             g.fill();
+
+            if (e.action === 'attack' && e.alive) {
+                g.strokeColor = new Color(245, 228, 196, 160);
+                g.lineWidth = 3;
+                g.circle(e.x, e.y, er + 5);
+                g.stroke();
+            }
+
+            if (!e.alive) continue;
 
             // 血条
             const w = er * 2;
@@ -664,9 +1207,14 @@ export class BattleEntry extends Component {
 
         // 士兵（按职业上色的方块，受伤变灰；坦克更大）
         for (const sol of this._mgr.soldiers) {
-            if (!sol.alive) continue;
+            const showDeath = !sol.alive && sol.action === 'death';
+            if (!sol.alive && !showDeath) {
+                const hidden = this._solSprite[sol.cls];
+                if (hidden) hidden.node.active = false;
+                continue;
+            }
             const size = BattleConfig.classes[sol.cls].size;
-            const ratio = sol.hp / sol.maxHp;
+            const ratio = Math.max(0, sol.hp / sol.maxHp);
 
             const art = this._solSprite[sol.cls];
             if (art) {
@@ -681,6 +1229,8 @@ export class BattleEntry extends Component {
                 g.roundRect(sol.x - size / 2, sol.y - size / 2, size, size, 8);
                 g.fill();
             }
+
+            if (!sol.alive) continue;
 
             // 士兵头顶血条
             const w = size;
@@ -773,6 +1323,116 @@ export class BattleEntry extends Component {
         return `${QUALITY_LABEL[item.quality]}·${item.name}`;
     }
 
+    private _ensureActionPreviewRoot() {
+        if (this._actionPreviewRoot) return;
+
+        const root = new Node('ActionPreview');
+        root.layer = this.node.layer;
+        root.addComponent(UITransform).setContentSize(this._halfW * 2, this._halfH * 2);
+        this.node.addChild(root);
+        root.setPosition(0, 0, 0);
+
+        const gfxNode = new Node('ActionPreviewGuide');
+        gfxNode.layer = this.node.layer;
+        gfxNode.addComponent(UITransform).setContentSize(this._halfW * 2, this._halfH * 2);
+        this._actionPreviewGfx = gfxNode.addComponent(Graphics);
+        root.addChild(gfxNode);
+
+        const spriteNode = new Node('ActionPreviewSprite');
+        spriteNode.layer = this.node.layer;
+        spriteNode.addComponent(UITransform);
+        const sprite = spriteNode.addComponent(Sprite);
+        sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+        root.addChild(spriteNode);
+
+        const blendNode = new Node('ActionPreviewBlend');
+        blendNode.layer = this.node.layer;
+        blendNode.addComponent(UITransform);
+        const blendSprite = blendNode.addComponent(Sprite);
+        blendSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+        blendNode.active = false;
+        spriteNode.addChild(blendNode);
+
+        const labelNode = new Node('ActionPreviewLabel');
+        labelNode.layer = this.node.layer;
+        labelNode.addComponent(UITransform);
+        const label = labelNode.addComponent(Label);
+        label.fontSize = 22;
+        label.lineHeight = 28;
+        label.color = new Color(245, 235, 210, 245);
+        root.addChild(labelNode);
+
+        this._actionPreviewRoot = root;
+        this._actionPreviewNode = spriteNode;
+        this._actionPreviewBlendNode = blendNode;
+        this._actionPreviewLabel = label;
+        this._actionPreviewAnim = new FrameAnimPlayer(sprite, [], 1, true, false, blendSprite, 0);
+        root.setSiblingIndex(this.node.children.length - 1);
+    }
+
+    private async _showActionPreview(req: ActionPreviewRequest) {
+        if (!this._art || !req.key) return;
+        this._ensureActionPreviewRoot();
+        await this._art.preload([req.key]);
+        const clip = this._art.getFrames(req.key);
+        if (!clip || !clip.frames.length) {
+            this._showActionPreviewMessage(`缺图或非序列帧: ${req.key}`);
+            return;
+        }
+
+        const root = this._actionPreviewRoot!;
+        const spriteNode = this._actionPreviewNode!;
+        const blendNode = this._actionPreviewBlendNode!;
+        const anim = this._actionPreviewAnim!;
+        const frame = clip.frames[0];
+        const aspect = Math.max(1, frame.rect.width) / Math.max(1, frame.rect.height);
+        const h = Math.max(32, req.height);
+        const w = h * aspect;
+
+        root.active = true;
+        root.setSiblingIndex(this.node.children.length - 1);
+        spriteNode.active = true;
+        spriteNode.getComponent(UITransform)!.setContentSize(w, h);
+        blendNode.getComponent(UITransform)!.setContentSize(w, h);
+        spriteNode.setPosition(req.x, req.floorY + h / 2, 0);
+        anim.setClip(clip.frames, clip.fps, clip.loop, clip.pingpong, clip.blend);
+        this._drawActionPreviewGuide(req, w, h);
+        if (this._actionPreviewLabel) {
+            this._actionPreviewLabel.string = `${req.key}  ${clip.frames.length}帧 · ${clip.fps}fps`;
+            this._actionPreviewLabel.node.setPosition(req.x, req.floorY + h + 34, 0);
+        }
+    }
+
+    private _hideActionPreview() {
+        if (this._actionPreviewRoot) this._actionPreviewRoot.active = false;
+    }
+
+    private _showActionPreviewMessage(text: string) {
+        this._ensureActionPreviewRoot();
+        if (this._actionPreviewRoot) this._actionPreviewRoot.active = true;
+        if (this._actionPreviewGfx) this._actionPreviewGfx.clear();
+        if (this._actionPreviewNode) this._actionPreviewNode.active = false;
+        if (this._actionPreviewLabel) {
+            this._actionPreviewLabel.string = text;
+            this._actionPreviewLabel.node.setPosition(0, 0, 0);
+        }
+    }
+
+    private _drawActionPreviewGuide(req: ActionPreviewRequest, w: number, h: number) {
+        const g = this._actionPreviewGfx;
+        if (!g) return;
+        g.clear();
+        const pad = 24;
+        g.fillColor = new Color(0, 0, 0, 118);
+        g.roundRect(req.x - w / 2 - pad, req.floorY - 24, w + pad * 2, h + 78, 12);
+        g.fill();
+        g.strokeColor = new Color(255, 238, 180, 190);
+        g.lineWidth = 3;
+        g.moveTo(req.x - w / 2 - 18, req.floorY);
+        g.lineTo(req.x + w / 2 + 18, req.floorY);
+        g.stroke();
+    }
+
     private _makeLabel(text: string, x: number, y: number, size: number): Label {
         const node = new Node('Label');
         node.layer = this.node.layer;
@@ -800,6 +1460,22 @@ export class BattleEntry extends Component {
     }
 
     onDestroy() {
+        if (this._actionPreviewDestroy) {
+            this._actionPreviewDestroy();
+            this._actionPreviewDestroy = null;
+        }
         this.node.off(Node.EventType.TOUCH_END, this._onTap, this);
+        if (this._bootRoot) {
+            this._bootRoot.off(Node.EventType.TOUCH_START, this._onBootTouchStart, this);
+            this._bootRoot.off(Node.EventType.TOUCH_MOVE, this._onBootTouchMove, this);
+            this._bootRoot.off(Node.EventType.TOUCH_END, this._onBootTap, this);
+            this._bootRoot.off(Node.EventType.TOUCH_CANCEL, this._onBootTouchCancel, this);
+        }
+        if (this._settleRoot) {
+            this._settleRoot.off(Node.EventType.TOUCH_START, this._onSettlementTouchStart, this);
+            this._settleRoot.off(Node.EventType.TOUCH_MOVE, this._onSettlementTouchMove, this);
+            this._settleRoot.off(Node.EventType.TOUCH_END, this._onSettlementTap, this);
+            this._settleRoot.off(Node.EventType.TOUCH_CANCEL, this._onSettlementTouchCancel, this);
+        }
     }
 }

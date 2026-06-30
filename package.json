@@ -17,8 +17,9 @@
     "seed:drop": "tsx tools/seed-drop-xlsx.ts",
     "art:placeholder": "tsx tools/make-placeholder-art.ts",
     "ui:slicer": "start tools/ui-slicer/index.html",
-    "sprite:keyframes": "python tools/sprite-keyframe-tool.py",
-    "sprite:keyframes:ui": "python tools/sprite-keyframe-ui.py --open"
+    "sprite:keyframes:deps": "py -3 -m pip install -r tools/sprite-keyframe-requirements.txt",
+    "sprite:keyframes": "py -3 tools/sprite-keyframe-tool.py",
+    "sprite:keyframes:ui": "py -3 tools/sprite-keyframe-ui.py --open"
   },
   "devDependencies": {
     "tsx": "^4.22.4",

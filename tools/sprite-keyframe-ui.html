@@ -606,6 +606,13 @@
               <label class="control"><span>白边亮度阈值</span><input name="fringe_brightness" type="number" min="80" max="240" step="1" value="155"></label>
               <label class="control"><span>输出画布</span><input name="frame_size" type="text" value="512" autocomplete="off"></label>
               <label class="control"><span>内边距</span><input name="padding" type="number" min="0" max="64" step="1" value="8"></label>
+              <label class="control">
+                <span>锚点模式</span>
+                <select name="anchor_mode">
+                  <option value="foot" selected>站地稳定</option>
+                  <option value="body">身体中心</option>
+                </select>
+              </label>
             </div>
 
             <div class="check-row">
@@ -686,14 +693,17 @@
           </div>
 
           <div class="path-row">
-            <div class="path" id="outputPath">尚未生成</div>
+            <div class="path" id="outputPath">尚未生成预览</div>
             <button class="ghost" id="copyPath" type="button" disabled>复制路径</button>
-            <button class="ghost" id="openOutput" type="button" disabled>打开目录</button>
+            <button class="ghost" id="exportOutput" type="button" disabled>导出到 output</button>
+            <button class="ghost" id="openOutput" type="button" disabled>打开导出目录</button>
           </div>
 
           <div class="import-panel">
             <p class="stage-label">导入到游戏</p>
             <div class="grid">
+              <label class="control"><span>目标文件夹</span><select id="importTargetDir"></select></label>
+              <button class="ghost" id="refreshArtDirs" type="button">刷新文件夹</button>
               <label class="control"><span>资源键</span><input id="importArtKey" type="text" value="char/dps/attack_01" autocomplete="off"></label>
               <label class="control"><span>文件名前缀</span><input id="importPrefix" type="text" value="attack_01" autocomplete="off"></label>
               <label class="control"><span>播放 FPS</span><input id="importFps" type="number" min="1" max="60" step="1" value="12"></label>
@@ -741,12 +751,15 @@
     const thumbs = document.querySelector("#thumbs");
     const outputPath = document.querySelector("#outputPath");
     const copyPath = document.querySelector("#copyPath");
+    const exportOutput = document.querySelector("#exportOutput");
     const openOutput = document.querySelector("#openOutput");
     const jobMark = document.querySelector("#jobMark");
     const frameCount = document.querySelector("#frameCount");
     const frameSize = document.querySelector("#frameSize");
     const sharedScale = document.querySelector("#sharedScale");
     const logBox = document.querySelector("#logBox");
+    const importTargetDir = document.querySelector("#importTargetDir");
+    const refreshArtDirs = document.querySelector("#refreshArtDirs");
     const importArtKey = document.querySelector("#importArtKey");
     const importPrefix = document.querySelector("#importPrefix");
     const importFps = document.querySelector("#importFps");
@@ -764,6 +777,14 @@
     let animElapsed = 0;
     let animStartedAt = 0;
     let animRaf = 0;
+    const SERVER_ORIGIN = "http://127.0.0.1:8765";
+
+    function serverUrl(path) {
+      if (!path) return path;
+      if (/^(https?:|data:|blob:)/.test(path)) return path;
+      if (location.protocol === "http:" || location.protocol === "https:") return path;
+      return `${SERVER_ORIGIN}${path.startsWith("/") ? path : `/${path}`}`;
+    }
 
     for (const zone of document.querySelectorAll("[data-dropzone]")) {
       const input = zone.querySelector("input");
@@ -791,7 +812,8 @@
         return;
       }
       const image = new Image();
-      image.src = `${url}?t=${Date.now()}`;
+      image.crossOrigin = "anonymous";
+      image.src = `${serverUrl(url)}?t=${Date.now()}`;
       image.alt = alt;
       stage.replaceChildren(image);
     }
@@ -813,9 +835,10 @@
     function loadAnimationImages(urls) {
       return Promise.all(urls.map((url, index) => new Promise((resolve, reject) => {
         const image = new Image();
+        image.crossOrigin = "anonymous";
         image.onload = () => resolve(image);
         image.onerror = () => reject(new Error(`动画帧加载失败：${index}`));
-        image.src = `${url}?t=${Date.now()}`;
+        image.src = `${serverUrl(url)}?t=${Date.now()}`;
       })));
     }
 
@@ -907,7 +930,7 @@
       }
     }
 
-    async function startAnimationPreview(urls) {
+    async function startAnimationPreview(urls, useFullFrame = false) {
       cancelAnimationFrame(animRaf);
       animImages = [];
       animBbox = null;
@@ -919,7 +942,17 @@
       if (!urls.length) return;
       try {
         animImages = await loadAnimationImages(urls);
-        animBbox = calculateUnionBbox(animImages);
+        if (useFullFrame) {
+          const image = animImages[0];
+          animBbox = {
+            x: 0,
+            y: 0,
+            w: image.naturalWidth || image.width,
+            h: image.naturalHeight || image.height,
+          };
+        } else {
+          animBbox = calculateUnionBbox(animImages);
+        }
         animToggle.disabled = false;
         setAnimationPlaying(true);
       } catch (error) {
@@ -930,7 +963,38 @@
     function setBusy(isBusy) {
       runButton.disabled = isBusy;
       runButton.textContent = isBusy ? "处理中" : "开始处理";
-      statusText.textContent = isBusy ? "正在生成..." : "待处理";
+      if (isBusy) statusText.textContent = "正在生成预览...";
+    }
+
+    async function loadArtDirs() {
+      const previous = importTargetDir.value;
+      importTargetDir.replaceChildren();
+      const manual = document.createElement("option");
+      manual.value = "";
+      manual.textContent = "手动输入 / 新建文件夹";
+      importTargetDir.appendChild(manual);
+      try {
+        const response = await fetch(serverUrl("/api/art-dirs"));
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || "读取文件夹失败");
+        for (const item of data.dirs || []) {
+          const option = document.createElement("option");
+          option.value = item.artKey;
+          option.textContent = item.label;
+          option.dataset.prefix = item.prefix || item.artKey.split("/").pop() || "frame";
+          importTargetDir.appendChild(option);
+        }
+        importTargetDir.value = [...importTargetDir.options].some(option => option.value === previous) ? previous : "";
+      } catch (error) {
+        importStatus.textContent = String(error);
+      }
+    }
+
+    function applySelectedArtDir() {
+      const option = importTargetDir.selectedOptions[0];
+      if (!option || !option.value) return;
+      importArtKey.value = option.value;
+      importPrefix.value = option.dataset.prefix || option.value.split("/").pop() || importPrefix.value;
     }
 
     function suggestedVideoFps(video) {
@@ -951,44 +1015,56 @@
 
     function renderResult(data) {
       lastJobId = data.jobId;
-      lastOutputPath = data.outputDir;
+      lastOutputPath = data.outputDir || "";
+      const gameFrames = Array.isArray(data.files.gameKeyframes) && data.files.gameKeyframes.length
+        ? data.files.gameKeyframes
+        : null;
+      const previewFrames = gameFrames || data.files.keyframes;
+      const gameImport = data.manifest.game_import || {};
+      const gameCrop = gameImport.crop || null;
       jobMark.textContent = data.jobId;
-      outputPath.textContent = data.outputDir;
-      copyPath.disabled = false;
-      openOutput.disabled = false;
-      importButton.disabled = data.files.keyframes.length === 0;
-      importStatus.textContent = data.files.keyframes.length ? "可以导入到 assets/resources/art" : "没有关键帧可导入";
+      outputPath.textContent = lastOutputPath || "临时预览，未导出";
+      copyPath.disabled = !lastOutputPath;
+      exportOutput.disabled = previewFrames.length === 0;
+      openOutput.disabled = !lastOutputPath;
+      importButton.disabled = previewFrames.length === 0;
+      importStatus.textContent = previewFrames.length
+        ? (gameFrames ? "动画预览已使用游戏导入帧；需要时可直接导入到游戏" : "可预览；需要时再导出或导入到游戏")
+        : "没有关键帧可导入";
 
       const video = data.manifest.video;
       const character = data.manifest.character;
       const normalization = video?.normalization || character?.normalization || {};
-      const count = video?.selected_keyframe_count || data.files.keyframes.length || 0;
+      const count = video?.selected_keyframe_count || previewFrames.length || 0;
       const recommendedFps = suggestedVideoFps(video);
       if (recommendedFps) {
         animFps.value = String(recommendedFps);
         importFps.value = String(recommendedFps);
       }
       frameCount.textContent = String(count);
-      frameSize.textContent = Array.isArray(normalization.frame_size) ? normalization.frame_size.join("x") : "--";
+      frameSize.textContent = gameCrop
+        ? `${gameCrop.width}x${gameCrop.height}`
+        : (Array.isArray(normalization.frame_size) ? normalization.frame_size.join("x") : "--");
       sharedScale.textContent = typeof normalization.shared_scale === "number"
         ? normalization.shared_scale.toFixed(3)
         : "--";
 
-      setStageImage(previewStage, data.files.preview || data.files.characterFrame || data.files.characterTransparent, "预览");
+      setStageImage(previewStage, data.files.gamePreview || data.files.preview || data.files.characterFrame || data.files.characterTransparent, "预览");
       setStageImage(rawStage, data.files.rawPreview, "源视频采样");
-      setStageImage(darkStage, data.files.darkPreview, "深色底检查");
-      setStageImage(stripStage, data.files.strip, "序列帧条");
-      startAnimationPreview(data.files.keyframes);
+      setStageImage(darkStage, data.files.gameDarkPreview || data.files.darkPreview, "深色底检查");
+      setStageImage(stripStage, data.files.gameStrip || data.files.strip, "序列帧条");
+      startAnimationPreview(previewFrames, Boolean(gameFrames));
 
       thumbs.replaceChildren();
-      for (const [index, url] of data.files.keyframes.entries()) {
+      for (const [index, url] of previewFrames.entries()) {
         const item = document.createElement("a");
         item.className = "thumb";
-        item.href = url;
+        item.href = serverUrl(url);
         item.target = "_blank";
         item.rel = "noreferrer";
         const image = new Image();
-        image.src = `${url}?t=${Date.now()}`;
+        image.crossOrigin = "anonymous";
+        image.src = `${serverUrl(url)}?t=${Date.now()}`;
         image.alt = `key_${String(index).padStart(3, "0")}`;
         item.appendChild(image);
         thumbs.appendChild(item);
@@ -997,7 +1073,7 @@
       const logs = [data.stdout, data.stderr].filter(Boolean).join("\n").trim();
       logBox.textContent = logs;
       logBox.classList.toggle("visible", Boolean(logs));
-      statusText.textContent = "处理完成";
+      statusText.textContent = "预览已生成";
     }
 
     function renderError(data) {
@@ -1012,7 +1088,7 @@
       setBusy(true);
       logBox.classList.remove("visible");
       try {
-        const response = await fetch("/api/process", {
+        const response = await fetch(serverUrl("/api/process"), {
           method: "POST",
           body: new FormData(form),
         });
@@ -1032,12 +1108,41 @@
     copyPath.addEventListener("click", async () => {
       if (!lastOutputPath) return;
       await navigator.clipboard.writeText(lastOutputPath);
-      statusText.textContent = "路径已复制";
+      statusText.textContent = "导出路径已复制";
+    });
+
+    exportOutput.addEventListener("click", async () => {
+      if (!lastJobId) return;
+      exportOutput.disabled = true;
+      statusText.textContent = "正在导出...";
+      try {
+        const response = await fetch(serverUrl("/api/export-output"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jobId: lastJobId }),
+        });
+        const data = await response.json();
+        if (!response.ok || !data.ok) {
+          statusText.textContent = data.error || "导出失败";
+          logBox.textContent = JSON.stringify(data, null, 2);
+          logBox.classList.add("visible");
+          return;
+        }
+        lastOutputPath = data.outputDir;
+        outputPath.textContent = data.outputDir;
+        copyPath.disabled = false;
+        openOutput.disabled = false;
+        statusText.textContent = "已导出到 output";
+      } catch (error) {
+        statusText.textContent = String(error);
+      } finally {
+        exportOutput.disabled = false;
+      }
     });
 
     openOutput.addEventListener("click", async () => {
       if (!lastJobId) return;
-      const response = await fetch("/api/open-output", {
+      const response = await fetch(serverUrl("/api/open-output"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jobId: lastJobId }),
@@ -1068,12 +1173,16 @@
       animStage.dataset.bg = animBg.value;
     });
 
+    importTargetDir.addEventListener("change", applySelectedArtDir);
+    refreshArtDirs.addEventListener("click", loadArtDirs);
+    loadArtDirs();
+
     importButton.addEventListener("click", async () => {
       if (!lastJobId) return;
       importButton.disabled = true;
       importStatus.textContent = "正在导入...";
       try {
-        const response = await fetch("/api/import-art", {
+        const response = await fetch(serverUrl("/api/import-art"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1094,8 +1203,11 @@
           logBox.classList.add("visible");
           return;
         }
-        importStatus.textContent = `已导入 ${data.frames} 帧：${data.artKey}`;
-        outputPath.textContent = data.dir;
+        const crop = data.crop ? ` · 共同裁切 ${data.crop.width}×${data.crop.height}` : "";
+        const metas = Number.isFinite(data.patchedMetas) ? ` · 修补 .meta ${data.patchedMetas}/${data.frames}` : "";
+        importStatus.textContent = `已导入 ${data.frames} 帧：${data.artKey}${crop}${metas}`;
+        await loadArtDirs();
+        importTargetDir.value = data.artKey;
       } catch (error) {
         importStatus.textContent = String(error);
       } finally {

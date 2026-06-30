@@ -272,15 +272,20 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
         'cloud.count', 'cloud.color', 'cloud.speed', 'hill.color', 'hill.speed', 'groundScroll'];
     for (const k of SCENE_REQUIRED) if (!sceneKeys.has(k)) err(`Scene: 缺少必填 key "${k}"`);
 
-    // —— roster：用 Stats 表的行顺序（前到后），保证阵型顺序语义 ——
-    const roster = statsRows.map(r => reqStr(r['class'], `Stats(用于 roster)`));
+    // —— roster：默认用 Stats 表行顺序；Misc.roster 可临时指定当前出战阵容（逗号分隔）——
+    const rosterText = misc['roster'];
+    const roster = rosterText === undefined || rosterText === ''
+        ? statsRows.map(r => reqStr(r['class'], `Stats(用于 roster)`))
+        : String(rosterText).split(',').map(s => s.trim()).filter(Boolean);
+    if (roster.length === 0) err('roster: 至少需要 1 个职业');
 
     // —— 引用完整性：roster 里每个职业都必须在 Stats 和 Classes 同时有定义 ——
     // （_setupSquad 同时读 stats[cls] 和 classes[cls]，缺一边会运行时崩）
     const statsKeys = new Set(Object.keys(stats));
     const classKeys = new Set(Object.keys(classes));
     for (const cls of roster) {
-        if (!classKeys.has(cls)) err(`一致性: 职业 "${cls}" 在 Stats 有、Classes 缺失`);
+        if (!statsKeys.has(cls)) err(`一致性: roster 职业 "${cls}" 在 Stats 缺失`);
+        if (!classKeys.has(cls)) err(`一致性: roster 职业 "${cls}" 在 Classes 缺失`);
     }
     for (const cls of classKeys) {
         if (!statsKeys.has(cls)) err(`一致性: 职业 "${cls}" 在 Classes 有、Stats 缺失`);

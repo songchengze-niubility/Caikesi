@@ -13,13 +13,14 @@ interface AlphaStats {
     partialRatio: number;
 }
 
-const ROOT = 'assets/resources/art/ui/battle';
+const ROOT = 'assets/resources/art/ui';
 
 // 这些图自身就是完整面板，允许是实心矩形；新增例外必须写理由。
 const OPAQUE_OK: Record<string, string> = {
-    'nav/nav_bar_full.png': '底部导航整条面板，背景本身就是组件。',
-    'stage/chapter_banner.png': '章节标题纸条，纸面本身就是组件。',
-    'stage/reward_card.png': '右上奖励卡，卡片纸面本身就是组件。',
+    'battle/nav/nav_bar_full.png': '底部导航整条面板，背景本身就是组件。',
+    'battle/stage/chapter_banner.png': '章节标题纸条，纸面本身就是组件。',
+    'battle/stage/reward_card.png': '右上奖励卡，卡片纸面本身就是组件。',
+    'boot/background.png': '启动流完整背景底图，本身就是全屏画面。',
 };
 
 function readUInt(buffer: Buffer, offset: number): number {
@@ -125,17 +126,25 @@ function alphaStats(file: string): AlphaStats {
 }
 
 const checks = [
-    'hud/profile_cluster.png',
-    'hud/resource_energy_full.png',
-    'hud/resource_gold_full.png',
-    'hud/resource_jade_full.png',
-    'nav/nav_bar_full.png',
-    'skills/skill_01.png',
-    'skills/skill_02.png',
-    'skills/skill_03.png',
-    'stage/chapter_banner.png',
-    'stage/reward_card.png',
-    'stage/wave_progress.png',
+    'battle/hud/profile_cluster.png',
+    'battle/hud/resource_energy_full.png',
+    'battle/hud/resource_gold_full.png',
+    'battle/hud/resource_jade_full.png',
+    'battle/nav/nav_bar_full.png',
+    'battle/skills/skill_01.png',
+    'battle/skills/skill_02.png',
+    'battle/skills/skill_03.png',
+    'battle/stage/chapter_banner.png',
+    'battle/stage/reward_card.png',
+    'battle/stage/wave_progress.png',
+    'boot/background.png',
+    'boot/loading_ring.png',
+    'boot/loading_progress.png',
+    'boot/bottom_fade.png',
+    'boot/notice.png',
+    'boot/title.png',
+    'boot/start_button.png',
+    'boot/age_rating.png',
 ];
 
 let failed = false;
