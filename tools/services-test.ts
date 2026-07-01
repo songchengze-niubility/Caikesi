@@ -3,6 +3,7 @@ import { createSeededRng } from '../assets/scripts/core/Random';
 import { generateStageReward } from '../assets/scripts/loot/LootService';
 import { calculateOfflineReward } from '../assets/scripts/offline/OfflineCombatService';
 import { ChestInventoryModel, createChestItem } from '../assets/scripts/chest/ChestModel';
+import { openChest } from '../assets/scripts/chest/ChestService';
 import { InventoryModel } from '../assets/scripts/inventory/InventoryModel';
 import { InventoryService } from '../assets/scripts/inventory/InventoryService';
 import { EquipmentService } from '../assets/scripts/inventory/EquipmentService';
@@ -42,6 +43,49 @@ test('ChestInventoryModel：add/serialize/deserialize 往返', () => {
     const next = new ChestInventoryModel();
     next.deserializeChests(save);
     assert.deepEqual(next.serializeChests(), save);
+});
+
+test('ChestService：同 seed 开箱结果一致且产出装备/金币/经验', () => {
+    const chest = createChestItem({
+        type: 'normal',
+        sourceLevelIndex: 0,
+        sourceDropGroup: 'level_1',
+        seed: 'open-seed',
+        createdAt: 1000,
+    });
+    const a = openChest(chest);
+    const b = openChest(chest);
+    assert.equal(a.ok, true);
+    assert.deepEqual(a.reward, b.reward);
+    assert.ok(a.reward!.gold > 0);
+    assert.ok(a.reward!.exp > 0);
+    assert.ok(a.reward!.equipments.length > 0);
+});
+
+test('ChestService：高阶宝箱奖励更多，宝箱可移除', () => {
+    const normal = createChestItem({
+        type: 'normal',
+        sourceLevelIndex: 1,
+        sourceDropGroup: 'level_2',
+        seed: 'normal',
+        createdAt: 1000,
+    });
+    const boss = createChestItem({
+        type: 'boss',
+        sourceLevelIndex: 1,
+        sourceDropGroup: 'level_2',
+        seed: 'boss',
+        createdAt: 1000,
+    });
+    const normalReward = openChest(normal).reward!;
+    const bossReward = openChest(boss).reward!;
+    assert.ok(bossReward.gold > normalReward.gold);
+    assert.ok(bossReward.equipments.length > normalReward.equipments.length);
+
+    const model = new ChestInventoryModel();
+    model.addChest(normal);
+    assert.equal(model.removeChest(normal.id).ok, true);
+    assert.equal(model.chests.length, 0);
 });
 
 test('Offline：同 seed 模拟结果一致，且不直接掉装备', () => {

@@ -18,10 +18,14 @@ import { InventoryView } from './inventory/InventoryView';
 import { loadInventory, saveInventory } from './inventory/InventoryPersistence';
 import { buildEffectiveStatsMap } from './combat/EffectiveStats';
 import { generateStageReward } from './loot/LootService';
-import { claimOfflineReward } from './offline/OfflineCombatService';
+import { claimOfflineReward } from './offline/OfflineClaimService';
+import { ChestInventoryModel } from './chest/ChestModel';
+import { loadChests, saveChests } from './chest/ChestPersistence';
+import { chestTypeLabel, openChest } from './chest/ChestService';
 import { ProgressModel } from './progression/ProgressModel';
 import type { CompleteLevelResult } from './progression/ProgressModel';
 import { loadProgress, saveProgress } from './progression/ProgressPersistence';
+import { loadPlayerData, savePlayerData } from './core/data/PlayerDataStore';
 import { QUALITY_LABEL, QUALITY_COLOR, SLOT_LABEL, formatEquipStats } from './inventory/EquipDefs';
 import type { EquipItem } from './inventory/EquipDefs';
 
@@ -29,6 +33,7 @@ const { ccclass } = _decorator;
 
 interface RewardEntry { item: EquipItem; target: string; }
 interface SettleHot { x: number; y: number; w: number; h: number; kind: 'next' | 'bag' | 'retry'; }
+interface ChestHot { x: number; y: number; w: number; h: number; kind: 'open' | 'close'; }
 interface UiRect { x: number; y: number; w: number; h: number; }
 
 const UI_REF_W = 941;
@@ -158,6 +163,7 @@ export class BattleEntry extends Component {
     private _art: ArtRegistry<SpriteFrame> = null!;
     private _inv: InventoryModel = null!;
     private _invView: InventoryView = null!;
+    private _chests: ChestInventoryModel = null!;
     private _progress: ProgressModel = null!;
     private _settleRoot: Node = null!;
     private _settleGfx: Graphics = null!;
@@ -187,6 +193,12 @@ export class BattleEntry extends Component {
     private _pressedSettleKind: SettleHot['kind'] | null = null;
     private _settleRewards: RewardEntry[] = [];
     private _settleFailed = 0;
+    private _chestRoot: Node = null!;
+    private _chestGfx: Graphics = null!;
+    private _chestLabels: Label[] = [];
+    private _chestHots: ChestHot[] = [];
+    private _pressedChestKind: ChestHot['kind'] | null = null;
+    private _chestMessage = '';
     private _offlineNoticeText = '';
     private _offlineNoticeTtl = 0;
     private _actionPreviewRoot: Node | null = null;
@@ -302,6 +314,7 @@ export class BattleEntry extends Component {
 
         // —— 装备背包：存储/UI 独立，穿脱时通过 effective-stats 刷新战斗属性 ——
         this._inv = new InventoryModel();
+        this._chests = new ChestInventoryModel();
         this._progress = new ProgressModel(BattleConfig.levels.length, BattleConfig.startLevel);
         this._invView = new InventoryView(this.node, this._halfW, this._halfH, this._inv, (kind) => {
             void saveInventory(this._inv);   // 任何成功操作后存盘
@@ -309,12 +322,13 @@ export class BattleEntry extends Component {
                 this._startBattle(); // 穿脱后立即刷新战斗属性；结算页打开时先不打断结算
             }
         }, () => this._configuredDebugDrop());
-        const dataReady = loadInventory(this._inv).then(() => loadProgress(this._progress)).then(() => this._claimOfflineRewards()).then(() => {
+        const dataReady = loadInventory(this._inv).then(() => loadProgress(this._progress)).then(() => this._claimOfflineRewards()).then(() => loadChests(this._chests)).then(() => {
             this._invView.refresh();
         }).catch(() => {
             // 读档失败时仍允许进游戏，掉落会从空背包开始存。
         });
         this._createSettlementView();
+        this._createChestView();
 
         // 底部导航热区：视觉由切片提供，触摸区域保持透明。
         const noop = () => {};
@@ -327,11 +341,7 @@ export class BattleEntry extends Component {
         this._makeUiHotZone('NavEquipmentHot', UI_RECTS.navEquipment, () => this._invView.toggle(), 'BottomNav');
         this._makeUiHotZone('NavBagHot', UI_RECTS.navBag, () => this._invView.toggle(), 'BottomNav');
         this._makeUiHotZone('NavSectHot', UI_RECTS.navSect, noop, 'BottomNav');
-        this._makeUiHotZone('RewardCardHot', UI_RECTS.reward, () => {
-            const r = this._configuredDebugDrop();
-            if (r.ok) void saveInventory(this._inv);
-            this._invView.refresh();   // 面板打开时即时刷新（关着则无副作用）
-        }, 'StageReward');
+        this._makeUiHotZone('RewardCardHot', UI_RECTS.reward, () => this._toggleChestPanel(), 'StageReward');
 
         // 挂载游戏内实时调参面板（仅网页预览生效；点「重开战斗」重置局内数值）
         mountConfigPanel(() => this._startBattle());
@@ -353,6 +363,7 @@ export class BattleEntry extends Component {
     private _startBattle() {
         if (!this._gameStarted) return;
         this._hideSettlement();
+        this._hideChestPanel();
         const effective = this._inv ? buildEffectiveStatsMap(this._inv.equipped) : {};
         const levelIndex = this._progress ? this._progress.currentLevel : BattleConfig.startLevel;
         this._mgr = new BattleManager(this._halfW, this._halfH, levelIndex, effective);
@@ -748,6 +759,7 @@ export class BattleEntry extends Component {
         if (!this._mgr) return;
         if (this._invView && this._invView.isOpen()) return;  // 面板打开时，点击交给面板，不重开战斗
         if (this._settlementOpen()) return;                   // 结算页打开时，用结算页按钮处理
+        if (this._chestOpen()) return;                        // 宝箱页打开时，用宝箱页按钮处理
         // 仅在分出胜负后，点击重开
         if (this._mgr.phase === 'won' || this._mgr.phase === 'lost') {
             this._startBattle();
@@ -895,6 +907,185 @@ export class BattleEntry extends Component {
     private _hideSettlement() {
         if (this._settleRoot) this._settleRoot.active = false;
         this._pressedSettleKind = null;
+    }
+
+    private _createChestView() {
+        this._chestRoot = new Node('ChestView');
+        this._chestRoot.layer = this.node.layer;
+        this._chestRoot.addComponent(UITransform).setContentSize(this._halfW * 2, this._halfH * 2);
+        const gfxNode = new Node('ChestGfx');
+        gfxNode.layer = this.node.layer;
+        gfxNode.addComponent(UITransform);
+        this._chestGfx = gfxNode.addComponent(Graphics);
+        this._chestRoot.addChild(gfxNode);
+        this.node.addChild(this._chestRoot);
+        this._chestRoot.active = false;
+        this._chestRoot.on(Node.EventType.TOUCH_START, this._onChestTouchStart, this);
+        this._chestRoot.on(Node.EventType.TOUCH_MOVE, this._onChestTouchMove, this);
+        this._chestRoot.on(Node.EventType.TOUCH_END, this._onChestTap, this);
+        this._chestRoot.on(Node.EventType.TOUCH_CANCEL, this._onChestTouchCancel, this);
+    }
+
+    private _chestOpen(): boolean {
+        return !!this._chestRoot && this._chestRoot.active;
+    }
+
+    private _toggleChestPanel() {
+        if (this._chestOpen()) this._hideChestPanel();
+        else this._showChestPanel();
+    }
+
+    private _showChestPanel() {
+        if (!this._chestRoot) return;
+        this._hideSettlement();
+        this._chestRoot.active = true;
+        this._chestRoot.setSiblingIndex(this.node.children.length - 1);
+        this._renderChestPanel();
+    }
+
+    private _hideChestPanel() {
+        if (this._chestRoot) this._chestRoot.active = false;
+        this._pressedChestKind = null;
+    }
+
+    private _chestLabel(i: number): Label {
+        while (i >= this._chestLabels.length) {
+            const n = new Node('ChestLbl');
+            n.layer = this._chestRoot.layer;
+            n.addComponent(UITransform);
+            const lb = n.addComponent(Label);
+            this._chestRoot.addChild(n);
+            this._chestLabels.push(lb);
+        }
+        return this._chestLabels[i];
+    }
+
+    private _renderChestPanel() {
+        const g = this._chestGfx;
+        g.clear();
+        this._chestHots = [];
+        let li = 0;
+        const lbl = (x: number, y: number, text: string, size = 20, color = new Color(235, 238, 245)) => {
+            const lb = this._chestLabel(li++);
+            lb.node.active = true;
+            lb.node.setPosition(x, y, 0);
+            lb.string = text;
+            lb.fontSize = size;
+            lb.lineHeight = size + 4;
+            lb.color = color;
+            lb.horizontalAlign = Label.HorizontalAlign.CENTER;
+            lb.verticalAlign = Label.VerticalAlign.CENTER;
+        };
+
+        g.fillColor = new Color(8, 10, 14, 170);
+        g.rect(-this._halfW, -this._halfH, this._halfW * 2, this._halfH * 2);
+        g.fill();
+
+        const w = Math.min(620, this._halfW * 2 - 90);
+        const h = Math.min(430, this._halfH * 2 - 100);
+        const x = -w / 2;
+        const y = -h / 2;
+        g.fillColor = new Color(28, 31, 40, 246);
+        g.roundRect(x, y, w, h, 8);
+        g.fill();
+        g.strokeColor = new Color(255, 226, 126, 205);
+        g.lineWidth = 2;
+        g.roundRect(x, y, w, h, 8);
+        g.stroke();
+
+        const total = this._chests?.chests.length ?? 0;
+        lbl(0, y + h - 42, `宝箱库存：${total}`, 30, new Color(255, 226, 126));
+        if (total === 0) {
+            lbl(0, y + h - 118, '暂无宝箱，离线战斗会自动积累', 20, new Color(190, 198, 214));
+        } else {
+            const counts = this._chestCountsText();
+            lbl(0, y + h - 86, counts, 18, new Color(190, 220, 190));
+            const first = this._chests.chests[0];
+            const levelName = BattleConfig.levels[first.sourceLevelIndex]?.name ?? `第 ${first.sourceLevelIndex + 1} 关`;
+            lbl(0, y + h - 138, `待开启：${chestTypeLabel(first.type)} · ${levelName}`, 20, new Color(230, 232, 238));
+            lbl(0, y + h - 174, `来源掉落组：${first.sourceDropGroup}`, 16, new Color(165, 174, 192));
+        }
+        if (this._chestMessage) lbl(0, y + 118, this._chestMessage, 17, new Color(255, 210, 150));
+
+        const by = y + 40;
+        this._chestButton(g, lbl, x + 70, by, 180, 50, '开启一个', 'open', total > 0);
+        this._chestButton(g, lbl, x + w - 250, by, 180, 50, '关闭', 'close', true);
+
+        for (let i = li; i < this._chestLabels.length; i++) this._chestLabels[i].node.active = false;
+    }
+
+    private _chestCountsText(): string {
+        const counts: Record<string, number> = { normal: 0, boss: 0, chapter: 0 };
+        for (const chest of this._chests.chests) counts[chest.type] = (counts[chest.type] ?? 0) + 1;
+        return `普通 ${counts.normal}  ·  Boss ${counts.boss}  ·  章节 ${counts.chapter}`;
+    }
+
+    private _chestButton(
+        g: Graphics,
+        lbl: (x: number, y: number, text: string, size?: number, color?: Color) => void,
+        x: number,
+        y: number,
+        w: number,
+        h: number,
+        text: string,
+        kind: ChestHot['kind'],
+        enabled: boolean,
+    ) {
+        const r = this._pressRect(x, y, w, h, enabled && this._pressedChestKind === kind);
+        g.fillColor = enabled ? new Color(67, 76, 96, 245) : new Color(48, 52, 62, 200);
+        g.roundRect(r.x, r.y, r.w, r.h, 8);
+        g.fill();
+        g.strokeColor = enabled ? new Color(255, 226, 126, 220) : new Color(90, 94, 104, 180);
+        g.lineWidth = 2;
+        g.roundRect(r.x, r.y, r.w, r.h, 8);
+        g.stroke();
+        lbl(x + w / 2, y + h / 2, text, 18, enabled ? new Color(245, 248, 255) : new Color(145, 150, 160));
+        if (enabled) this._chestHots.push({ x, y, w, h, kind });
+    }
+
+    private _chestHit(e: EventTouch): ChestHot | null {
+        if (!this._chestOpen()) return null;
+        const ui = e.getUILocation();
+        const p = this._chestRoot.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
+        return this._chestHots.find(h => p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h) ?? null;
+    }
+
+    private _onChestTouchStart(e: EventTouch) {
+        if (!this._chestOpen()) return;
+        e.propagationStopped = true;
+        const hit = this._chestHit(e);
+        this._pressedChestKind = hit?.kind ?? null;
+        if (this._pressedChestKind) this._renderChestPanel();
+    }
+
+    private _onChestTouchMove(e: EventTouch) {
+        if (!this._pressedChestKind) return;
+        const hit = this._chestHit(e);
+        if (hit?.kind === this._pressedChestKind) return;
+        this._pressedChestKind = null;
+        this._renderChestPanel();
+    }
+
+    private _onChestTouchCancel() {
+        if (!this._pressedChestKind) return;
+        this._pressedChestKind = null;
+        this._renderChestPanel();
+    }
+
+    private _onChestTap(e: EventTouch) {
+        if (!this._chestOpen()) return;
+        e.propagationStopped = true;
+        const hit = this._chestHit(e);
+        if (this._pressedChestKind) {
+            this._pressedChestKind = null;
+            this._renderChestPanel();
+        }
+        if (!hit) return;
+        if (hit.kind === 'close') {
+            this._hideChestPanel();
+            return;
+        }
+        if (hit.kind === 'open') void this._openFirstChest();
     }
 
     private _settleLabel(i: number): Label {
@@ -1298,7 +1489,16 @@ export class BattleEntry extends Component {
             source: 'StageClear',
             seed: `stage-clear|${levelIndex}|${Date.now()}|${Math.random()}`,
         });
-        const drops = reward.equipments;
+        return this._addRewardEquipments(reward.equipments);
+    }
+
+    private _availableEquipmentSlots(): number {
+        if (!this._inv) return 0;
+        return Math.max(0, this._inv.maxBackpack - this._inv.backpack.length)
+            + Math.max(0, this._inv.maxWarehouse - this._inv.warehouse.length);
+    }
+
+    private _addRewardEquipments(drops: EquipItem[]): { received: RewardEntry[]; failed: number } {
         const received: RewardEntry[] = [];
         let failed = 0;
 
@@ -1316,6 +1516,47 @@ export class BattleEntry extends Component {
             }
         }
         return { received, failed };
+    }
+
+    private async _openFirstChest(): Promise<void> {
+        if (!this._chests || this._chests.chests.length === 0) {
+            this._chestMessage = '暂无可开启宝箱';
+            this._renderChestPanel();
+            return;
+        }
+        const chest = this._chests.chests[0];
+        const result = openChest(chest);
+        if (!result.ok || !result.reward) {
+            this._chestMessage = result.reason ?? '开箱失败';
+            this._renderChestPanel();
+            return;
+        }
+        const reward = result.reward;
+        if (reward.equipments.length > this._availableEquipmentSlots()) {
+            this._chestMessage = '背包/仓库空间不足，无法开箱';
+            this._renderChestPanel();
+            return;
+        }
+
+        const received = this._addRewardEquipments(reward.equipments);
+        if (received.failed > 0) {
+            this._chestMessage = '装备入库失败，宝箱未消耗';
+            this._renderChestPanel();
+            return;
+        }
+
+        const data = await loadPlayerData();
+        data.gold = (data.gold ?? 0) + reward.gold;
+        data.exp = (data.exp ?? 0) + reward.exp;
+        this._chests.removeChest(chest.id);
+        await saveInventory(this._inv);
+        await saveChests(this._chests);
+        await savePlayerData();
+        this._invView.refresh();
+        this._chestMessage = `开启${chestTypeLabel(chest.type)}：+${reward.gold} 金币 +${reward.exp} 经验，${received.received.length} 件装备`;
+        this._offlineNoticeText = this._chestMessage;
+        this._offlineNoticeTtl = 8;
+        this._renderChestPanel();
     }
 
     private _formatDropSummary(received: RewardEntry[], failed: number): string {
@@ -1492,6 +1733,12 @@ export class BattleEntry extends Component {
             this._settleRoot.off(Node.EventType.TOUCH_MOVE, this._onSettlementTouchMove, this);
             this._settleRoot.off(Node.EventType.TOUCH_END, this._onSettlementTap, this);
             this._settleRoot.off(Node.EventType.TOUCH_CANCEL, this._onSettlementTouchCancel, this);
+        }
+        if (this._chestRoot) {
+            this._chestRoot.off(Node.EventType.TOUCH_START, this._onChestTouchStart, this);
+            this._chestRoot.off(Node.EventType.TOUCH_MOVE, this._onChestTouchMove, this);
+            this._chestRoot.off(Node.EventType.TOUCH_END, this._onChestTap, this);
+            this._chestRoot.off(Node.EventType.TOUCH_CANCEL, this._onChestTouchCancel, this);
         }
     }
 }

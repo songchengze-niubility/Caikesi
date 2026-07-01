@@ -89,20 +89,3 @@ export function calculateOfflineReward(input: OfflineRewardInput): OfflineReward
 
     return reward;
 }
-
-export async function claimOfflineReward(input: Partial<OfflineRewardInput> = {}): Promise<OfflineClaimResult> {
-    const { loadPlayerData, savePlayerData } = await import('../core/data/PlayerDataStore');
-    const data = await loadPlayerData();
-    const now = input.now ?? Date.now();
-    const levelIndex = input.levelIndex ?? data.progress?.currentLevel ?? BattleConfig.startLevel;
-    const lastOnlineAt = input.lastOnlineAt ?? data.lastSaveTime ?? now;
-    const seed = input.seed ?? `${lastOnlineAt}|${now}|${levelIndex}`;
-    const reward = calculateOfflineReward({ lastOnlineAt, now, levelIndex, seed });
-
-    data.gold = (data.gold ?? 0) + reward.gold;
-    data.exp = (data.exp ?? 0) + reward.exp;
-    data.chests = [...(data.chests ?? []), ...reward.chests.map(chest => ({ ...chest }))];
-    data.lastSaveTime = now;
-    await savePlayerData(false);
-    return { ...reward, claimed: true };
-}

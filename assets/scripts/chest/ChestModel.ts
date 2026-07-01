@@ -1,5 +1,4 @@
-// Chest storage model. First version only stores/serializes chests;
-// opening chests will be implemented in a later stage.
+// Chest storage model. Opening rewards live in ChestService.
 
 import { hashSeed } from '../core/Random';
 
@@ -76,6 +75,13 @@ export class ChestInventoryModel {
             else failed++;
         }
         return { added, failed };
+    }
+
+    removeChest(id: string): ChestOpResult {
+        const i = this.chests.findIndex(chest => chest.id === id);
+        if (i < 0) return fail('宝箱不存在');
+        const [chest] = this.chests.splice(i, 1);
+        return { ok: true, chest };
     }
 
     serializeChests(): ChestSave {
