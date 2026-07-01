@@ -15,7 +15,7 @@ export type InventoryChangeKind = 'drop' | 'transfer' | 'equip' | 'unequip' | 'l
 export interface InventoryChangePayload { gold?: number; sold?: number; }
 interface Hot { x: number; y: number; w: number; h: number; kind: string; zone?: Zone; id?: string; slot?: EquipSlot; char?: CharacterId; }
 type ListZone = 'backpack' | 'warehouse';
-interface ScrollArea { x: number; y: number; w: number; h: number; contentH: number; maxScroll: number; }
+interface ScrollArea { x: number; y: number; w: number; h: number; contentH: number; maxScroll: number; gridTop: number; drawScroll: number; }
 interface DragState { item: EquipItem; zone: Zone; id?: string; slot?: EquipSlot; x: number; y: number; }
 interface TouchState {
     startX: number;
@@ -209,7 +209,7 @@ export class InventoryView {
         const maxScroll = Math.max(0, (rows - visibleRows) * ROW);
         this.scroll[zone] = Math.max(0, Math.min(maxScroll, this.scroll[zone]));
         const drawScroll = Math.max(0, Math.min(maxScroll, Math.round(this.scroll[zone] / ROW) * ROW));
-        this.scrollAreas[zone] = { x: x0, y: yBottom, w: gridW, h: visibleH, contentH, maxScroll };
+        this.scrollAreas[zone] = { x: x0, y: yBottom, w: gridW, h: visibleH, contentH, maxScroll, gridTop, drawScroll };
 
         g.fillColor = new Color(24, 27, 36, 170);
         g.roundRect(x0 - 10, yBottom - 10, gridW + 20, visibleH + 56, 8); g.fill();
@@ -367,7 +367,36 @@ export class InventoryView {
     }
 
     private hitAt(p: Vec3): Hot | null {
-        return this.hots.find(h => p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h) ?? null;
+        const gridHit = this.gridHitAt(p);
+        if (gridHit) return gridHit;
+        return this.hots.find(h => {
+            if (h.kind === 'cell' && (h.zone === 'backpack' || h.zone === 'warehouse')) return false;
+            return p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h;
+        }) ?? null;
+    }
+
+    private gridHitAt(p: Vec3): Hot | null {
+        for (const zone of ['backpack', 'warehouse'] as ListZone[]) {
+            const a = this.scrollAreas[zone];
+            if (!a || p.x < a.x || p.x > a.x + a.w || p.y < a.y || p.y > a.y + a.h) continue;
+
+            const col = Math.floor((p.x - a.x) / ROW);
+            if (col < 0 || col >= COLS) continue;
+            const x = a.x + col * ROW;
+            if (p.x > x + CELL) continue;  // 点在横向间隔里，只作为滚动区域，不命中装备
+
+            const d = a.gridTop + a.drawScroll - p.y;
+            if (d < 0) continue;
+            const row = Math.floor(d / ROW);
+            const y = a.gridTop + a.drawScroll - row * ROW - CELL;
+            if (p.y < y || p.y > y + CELL) continue;  // 点在纵向间隔里，不命中上一格
+
+            const list = zone === 'backpack' ? this.model.backpack : this.model.warehouse;
+            const item = list[row * COLS + col];
+            if (!item) continue;
+            return { x, y, w: CELL, h: CELL, kind: 'cell', zone, id: item.id };
+        }
+        return null;
     }
 
     private scrollZoneAt(p: Vec3): ListZone | null {
@@ -469,7 +498,7 @@ export class InventoryView {
             return;
         }
         if (t.moved) { this.render(); return; }
-        this.handleTap(t.hit);
+        this.handleTap(this.hitAt(p));
     }
 
     private onTouchCancel() {
