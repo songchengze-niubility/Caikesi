@@ -36,6 +36,7 @@ export interface Soldier {
 
 // 一只敌人（属性/移动/外观来自其怪物类型 EnemyType）
 export interface Enemy {
+    type: string;         // 怪物类型 key（对应 BattleConfig.enemyTypes）
     typeName: string;     // 怪物类型名（飘字/调试）
     stats: CombatStats;   // 战斗属性（引用该类型的 stats）
     speed: number;        // 推进速度
@@ -82,6 +83,15 @@ export interface HealBeam {
 
 export type BattlePhase = 'spawning' | 'gap' | 'won' | 'lost';
 
+export interface BattleEvent {
+    type: 'enemyKilled';
+    levelIndex: number;
+    waveIndex: number;
+    enemyType: string;
+    killIndex: number;
+    isStageFinalKill: boolean;
+}
+
 export class BattleManager {
     private halfW = 0;
     private halfH = 0;
@@ -92,6 +102,8 @@ export class BattleManager {
     healBeams: HealBeam[] = [];
     meleeBeams: HealBeam[] = [];   // 近战正在劈的连线（仅供界面画反馈）
     floatTexts: FloatText[] = [];  // 战斗飘字
+    private events: BattleEvent[] = [];
+    private killIndex = 0;
 
     phase: BattlePhase = 'spawning';
     levelIndex = 0;
@@ -113,6 +125,13 @@ export class BattleManager {
     get level() { return BattleConfig.levels[this.levelIndex]; }
     get levelName(): string { return this.level.name; }
     get totalWaves(): number { return this.level.waves.length; }
+    get eventCount(): number { return this.events.length; }
+
+    drainEvents(): BattleEvent[] {
+        const out = this.events;
+        this.events = [];
+        return out;
+    }
 
     // —— 布阵（单排一字阵）：全员同一条横线 y=0，按 roster 顺序从前到后沿 x 排开 ——
     private _setupSquad() {
@@ -210,6 +229,7 @@ export class BattleManager {
         if (!t) return;
         const hp = hpOverride ?? t.stats.hp;
         this.enemies.push({
+            type,
             typeName: t.name,
             stats: t.stats,
             speed: t.speed,
@@ -246,6 +266,21 @@ export class BattleManager {
         u.hp = 0;
         u.alive = false;
         this._setAction(u, 'death', DEATH_ACTION_HOLD);
+        if (this.enemies.indexOf(u as Enemy) >= 0) this._emitEnemyKilled(u as Enemy);
+    }
+
+    private _emitEnemyKilled(e: Enemy) {
+        const isStageFinalKill = this.waveIndex >= this.level.waves.length - 1
+            && this._waveFullySpawned
+            && !this.enemies.some(enemy => enemy.alive);
+        this.events.push({
+            type: 'enemyKilled',
+            levelIndex: this.levelIndex,
+            waveIndex: this.waveIndex,
+            enemyType: e.type,
+            killIndex: this.killIndex++,
+            isStageFinalKill,
+        });
     }
 
     private _forceIdle(u: Soldier | Enemy) {

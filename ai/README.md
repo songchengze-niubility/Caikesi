@@ -41,7 +41,7 @@ ai/
 
 | 想知道 | 看哪（唯一权威） |
 |--------|------|
-| 数值（改/看值） | `tools/config-xlsx/battle.xlsx` / `equip.xlsx` / `drop.xlsx`（真源）→ `npm run config` 生成产物 |
+| 数值（改/看值） | `tools/config-xlsx/battle.xlsx` / `equip.xlsx` / `drop.xlsx` / `chest.xlsx` / `offline.xlsx`（真源）→ `npm run config` 生成产物 |
 | 字段含义/类型 | `assets/scripts/config/BattleConfig.ts` 注释（只剩类型定义） |
 | 改了什么、何时 | git 提交记录 |
 | 为什么这么设计 | `ai/memory/设计日志.md` |

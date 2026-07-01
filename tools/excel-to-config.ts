@@ -2,10 +2,11 @@
 // 一张「源清单」(SOURCES) 描述：哪个 xlsx → 哪个 parser → 生成哪个产物。
 // `npm run config` 会遍历所有源依次导出，每源独立校验、独立产物。
 //
-// 目前包含 battle/equip/drop/offline 四个模块：
+// 目前包含 battle/equip/drop/chest/offline 五个模块：
 // - tools/config-xlsx/battle.xlsx → battle.config.generated.ts
 // - tools/config-xlsx/equip.xlsx  → equip.config.generated.ts
 // - tools/config-xlsx/drop.xlsx   → drop.config.generated.ts
+// - tools/config-xlsx/chest.xlsx  → chest.config.generated.ts
 // - tools/config-xlsx/offline.xlsx → offline.config.generated.ts
 // 【加新模块（如掉装备）】：① 写一个 buildXxxConfig(wb) 解析函数；
 //   ② 在 SOURCES 末尾加一行 {name,xlsxRel,outRel,exportVar,build}。主流程不用改。
@@ -473,14 +474,10 @@ function buildDropConfig(wb: XLSX.WorkBook): { config: unknown; summary: string 
 }
 
 // ============ offline 模块解析器 ============
-// 读 offline.xlsx 的 3 sheet → 离线快速战斗配置。
+// 读 offline.xlsx 的 2 sheet → 离线快速战斗配置。
 // Global: key, value
-// Levels: levelIndex, avgClearSeconds, winRate, goldPerWin, expPerWin, chestChance, chestGroup
-// ChestWeights: group, type, weight
+// Levels: levelIndex, avgClearSeconds, winRate, goldPerWin, expPerWin
 function buildOfflineConfig(wb: XLSX.WorkBook): { config: unknown; summary: string } {
-    const VALID_CHESTS = ['normal', 'boss', 'chapter'];
-    const validChestSet = new Set(VALID_CHESTS);
-
     const { rows: globalRows } = sheetToRows(wb, 'Global');
     const global: Record<string, number> = {};
     const globalKeys = new Set<string>();
@@ -506,10 +503,8 @@ function buildOfflineConfig(wb: XLSX.WorkBook): { config: unknown; summary: stri
         const winRate = reqNum(r['winRate'], `Levels[${levelIndex}].winRate`);
         const goldPerWin = reqNum(r['goldPerWin'], `Levels[${levelIndex}].goldPerWin`);
         const expPerWin = reqNum(r['expPerWin'], `Levels[${levelIndex}].expPerWin`);
-        const chestChance = reqNum(r['chestChance'], `Levels[${levelIndex}].chestChance`);
         if (avgClearSeconds <= 0) err(`Levels[${levelIndex}].avgClearSeconds 必须 > 0`);
         if (winRate < 0 || winRate > 1) warn(`Levels[${levelIndex}].winRate = ${winRate} 超出 [0,1]`);
-        if (chestChance < 0 || chestChance > 1) warn(`Levels[${levelIndex}].chestChance = ${chestChance} 超出 [0,1]`);
         if (goldPerWin < 0) warn(`Levels[${levelIndex}].goldPerWin = ${goldPerWin} 为负`);
         if (expPerWin < 0) warn(`Levels[${levelIndex}].expPerWin = ${expPerWin} 为负`);
         levelMap.set(levelIndex, {
@@ -517,8 +512,6 @@ function buildOfflineConfig(wb: XLSX.WorkBook): { config: unknown; summary: stri
             winRate,
             goldPerWin,
             expPerWin,
-            chestChance,
-            chestGroup: reqStr(r['chestGroup'], `Levels[${levelIndex}].chestGroup`),
         });
     }
     if (levelMap.size === 0) err('Levels: 至少需要 1 行离线关卡配置');
@@ -528,32 +521,6 @@ function buildOfflineConfig(wb: XLSX.WorkBook): { config: unknown; summary: stri
     });
     const levels = sortedLevels.map(li => levelMap.get(li));
 
-    const { rows: chestRows } = sheetToRows(wb, 'ChestWeights');
-    const chestWeights: Record<string, Record<string, number>> = {};
-    const seen = new Set<string>();
-    for (const r of chestRows) {
-        const group = reqStr(r['group'], 'ChestWeights.group');
-        const type = reqStr(r['type'], `ChestWeights[${group}].type`);
-        const key = `${group}.${type}`;
-        if (!validChestSet.has(type)) err(`ChestWeights[${group}]: type "${type}" 非法`);
-        if (seen.has(key)) err(`ChestWeights: ${key} 重复定义`);
-        seen.add(key);
-        const weight = reqNum(r['weight'], `ChestWeights[${key}].weight`);
-        if (weight < 0) err(`ChestWeights[${key}].weight 不可为负`);
-        if (!chestWeights[group]) chestWeights[group] = {};
-        chestWeights[group][type] = weight;
-    }
-    for (const cfg of levels as { chestGroup: string }[]) {
-        const weights = chestWeights[cfg.chestGroup];
-        if (!weights) {
-            err(`ChestWeights: 缺少权重组 "${cfg.chestGroup}"`);
-            continue;
-        }
-        let total = 0;
-        for (const type of VALID_CHESTS) total += Math.max(0, weights[type] ?? 0);
-        if (total <= 0) err(`ChestWeights[${cfg.chestGroup}]: 权重总和必须 > 0`);
-    }
-
     const config = {
         global: {
             maxHours: global.maxHours ?? 8,
@@ -561,9 +528,66 @@ function buildOfflineConfig(wb: XLSX.WorkBook): { config: unknown; summary: stri
             maxBattles: global.maxBattles ?? 240,
         },
         levels,
-        chestWeights,
     };
-    const summary = `levels=${levels.length} chestWeightGroups=${Object.keys(chestWeights).length} maxHours=${config.global.maxHours}`;
+    const summary = `levels=${levels.length} maxHours=${config.global.maxHours}`;
+    return { config, summary };
+}
+
+// ============ chest 模块解析器 ============
+// 读 chest.xlsx 的 2 sheet → 宝箱掉落配置。
+// Groups: group, mobChance, finalChance, mobWeightGroup, finalWeightGroup
+// TypeWeights: group, type, weight
+function buildChestConfig(wb: XLSX.WorkBook): { config: unknown; summary: string } {
+    const VALID_CHESTS = ['normal', 'boss', 'chapter'];
+    const validChestSet = new Set(VALID_CHESTS);
+
+    const { rows: groupRows } = sheetToRows(wb, 'Groups');
+    const groups: Record<string, unknown> = {};
+    const usedWeightGroups = new Set<string>();
+    for (const r of groupRows) {
+        const group = reqStr(r['group'], 'Groups.group');
+        if (groups[group]) err(`Groups: group "${group}" 重复定义`);
+        const mobChance = reqNum(r['mobChance'], `Groups[${group}].mobChance`);
+        const finalChance = reqNum(r['finalChance'], `Groups[${group}].finalChance`);
+        if (mobChance < 0 || mobChance > 1) warn(`Groups[${group}].mobChance = ${mobChance} 超出 [0,1]`);
+        if (finalChance < 0 || finalChance > 1) warn(`Groups[${group}].finalChance = ${finalChance} 超出 [0,1]`);
+        const mobWeightGroup = reqStr(r['mobWeightGroup'], `Groups[${group}].mobWeightGroup`);
+        const finalWeightGroup = reqStr(r['finalWeightGroup'], `Groups[${group}].finalWeightGroup`);
+        usedWeightGroups.add(mobWeightGroup);
+        usedWeightGroups.add(finalWeightGroup);
+        groups[group] = { mobChance, finalChance, mobWeightGroup, finalWeightGroup };
+    }
+    if (Object.keys(groups).length === 0) err('Groups: 至少需要 1 个宝箱掉落组');
+
+    const { rows: weightRows } = sheetToRows(wb, 'TypeWeights');
+    const typeWeights: Record<string, Record<string, number>> = {};
+    const seen = new Set<string>();
+    for (const r of weightRows) {
+        const group = reqStr(r['group'], 'TypeWeights.group');
+        const type = reqStr(r['type'], `TypeWeights[${group}].type`);
+        const key = `${group}.${type}`;
+        if (!validChestSet.has(type)) err(`TypeWeights[${group}]: type "${type}" 非法`);
+        if (seen.has(key)) err(`TypeWeights: ${key} 重复定义`);
+        seen.add(key);
+        const weight = reqNum(r['weight'], `TypeWeights[${key}].weight`);
+        if (weight < 0) err(`TypeWeights[${key}].weight 不可为负`);
+        if (!typeWeights[group]) typeWeights[group] = {};
+        typeWeights[group][type] = weight;
+    }
+
+    for (const group of usedWeightGroups) {
+        const weights = typeWeights[group];
+        if (!weights) {
+            err(`TypeWeights: 缺少权重组 "${group}"`);
+            continue;
+        }
+        let total = 0;
+        for (const type of VALID_CHESTS) total += Math.max(0, weights[type] ?? 0);
+        if (total <= 0) err(`TypeWeights[${group}]: 权重总和必须 > 0`);
+    }
+
+    const config = { groups, typeWeights };
+    const summary = `groups=${Object.keys(groups).length} typeWeightGroups=${Object.keys(typeWeights).length}`;
     return { config, summary };
 }
 
@@ -596,6 +620,13 @@ const SOURCES: ConfigSource[] = [
         outRel: '../assets/scripts/config/drop.config.generated.ts',
         exportVar: 'generatedDropConfig',
         build: buildDropConfig,
+    },
+    {
+        name: 'chest',
+        xlsxRel: 'config-xlsx/chest.xlsx',
+        outRel: '../assets/scripts/config/chest.config.generated.ts',
+        exportVar: 'generatedChestConfig',
+        build: buildChestConfig,
     },
     {
         name: 'offline',

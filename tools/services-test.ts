@@ -3,6 +3,9 @@ import { createSeededRng } from '../assets/scripts/core/Random';
 import { generateStageReward } from '../assets/scripts/loot/LootService';
 import { calculateOfflineReward } from '../assets/scripts/offline/OfflineCombatService';
 import { ChestInventoryModel, createChestItem } from '../assets/scripts/chest/ChestModel';
+import { ChestConfig, type ChestDropGroupConfig } from '../assets/scripts/config/ChestConfig';
+import { OfflineConfig } from '../assets/scripts/config/OfflineConfig';
+import { rollChestDrop } from '../assets/scripts/chest/ChestDropService';
 import { openChest } from '../assets/scripts/chest/ChestService';
 import { InventoryModel } from '../assets/scripts/inventory/InventoryModel';
 import { InventoryService } from '../assets/scripts/inventory/InventoryService';
@@ -88,6 +91,54 @@ test('ChestService：高阶宝箱奖励更多，宝箱可移除', () => {
     assert.equal(model.chests.length, 0);
 });
 
+test('ChestDropService：同 seed 的小怪/关底掉落结果一致', () => {
+    const mob = rollChestDrop({ levelIndex: 0, dropGroup: 'level_1', source: 'monster', seed: 'same-mob', createdAt: 1000 });
+    const mobAgain = rollChestDrop({ levelIndex: 0, dropGroup: 'level_1', source: 'monster', seed: 'same-mob', createdAt: 1000 });
+    const final = rollChestDrop({ levelIndex: 0, dropGroup: 'level_1', source: 'stageFinal', seed: 'same-final', createdAt: 1000 });
+    const finalAgain = rollChestDrop({ levelIndex: 0, dropGroup: 'level_1', source: 'stageFinal', seed: 'same-final', createdAt: 1000 });
+    assert.deepEqual(mob, mobAgain);
+    assert.deepEqual(final, finalAgain);
+});
+
+test('ChestDropService：概率和类型权重影响结果', () => {
+    const oldGroup = ChestConfig.groups.test_chest;
+    const oldMobWeights = ChestConfig.typeWeights.test_mob_only;
+    const oldFinalWeights = ChestConfig.typeWeights.test_final_only;
+    const oldZero = ChestConfig.groups.test_zero;
+    try {
+        ChestConfig.groups.test_chest = {
+            mobChance: 1,
+            finalChance: 1,
+            mobWeightGroup: 'test_mob_only',
+            finalWeightGroup: 'test_final_only',
+        };
+        ChestConfig.typeWeights.test_mob_only = { normal: 1, boss: 0, chapter: 0 };
+        ChestConfig.typeWeights.test_final_only = { normal: 0, boss: 1, chapter: 0 };
+        ChestConfig.groups.test_zero = {
+            mobChance: 0,
+            finalChance: 0,
+            mobWeightGroup: 'test_mob_only',
+            finalWeightGroup: 'test_final_only',
+        };
+
+        const mob = rollChestDrop({ levelIndex: 0, dropGroup: 'test_chest', source: 'monster', seed: 'x', createdAt: 1 });
+        const final = rollChestDrop({ levelIndex: 0, dropGroup: 'test_chest', source: 'stageFinal', seed: 'x', createdAt: 1 });
+        const zero = rollChestDrop({ levelIndex: 0, dropGroup: 'test_zero', source: 'monster', seed: 'x', createdAt: 1 });
+        assert.equal(mob.chests[0]?.type, 'normal');
+        assert.equal(final.chests[0]?.type, 'boss');
+        assert.equal(zero.chests.length, 0);
+    } finally {
+        if (oldGroup) ChestConfig.groups.test_chest = oldGroup;
+        else delete ChestConfig.groups.test_chest;
+        if (oldMobWeights) ChestConfig.typeWeights.test_mob_only = oldMobWeights;
+        else delete ChestConfig.typeWeights.test_mob_only;
+        if (oldFinalWeights) ChestConfig.typeWeights.test_final_only = oldFinalWeights;
+        else delete ChestConfig.typeWeights.test_final_only;
+        if (oldZero) ChestConfig.groups.test_zero = oldZero;
+        else delete ChestConfig.groups.test_zero;
+    }
+});
+
 test('Offline：同 seed 模拟结果一致，且不直接掉装备', () => {
     const input = { lastOnlineAt: 0, now: 60 * 60 * 1000, levelIndex: 0, seed: 'offline-seed' };
     const a = calculateOfflineReward(input);
@@ -97,6 +148,42 @@ test('Offline：同 seed 模拟结果一致，且不直接掉装备', () => {
     assert.ok(a.exp > 0);
     assert.ok(a.chests.length > 0);
     assert.equal(a.equipments.length, 0);
+});
+
+test('Offline：宝箱由 chest.xlsx 规则产生，不再读 offline 宝箱概率', () => {
+    assert.equal(Object.prototype.hasOwnProperty.call(OfflineConfig, 'chestWeights'), false);
+    const oldGroup: ChestDropGroupConfig = ChestConfig.groups.level_1;
+    const oldMobWeights = ChestConfig.typeWeights.test_offline_mob;
+    const oldFinalWeights = ChestConfig.typeWeights.test_offline_final;
+    try {
+        ChestConfig.typeWeights.test_offline_mob = { normal: 1, boss: 0, chapter: 0 };
+        ChestConfig.typeWeights.test_offline_final = { normal: 0, boss: 1, chapter: 0 };
+        ChestConfig.groups.level_1 = {
+            mobChance: 0,
+            finalChance: 0,
+            mobWeightGroup: 'test_offline_mob',
+            finalWeightGroup: 'test_offline_final',
+        };
+        const zero = calculateOfflineReward({ lastOnlineAt: 0, now: 60 * 60 * 1000, levelIndex: 0, seed: 'offline-chest-rules' });
+        assert.equal(zero.chests.length, 0);
+
+        ChestConfig.groups.level_1 = {
+            mobChance: 1,
+            finalChance: 1,
+            mobWeightGroup: 'test_offline_mob',
+            finalWeightGroup: 'test_offline_final',
+        };
+        const full = calculateOfflineReward({ lastOnlineAt: 0, now: 60 * 60 * 1000, levelIndex: 0, seed: 'offline-chest-rules' });
+        assert.ok(full.chests.length > zero.chests.length);
+        assert.equal(full.equipments.length, 0);
+        assert.ok(full.chests.some(chest => chest.type === 'boss'));
+    } finally {
+        ChestConfig.groups.level_1 = oldGroup;
+        if (oldMobWeights) ChestConfig.typeWeights.test_offline_mob = oldMobWeights;
+        else delete ChestConfig.typeWeights.test_offline_mob;
+        if (oldFinalWeights) ChestConfig.typeWeights.test_offline_final = oldFinalWeights;
+        else delete ChestConfig.typeWeights.test_offline_final;
+    }
 });
 
 test('Offline：12 小时按 8 小时上限结算', () => {

@@ -21,6 +21,7 @@ import { generateStageReward } from './loot/LootService';
 import { claimOfflineReward } from './offline/OfflineClaimService';
 import { ChestInventoryModel } from './chest/ChestModel';
 import { loadChests, saveChests } from './chest/ChestPersistence';
+import { rollChestDrop } from './chest/ChestDropService';
 import { chestTypeLabel, openChest } from './chest/ChestService';
 import { ProgressModel } from './progression/ProgressModel';
 import type { CompleteLevelResult } from './progression/ProgressModel';
@@ -201,6 +202,8 @@ export class BattleEntry extends Component {
     private _chestMessage = '';
     private _offlineNoticeText = '';
     private _offlineNoticeTtl = 0;
+    private _battleSeed = '';
+    private _battleChestDropCount = 0;
     private _actionPreviewRoot: Node | null = null;
     private _actionPreviewGfx: Graphics | null = null;
     private _actionPreviewNode: Node | null = null;
@@ -366,6 +369,8 @@ export class BattleEntry extends Component {
         this._hideChestPanel();
         const effective = this._inv ? buildEffectiveStatsMap(this._inv.equipped) : {};
         const levelIndex = this._progress ? this._progress.currentLevel : BattleConfig.startLevel;
+        this._battleSeed = `${Date.now()}|${Math.random()}|${levelIndex}`;
+        this._battleChestDropCount = 0;
         this._mgr = new BattleManager(this._halfW, this._halfH, levelIndex, effective);
         this._winRewardText = '';
         this._lastComplete = null;
@@ -1273,6 +1278,7 @@ export class BattleEntry extends Component {
         // dt 兜底，防止切后台回来一帧巨大导致瞬移
         const phaseBefore = this._mgr.phase;
         this._mgr.tick(Math.min(dt, 0.05));
+        this._processBattleEvents();
         if (phaseBefore !== 'won' && this._mgr.phase === 'won') this._awardVictoryDrop();
         this._updateSoldierVisualActions();
         this._render();
@@ -1461,15 +1467,59 @@ export class BattleEntry extends Component {
         const result = this._grantDropItems(this._mgr.levelIndex);
         const complete = this._progress.completeLevel(this._mgr.levelIndex);
         void saveProgress(this._progress);
+        const chestText = this._battleChestDropCount > 0 ? `；宝箱 +${this._battleChestDropCount}` : '';
 
         if (result.received.length > 0) {
-            this._winRewardText = this._formatDropSummary(result.received, result.failed);
+            this._winRewardText = this._formatDropSummary(result.received, result.failed) + chestText;
             void saveInventory(this._inv);
             this._invView.refresh();
         } else {
-            this._winRewardText = '奖励未领取：背包/仓库已满';
+            this._winRewardText = `奖励未领取：背包/仓库已满${chestText}`;
         }
         this._showSettlement(result.received, result.failed, complete);
+    }
+
+    private _processBattleEvents() {
+        if (!this._mgr || !this._chests) return;
+        if (this._mgr.eventCount <= 0) return;
+        const events = this._mgr.drainEvents();
+
+        const createdAt = Date.now();
+        let gained = 0;
+        for (const event of events) {
+            const level = BattleConfig.levels[event.levelIndex];
+            if (!level) continue;
+            const mobReward = rollChestDrop({
+                levelIndex: event.levelIndex,
+                dropGroup: level.dropGroup,
+                source: 'monster',
+                seed: `${this._battleSeed}|kill|${event.killIndex}|${event.enemyType}|monster`,
+                createdAt,
+            });
+            for (const chest of mobReward.chests) {
+                const r = this._chests.addChest(chest);
+                if (r.ok) gained++;
+            }
+            if (!event.isStageFinalKill) continue;
+            const finalReward = rollChestDrop({
+                levelIndex: event.levelIndex,
+                dropGroup: level.dropGroup,
+                source: 'stageFinal',
+                seed: `${this._battleSeed}|kill|${event.killIndex}|${event.enemyType}|stageFinal`,
+                createdAt,
+            });
+            for (const chest of finalReward.chests) {
+                const r = this._chests.addChest(chest);
+                if (r.ok) gained++;
+            }
+        }
+
+        if (gained <= 0) return;
+        this._battleChestDropCount += gained;
+        this._offlineNoticeText = `获得宝箱 +${gained}`;
+        this._offlineNoticeTtl = 5;
+        if (this._chestOpen()) this._renderChestPanel();
+        void saveChests(this._chests);
     }
 
     private _currentLevelIndex(): number {

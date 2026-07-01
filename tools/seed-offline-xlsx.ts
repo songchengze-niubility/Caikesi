@@ -14,20 +14,10 @@ const GLOBAL_ROWS: (string | number)[][] = [
     ['maxBattles', 240],
 ];
 
-const LEVELS_HEADER = ['levelIndex', 'avgClearSeconds', 'winRate', 'goldPerWin', 'expPerWin', 'chestChance', 'chestGroup'];
+const LEVELS_HEADER = ['levelIndex', 'avgClearSeconds', 'winRate', 'goldPerWin', 'expPerWin'];
 const LEVELS_ROWS: (string | number)[][] = [
-    [0, 45, 1, 8, 5, 1, 'early'],
-    [1, 55, 0.95, 12, 8, 0.85, 'early'],
-];
-
-const CHEST_WEIGHTS_HEADER = ['group', 'type', 'weight'];
-const CHEST_WEIGHTS_ROWS: (string | number)[][] = [
-    ['default', 'normal', 1],
-    ['default', 'boss', 0],
-    ['default', 'chapter', 0],
-    ['early', 'normal', 85],
-    ['early', 'boss', 15],
-    ['early', 'chapter', 0],
+    [0, 45, 1, 8, 5],
+    [1, 55, 0.95, 12, 8],
 ];
 
 const wb = XLSX.utils.book_new();
@@ -39,11 +29,10 @@ function addSheet(name: string, header: string[], rows: (string | number)[][]) {
 
 addSheet('Global', GLOBAL_HEADER, GLOBAL_ROWS);
 addSheet('Levels', LEVELS_HEADER, LEVELS_ROWS);
-addSheet('ChestWeights', CHEST_WEIGHTS_HEADER, CHEST_WEIGHTS_ROWS);
 
 mkdirSync(dirname(OUT), { recursive: true });
 const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 writeFileSync(OUT, buf);
 
 console.log(`✓ 已生成 ${OUT}`);
-console.log(`  sheets: Global(${GLOBAL_ROWS.length}) Levels(${LEVELS_ROWS.length}) ChestWeights(${CHEST_WEIGHTS_ROWS.length})`);
+console.log(`  sheets: Global(${GLOBAL_ROWS.length}) Levels(${LEVELS_ROWS.length})`);
