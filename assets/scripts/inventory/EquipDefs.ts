@@ -14,6 +14,7 @@ export interface EquipItem {
     name: string;      // 占位名
     quality: Quality;  // 品质
     stats?: EquipStats; // 属性加成；读老存档时会补齐
+    locked?: boolean;  // 锁定后不可出售；老存档缺字段按未锁处理
 }
 
 export const SLOTS: EquipSlot[] = ['weapon', 'helmet', 'chest', 'pants', 'shoes'];

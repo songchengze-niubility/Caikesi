@@ -2,16 +2,17 @@
 // 色块格子（品质上色）+ Label 名字。点击命中用热区 hit-test。接美术时换 Sprite。
 
 import { Node, Graphics, Label, UITransform, Color, Vec3, EventTouch } from 'cc';
-import { InventoryModel } from './InventoryModel';
-import type { OpResult } from './InventoryModel';
+import { InventoryModel, sellPriceOf } from './InventoryModel';
+import type { InventorySortMode, OpResult } from './InventoryModel';
 import {
     SLOTS, SLOT_LABEL, QUALITY_COLOR, QUALITY_LABEL, EquipSlot, EquipItem, CharacterId, CHARACTERS,
     CHARACTER_LABEL, formatEquipStats, formatStatValue, formatSignedStatValue, STAT_LABEL, STAT_ORDER,
-    EquipStats,
+    EquipStats, Quality,
 } from './EquipDefs';
 
 type Zone = 'backpack' | 'warehouse' | 'equipped';
-export type InventoryChangeKind = 'drop' | 'transfer' | 'equip' | 'unequip';
+export type InventoryChangeKind = 'drop' | 'transfer' | 'equip' | 'unequip' | 'lock' | 'sell' | 'batchSell' | 'sort';
+export interface InventoryChangePayload { gold?: number; sold?: number; }
 interface Hot { x: number; y: number; w: number; h: number; kind: string; zone?: Zone; id?: string; slot?: EquipSlot; char?: CharacterId; }
 type ListZone = 'backpack' | 'warehouse';
 interface ScrollArea { x: number; y: number; w: number; h: number; contentH: number; maxScroll: number; }
@@ -32,6 +33,8 @@ const CELL = 92, GAP = 8, COLS = 3;
 const ROW = CELL + GAP;
 const DRAG_THRESHOLD = 10;
 const PRESS_SCALE = 0.94;
+const BATCH_SELL_MAX_QUALITY: Quality = 'fine';
+const SORT_LABEL: Record<InventorySortMode, string> = { quality: '排品质', slot: '排部位', name: '排名称' };
 
 export class InventoryView {
     private root: Node;
@@ -44,6 +47,7 @@ export class InventoryView {
     private sel: { zone: Zone; id?: string; slot?: EquipSlot } | null = null;
     private pressed: Hot | null = null;
     private activeChar: CharacterId = CHARACTERS[0];   // 当前选中的角色（装备栏归它）
+    private sortMode: InventorySortMode = 'quality';
     private toast = '';
     private toastT = 0;
 
@@ -52,7 +56,7 @@ export class InventoryView {
         private halfW: number,
         private halfH: number,
         private model: InventoryModel,
-        private onChanged: (kind: InventoryChangeKind) => void,
+        private onChanged: (kind: InventoryChangeKind, payload?: InventoryChangePayload) => void,
         private onDrop?: () => OpResult,
     ) {
         this.root = new Node('InventoryView');
@@ -147,6 +151,7 @@ export class InventoryView {
                 lbl(ex + CELL / 2, topY + CELL / 2 + 12, it.name, 15);
                 const st = formatEquipStats(it.stats);
                 if (st) lbl(ex + CELL / 2, topY + CELL / 2 - 12, st, 12);
+                if (it.locked) lbl(ex + CELL - 16, topY + CELL - 16, '锁', 14, new Color(255, 235, 140));
             }
             this.hots.push(hot);
             ex += CELL + GAP;
@@ -166,17 +171,25 @@ export class InventoryView {
         this.drawGrid(g, lbl, 'warehouse', rightX, midTop, gridBottom, `仓库 ${this.model.warehouse.length}/${this.model.maxWarehouse}`, this.model.warehouse);
 
         const btn = (x: number, s: string, kind: string) => {
-            const hot = { x, y: by, w: 110, h: 44, kind } as Hot;
-            const r = this.pressRect(x, by, 110, 44, this.isPressed(hot));
+            const hot = { x, y: by, w: 90, h: 44, kind } as Hot;
+            const r = this.pressRect(x, by, 90, 44, this.isPressed(hot));
             g.fillColor = new Color(60, 66, 80); g.roundRect(r.x, r.y, r.w, r.h, 8); g.fill();
-            lbl(x + 55, by + 22, s, 18);
+            lbl(x + 45, by + 22, s, 16);
             this.hots.push(hot);
         };
-        btn(-this.halfW + 20, '掉落', 'drop');
-        btn(-this.halfW + 140, '转移', 'transfer');
-        btn(-this.halfW + 260, '穿', 'equip');
-        btn(-this.halfW + 380, '脱', 'unequip');
-        btn(this.halfW - 130, '关闭', 'close');
+        const selected = this.selectedItem();
+        const lockText = selected?.locked ? '解锁' : '锁定';
+        const xStart = -this.halfW + 20;
+        const step = 100;
+        btn(xStart + step * 0, '掉落', 'drop');
+        btn(xStart + step * 1, '转移', 'transfer');
+        btn(xStart + step * 2, '穿', 'equip');
+        btn(xStart + step * 3, '脱', 'unequip');
+        btn(xStart + step * 4, lockText, 'lock');
+        btn(xStart + step * 5, '出售', 'sell');
+        btn(xStart + step * 6, SORT_LABEL[this.sortMode], 'sort');
+        btn(xStart + step * 7, '批售白绿', 'batchSell');
+        btn(this.halfW - 110, '关闭', 'close');
 
         if (this.toast) lbl(0, by + 198, this.toast, 20, new Color(255, 120, 120));
         this.drawDragPreview(g, lbl);
@@ -216,6 +229,7 @@ export class InventoryView {
             lbl(x + CELL / 2, y + CELL / 2 + 12, it.name, 15);
             const st = formatEquipStats(it.stats);
             if (st) lbl(x + CELL / 2, y + CELL / 2 - 12, st, 12);
+            if (it.locked) lbl(x + CELL - 16, y + CELL - 16, '锁', 14, new Color(255, 235, 140));
             this.hots.push(hot);
         }
 
@@ -323,7 +337,8 @@ export class InventoryView {
         const qColor = QUALITY_COLOR[item.quality];
         const titleColor = new Color(qColor[0], qColor[1], qColor[2]);
         lbl(x + 80, y + h - 28, `${QUALITY_LABEL[item.quality]} · ${item.name}`, 20, titleColor);
-        lbl(x + 82, y + h - 54, `${SLOT_LABEL[item.slot]}  ${this.sel?.zone === 'equipped' ? '已穿戴' : `给${CHARACTER_LABEL[this.activeChar]}对比`}`, 15, new Color(190, 198, 214));
+        lbl(x + 82, y + h - 54, `${SLOT_LABEL[item.slot]}  ${this.sel?.zone === 'equipped' ? '已穿戴' : `给${CHARACTER_LABEL[this.activeChar]}对比`}${item.locked ? '  已锁' : ''}`, 15, new Color(190, 198, 214));
+        lbl(x + w - 90, y + h - 30, `售价 ${sellPriceOf(item)}`, 15, new Color(255, 220, 150));
 
         const current = this.sel?.zone === 'equipped' ? null : this.model.equipped[this.activeChar][item.slot];
         const delta = current ? this.statsDelta(item.stats, current.stats) : {};
@@ -530,10 +545,30 @@ export class InventoryView {
 
     private handleButton(kind: string) {
         const m = this.model;
-        let r = { ok: true, reason: '' } as { ok: boolean; reason?: string };
+        let r = { ok: true, reason: '' } as { ok: boolean; reason?: string; gold?: number; sold?: EquipItem[]; item?: EquipItem };
+        const selected = this.selectedItem();
         switch (kind) {
             case 'close': this.toggle(); return;
             case 'drop': r = this.onDrop ? this.onDrop() : m.dropRandom(); break;
+            case 'lock':
+                if (!selected) { this.setToast('先选要锁定的装备'); this.render(); return; }
+                r = m.toggleLocked(selected.id);
+                break;
+            case 'sell':
+                if (!selected) { this.setToast('先选要出售的装备'); this.render(); return; }
+                r = m.sellItem(selected.id);
+                break;
+            case 'sort': {
+                const zone = this.sel?.zone === 'warehouse' ? 'warehouse' : 'backpack';
+                const mode = this.sortMode;
+                r = m.sortZone(mode, zone);
+                this.sortMode = mode === 'quality' ? 'slot' : (mode === 'slot' ? 'name' : 'quality');
+                this.setToast(`${zone === 'warehouse' ? '仓库' : '背包'}已按${SORT_LABEL[mode].slice(1)}排序`);
+                break;
+            }
+            case 'batchSell':
+                r = m.sellBatch(BATCH_SELL_MAX_QUALITY);
+                break;
             case 'transfer':
                 if (!this.sel || !this.sel.id) { this.setToast('先选背包或仓库里的装备'); this.render(); return; }
                 r = this.sel.zone === 'backpack' ? m.toWarehouse(this.sel.id) : m.toBackpack(this.sel.id);
@@ -546,7 +581,13 @@ export class InventoryView {
                 r = m.unequip(this.activeChar, this.sel.slot); break;
         }
         if (!r.ok) { this.setToast(r.reason || '操作失败'); }
-        else { this.sel = null; this.onChanged(kind as InventoryChangeKind); }
+        else {
+            if (kind === 'sell') this.setToast(`出售获得 ${r.gold ?? 0} 金币`);
+            if (kind === 'batchSell') this.setToast(`出售 ${r.sold?.length ?? 0} 件，获得 ${r.gold ?? 0} 金币`);
+            if (kind === 'lock') this.setToast(r.item?.locked ? '已锁定' : '已解锁');
+            if (kind !== 'lock' && kind !== 'sort') this.sel = null;
+            this.onChanged(kind as InventoryChangeKind, { gold: r.gold, sold: r.sold?.length });
+        }
         this.render();
     }
 }

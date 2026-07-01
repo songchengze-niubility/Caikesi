@@ -1,12 +1,17 @@
 // 装备存储系统单测（纯逻辑，tsx 运行）。assets 下的 Model/Defs 不依赖 cc，故可直接 import。
 import * as assert from 'node:assert/strict';
 import { randomItem, SLOTS, QUALITIES, makeId, CHARACTERS, createEquipItem } from '../assets/scripts/inventory/EquipDefs';
-import { InventoryModel } from '../assets/scripts/inventory/InventoryModel';
+import type { EquipItem, EquipSlot, Quality } from '../assets/scripts/inventory/EquipDefs';
+import { InventoryModel, sellPriceOf } from '../assets/scripts/inventory/InventoryModel';
 
 let pass = 0, fail = 0;
 function test(name: string, fn: () => void) {
     try { fn(); pass++; console.log('  ✓ ' + name); }
     catch (e) { fail++; console.error('  ✗ ' + name + ' — ' + (e as Error).message); }
+}
+
+function fixedItem(id: string, quality: Quality, slot: EquipSlot = 'weapon', name = id, locked?: boolean): EquipItem {
+    return { id, slot, name, quality, stats: { atk: 1 }, locked };
 }
 
 test('randomItem 产出合法 slot/quality/name', () => {
@@ -198,6 +203,100 @@ test('serialize/deserialize 往返一致 + 深拷贝', () => {
         m2.equipped.dps[equippedSlot]!.stats!.hp = 999;
         assert.notEqual(m2.equipped.dps[equippedSlot]!.stats!.hp, save.equipped.dps[equippedSlot]!.stats!.hp);
     }
+});
+
+test('锁定状态可持久化；老存档缺 locked 按未锁处理', () => {
+    const m = new InventoryModel(5, 5);
+    m.backpack.push(fixedItem('locked-bag', 'rare', 'weapon', '锁剑', true));
+    m.equipped.dps.helmet = fixedItem('locked-eq', 'fine', 'helmet', '锁盔', true);
+
+    const save = m.serialize();
+    const m2 = new InventoryModel(5, 5);
+    m2.deserialize(save);
+    assert.equal(m2.backpack[0].locked, true);
+    assert.equal(m2.equipped.dps.helmet?.locked, true);
+
+    m2.deserialize({ backpack: [{ id: 'old', slot: 'weapon', name: '旧剑', quality: 'common' }] as any });
+    assert.equal(m2.backpack[0].locked, undefined);
+    assert.equal(m2.sellItem('old').ok, true);
+});
+
+test('toggleLocked/setLocked 支持背包、仓库和已穿装备', () => {
+    const m = new InventoryModel(5, 5);
+    m.backpack.push(fixedItem('bag', 'common'));
+    m.warehouse.push(fixedItem('wh', 'fine', 'helmet'));
+    m.equipped.tank.chest = fixedItem('eq', 'rare', 'chest');
+
+    assert.equal(m.toggleLocked('bag').ok, true);
+    assert.equal(m.backpack[0].locked, true);
+    assert.equal(m.setLocked('wh', true).ok, true);
+    assert.equal(m.warehouse[0].locked, true);
+    assert.equal(m.toggleLocked('eq').ok, true);
+    assert.equal(m.equipped.tank.chest?.locked, true);
+    assert.equal(m.toggleLocked('不存在').ok, false);
+});
+
+test('sellItem：出售背包/仓库装备给金币，锁定和已穿装备不可卖', () => {
+    const m = new InventoryModel(5, 5);
+    const bag = fixedItem('bag', 'common');
+    const wh = fixedItem('wh', 'fine', 'helmet');
+    const locked = fixedItem('lock', 'rare', 'chest', '锁甲', true);
+    const equipped = fixedItem('eq', 'epic', 'pants');
+    m.backpack.push(bag, locked);
+    m.warehouse.push(wh);
+    m.equipped.dps.pants = equipped;
+
+    const rb = m.sellItem('bag');
+    assert.equal(rb.ok, true);
+    assert.equal(rb.gold, sellPriceOf(bag));
+    assert.deepEqual(m.backpack.map(i => i.id), ['lock']);
+
+    const rw = m.sellItem('wh');
+    assert.equal(rw.ok, true);
+    assert.equal(rw.gold, sellPriceOf(wh));
+    assert.equal(m.warehouse.length, 0);
+
+    assert.equal(m.sellItem('lock').ok, false);
+    assert.equal(m.sellItem('lock').reason, '锁定装备不能出售');
+    assert.equal(m.sellItem('eq').ok, false);
+    assert.equal(m.sellItem('eq').reason, '已穿装备不能出售');
+});
+
+test('sellBatch：批量出售白绿，跳过锁定并不碰已穿装备', () => {
+    const m = new InventoryModel(10, 10);
+    const a = fixedItem('bag-common', 'common');
+    const b = fixedItem('bag-fine', 'fine', 'helmet');
+    const c = fixedItem('bag-rare', 'rare', 'chest');
+    const d = fixedItem('bag-locked', 'common', 'shoes', '锁鞋', true);
+    const e = fixedItem('wh-fine', 'fine', 'pants');
+    const f = fixedItem('wh-epic', 'epic', 'weapon');
+    m.backpack.push(a, b, c, d);
+    m.warehouse.push(e, f);
+    m.equipped.tank.weapon = fixedItem('eq-common', 'common');
+
+    const r = m.sellBatch('fine');
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.sold!.map(i => i.id).sort(), ['bag-common', 'bag-fine', 'wh-fine']);
+    assert.equal(r.gold, sellPriceOf(a) + sellPriceOf(b) + sellPriceOf(e));
+    assert.deepEqual(m.backpack.map(i => i.id), ['bag-rare', 'bag-locked']);
+    assert.deepEqual(m.warehouse.map(i => i.id), ['wh-epic']);
+    assert.equal(m.equipped.tank.weapon?.id, 'eq-common');
+});
+
+test('sortZone：可按品质、部位、名称整理指定区域', () => {
+    const m = new InventoryModel(10, 10);
+    m.backpack.push(
+        fixedItem('fine-shoes', 'fine', 'shoes', 'C'),
+        fixedItem('legend-weapon', 'legend', 'weapon', 'B'),
+        fixedItem('common-helmet', 'common', 'helmet', 'A'),
+    );
+
+    assert.equal(m.sortZone('quality', 'backpack').ok, true);
+    assert.deepEqual(m.backpack.map(i => i.id), ['legend-weapon', 'fine-shoes', 'common-helmet']);
+    assert.equal(m.sortZone('slot', 'backpack').ok, true);
+    assert.deepEqual(m.backpack.map(i => i.id), ['legend-weapon', 'common-helmet', 'fine-shoes']);
+    assert.equal(m.sortZone('name', 'backpack').ok, true);
+    assert.deepEqual(m.backpack.map(i => i.id), ['common-helmet', 'legend-weapon', 'fine-shoes']);
 });
 
 test('deserialize：undefined / 缺字段 → 空兜底', () => {

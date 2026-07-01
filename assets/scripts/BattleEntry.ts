@@ -15,6 +15,7 @@ import { FrameAnimPlayer } from './art/FrameAnim';
 import { InventoryModel } from './inventory/InventoryModel';
 import type { OpResult } from './inventory/InventoryModel';
 import { InventoryView } from './inventory/InventoryView';
+import type { InventoryChangeKind, InventoryChangePayload } from './inventory/InventoryView';
 import { loadInventory, saveInventory } from './inventory/InventoryPersistence';
 import { buildEffectiveStatsMap } from './combat/EffectiveStats';
 import { generateStageReward } from './loot/LootService';
@@ -319,11 +320,8 @@ export class BattleEntry extends Component {
         this._inv = new InventoryModel();
         this._chests = new ChestInventoryModel();
         this._progress = new ProgressModel(BattleConfig.levels.length, BattleConfig.startLevel);
-        this._invView = new InventoryView(this.node, this._halfW, this._halfH, this._inv, (kind) => {
-            void saveInventory(this._inv);   // 任何成功操作后存盘
-            if (this._gameStarted && (kind === 'equip' || kind === 'unequip') && !this._settlementOpen()) {
-                this._startBattle(); // 穿脱后立即刷新战斗属性；结算页打开时先不打断结算
-            }
+        this._invView = new InventoryView(this.node, this._halfW, this._halfH, this._inv, (kind, payload) => {
+            void this._handleInventoryChanged(kind, payload);
         }, () => this._configuredDebugDrop());
         const dataReady = loadInventory(this._inv).then(() => loadProgress(this._progress)).then(() => this._claimOfflineRewards()).then(() => loadChests(this._chests)).then(() => {
             this._invView.refresh();
@@ -376,6 +374,17 @@ export class BattleEntry extends Component {
         this._lastComplete = null;
         this._statusLabel.string = '';
         this._rewardLabel.string = '';
+    }
+
+    private async _handleInventoryChanged(kind: InventoryChangeKind, payload?: InventoryChangePayload): Promise<void> {
+        const data = await loadPlayerData();
+        if (payload?.gold && payload.gold > 0) data.gold = (data.gold ?? 0) + payload.gold;
+        data.inventory = this._inv.serialize();
+        await savePlayerData();
+
+        if (this._gameStarted && (kind === 'equip' || kind === 'unequip') && !this._settlementOpen()) {
+            this._startBattle(); // 穿脱后立即刷新战斗属性；结算页打开时先不打断结算
+        }
     }
 
     private async _loadBattleArt(bgSprite: Sprite, bgSpriteNode: Node): Promise<void> {
