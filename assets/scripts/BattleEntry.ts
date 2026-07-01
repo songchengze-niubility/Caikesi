@@ -17,7 +17,8 @@ import type { OpResult } from './inventory/InventoryModel';
 import { InventoryView } from './inventory/InventoryView';
 import { loadInventory, saveInventory } from './inventory/InventoryPersistence';
 import { buildEffectiveStatsMap } from './combat/EffectiveStats';
-import { rollDropItems } from './config/DropConfig';
+import { generateStageReward } from './loot/LootService';
+import { claimOfflineReward } from './offline/OfflineCombatService';
 import { ProgressModel } from './progression/ProgressModel';
 import type { CompleteLevelResult } from './progression/ProgressModel';
 import { loadProgress, saveProgress } from './progression/ProgressPersistence';
@@ -186,6 +187,8 @@ export class BattleEntry extends Component {
     private _pressedSettleKind: SettleHot['kind'] | null = null;
     private _settleRewards: RewardEntry[] = [];
     private _settleFailed = 0;
+    private _offlineNoticeText = '';
+    private _offlineNoticeTtl = 0;
     private _actionPreviewRoot: Node | null = null;
     private _actionPreviewGfx: Graphics | null = null;
     private _actionPreviewNode: Node | null = null;
@@ -306,7 +309,7 @@ export class BattleEntry extends Component {
                 this._startBattle(); // 穿脱后立即刷新战斗属性；结算页打开时先不打断结算
             }
         }, () => this._configuredDebugDrop());
-        const dataReady = loadInventory(this._inv).then(() => loadProgress(this._progress)).then(() => {
+        const dataReady = loadInventory(this._inv).then(() => loadProgress(this._progress)).then(() => this._claimOfflineRewards()).then(() => {
             this._invView.refresh();
         }).catch(() => {
             // 读档失败时仍允许进游戏，掉落会从空背包开始存。
@@ -574,7 +577,7 @@ export class BattleEntry extends Component {
         this._drawBootPanel();
         this._setBootLabelsActive(true);
         this._placeBootLabel(this._bootTitle, 'Caikesi', 0, 108, 520, 84, 50, new Color(58, 48, 36));
-        this._placeBootLabel(this._bootHint, '资源已就绪', 0, 36, 520, 48, 24, new Color(83, 74, 62));
+        this._placeBootLabel(this._bootHint, this._offlineNoticeText || '资源已就绪', 0, 36, 600, 48, 24, new Color(83, 74, 62));
 
         const buttonW = 260;
         const buttonH = 64;
@@ -1075,6 +1078,7 @@ export class BattleEntry extends Component {
         this._actionPreviewAnim?.update(Math.min(dt, 0.05));
         if (!this._mgr) return;
         this._bg.update(dt);   // 背景（云飘动）
+        if (this._offlineNoticeTtl > 0) this._offlineNoticeTtl = Math.max(0, this._offlineNoticeTtl - dt);
         // dt 兜底，防止切后台回来一帧巨大导致瞬移
         const phaseBefore = this._mgr.phase;
         this._mgr.tick(Math.min(dt, 0.05));
@@ -1258,12 +1262,12 @@ export class BattleEntry extends Component {
             this._rewardLabel.string = '';
         } else {
             this._statusLabel.string = '';
-            this._rewardLabel.string = '';
+            this._rewardLabel.string = this._offlineNoticeTtl > 0 ? this._offlineNoticeText : '';
         }
     }
 
     private _awardVictoryDrop() {
-        const result = this._grantDropItems(this._mgr.level.dropGroup);
+        const result = this._grantDropItems(this._mgr.levelIndex);
         const complete = this._progress.completeLevel(this._mgr.levelIndex);
         void saveProgress(this._progress);
 
@@ -1277,20 +1281,24 @@ export class BattleEntry extends Component {
         this._showSettlement(result.received, result.failed, complete);
     }
 
-    private _currentDropGroup(): string {
-        if (this._mgr) return this._mgr.level.dropGroup;
-        const levelIndex = this._progress ? this._progress.currentLevel : BattleConfig.startLevel;
-        return BattleConfig.levels[levelIndex]?.dropGroup ?? BattleConfig.levels[BattleConfig.startLevel].dropGroup;
+    private _currentLevelIndex(): number {
+        if (this._mgr) return this._mgr.levelIndex;
+        return this._progress ? this._progress.currentLevel : BattleConfig.startLevel;
     }
 
     private _configuredDebugDrop(): OpResult {
-        const result = this._grantDropItems(this._currentDropGroup());
+        const result = this._grantDropItems(this._currentLevelIndex());
         if (result.received.length > 0) return { ok: true, item: result.received[0].item };
         return { ok: false, reason: '背包/仓库已满' };
     }
 
-    private _grantDropItems(dropGroup: string): { received: RewardEntry[]; failed: number } {
-        const drops = rollDropItems(dropGroup);
+    private _grantDropItems(levelIndex: number): { received: RewardEntry[]; failed: number } {
+        const reward = generateStageReward({
+            levelIndex,
+            source: 'StageClear',
+            seed: `stage-clear|${levelIndex}|${Date.now()}|${Math.random()}`,
+        });
+        const drops = reward.equipments;
         const received: RewardEntry[] = [];
         let failed = 0;
 
@@ -1321,6 +1329,14 @@ export class BattleEntry extends Component {
 
     private _formatEquipReward(item: EquipItem): string {
         return `${QUALITY_LABEL[item.quality]}·${item.name}`;
+    }
+
+    private async _claimOfflineRewards(): Promise<void> {
+        const result = await claimOfflineReward({ levelIndex: this._progress.currentLevel });
+        const hasReward = result.gold > 0 || result.exp > 0 || result.chests.length > 0;
+        if (!hasReward || result.seconds <= 0) return;
+        this._offlineNoticeText = `离线收益：+${result.gold} 金币 +${result.exp} 经验 +${result.chests.length} 宝箱`;
+        this._offlineNoticeTtl = 10;
     }
 
     private _ensureActionPreviewRoot() {

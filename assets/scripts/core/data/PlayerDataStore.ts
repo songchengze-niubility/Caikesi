@@ -10,8 +10,9 @@ export async function loadPlayerData(): Promise<PlayerData> {
     return _cache;
 }
 
-export async function savePlayerData(): Promise<void> {
+export async function savePlayerData(touchLastSaveTime = true): Promise<void> {
     if (!_cache) _cache = await DataService.load();
+    if (touchLastSaveTime) _cache.lastSaveTime = Date.now();
     await DataService.save(_cache);
 }
 

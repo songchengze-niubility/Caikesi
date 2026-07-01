@@ -2,10 +2,11 @@
 // 一张「源清单」(SOURCES) 描述：哪个 xlsx → 哪个 parser → 生成哪个产物。
 // `npm run config` 会遍历所有源依次导出，每源独立校验、独立产物。
 //
-// 目前包含 battle/equip/drop 三个模块：
+// 目前包含 battle/equip/drop/offline 四个模块：
 // - tools/config-xlsx/battle.xlsx → battle.config.generated.ts
 // - tools/config-xlsx/equip.xlsx  → equip.config.generated.ts
 // - tools/config-xlsx/drop.xlsx   → drop.config.generated.ts
+// - tools/config-xlsx/offline.xlsx → offline.config.generated.ts
 // 【加新模块（如掉装备）】：① 写一个 buildXxxConfig(wb) 解析函数；
 //   ② 在 SOURCES 末尾加一行 {name,xlsxRel,outRel,exportVar,build}。主流程不用改。
 //
@@ -471,6 +472,101 @@ function buildDropConfig(wb: XLSX.WorkBook): { config: unknown; summary: string 
     return { config, summary };
 }
 
+// ============ offline 模块解析器 ============
+// 读 offline.xlsx 的 3 sheet → 离线快速战斗配置。
+// Global: key, value
+// Levels: levelIndex, avgClearSeconds, winRate, goldPerWin, expPerWin, chestChance, chestGroup
+// ChestWeights: group, type, weight
+function buildOfflineConfig(wb: XLSX.WorkBook): { config: unknown; summary: string } {
+    const VALID_CHESTS = ['normal', 'boss', 'chapter'];
+    const validChestSet = new Set(VALID_CHESTS);
+
+    const { rows: globalRows } = sheetToRows(wb, 'Global');
+    const global: Record<string, number> = {};
+    const globalKeys = new Set<string>();
+    for (const r of globalRows) {
+        const key = reqStr(r['key'], 'Global.key');
+        if (globalKeys.has(key)) err(`Global: key "${key}" 重复定义`);
+        globalKeys.add(key);
+        global[key] = reqNum(r['value'], `Global[${key}].value`);
+    }
+    const GLOBAL_REQUIRED = ['maxHours', 'efficiency', 'maxBattles'];
+    for (const k of GLOBAL_REQUIRED) if (!globalKeys.has(k)) err(`Global: 缺少必填 key "${k}"`);
+    if ((global.maxHours ?? 0) < 0) err(`Global.maxHours = ${global.maxHours} 不可为负`);
+    if ((global.efficiency ?? 0) < 0) err(`Global.efficiency = ${global.efficiency} 不可为负`);
+    if ((global.efficiency ?? 0) > 1) warn(`Global.efficiency = ${global.efficiency} 大于 1（离线效率通常 ≤ 1）`);
+    if ((global.maxBattles ?? 0) < 0) err(`Global.maxBattles = ${global.maxBattles} 不可为负`);
+
+    const { rows: levelRows } = sheetToRows(wb, 'Levels');
+    const levelMap = new Map<number, unknown>();
+    for (const r of levelRows) {
+        const levelIndex = reqNum(r['levelIndex'], 'Levels.levelIndex');
+        if (levelMap.has(levelIndex)) err(`Levels: levelIndex "${levelIndex}" 重复定义`);
+        const avgClearSeconds = reqNum(r['avgClearSeconds'], `Levels[${levelIndex}].avgClearSeconds`);
+        const winRate = reqNum(r['winRate'], `Levels[${levelIndex}].winRate`);
+        const goldPerWin = reqNum(r['goldPerWin'], `Levels[${levelIndex}].goldPerWin`);
+        const expPerWin = reqNum(r['expPerWin'], `Levels[${levelIndex}].expPerWin`);
+        const chestChance = reqNum(r['chestChance'], `Levels[${levelIndex}].chestChance`);
+        if (avgClearSeconds <= 0) err(`Levels[${levelIndex}].avgClearSeconds 必须 > 0`);
+        if (winRate < 0 || winRate > 1) warn(`Levels[${levelIndex}].winRate = ${winRate} 超出 [0,1]`);
+        if (chestChance < 0 || chestChance > 1) warn(`Levels[${levelIndex}].chestChance = ${chestChance} 超出 [0,1]`);
+        if (goldPerWin < 0) warn(`Levels[${levelIndex}].goldPerWin = ${goldPerWin} 为负`);
+        if (expPerWin < 0) warn(`Levels[${levelIndex}].expPerWin = ${expPerWin} 为负`);
+        levelMap.set(levelIndex, {
+            avgClearSeconds,
+            winRate,
+            goldPerWin,
+            expPerWin,
+            chestChance,
+            chestGroup: reqStr(r['chestGroup'], `Levels[${levelIndex}].chestGroup`),
+        });
+    }
+    if (levelMap.size === 0) err('Levels: 至少需要 1 行离线关卡配置');
+    const sortedLevels = [...levelMap.keys()].sort((a, b) => a - b);
+    sortedLevels.forEach((li, idx) => {
+        if (li !== idx) err(`Levels: levelIndex 必须从 0 连续递增（期望 ${idx}，得到 ${li}）`);
+    });
+    const levels = sortedLevels.map(li => levelMap.get(li));
+
+    const { rows: chestRows } = sheetToRows(wb, 'ChestWeights');
+    const chestWeights: Record<string, Record<string, number>> = {};
+    const seen = new Set<string>();
+    for (const r of chestRows) {
+        const group = reqStr(r['group'], 'ChestWeights.group');
+        const type = reqStr(r['type'], `ChestWeights[${group}].type`);
+        const key = `${group}.${type}`;
+        if (!validChestSet.has(type)) err(`ChestWeights[${group}]: type "${type}" 非法`);
+        if (seen.has(key)) err(`ChestWeights: ${key} 重复定义`);
+        seen.add(key);
+        const weight = reqNum(r['weight'], `ChestWeights[${key}].weight`);
+        if (weight < 0) err(`ChestWeights[${key}].weight 不可为负`);
+        if (!chestWeights[group]) chestWeights[group] = {};
+        chestWeights[group][type] = weight;
+    }
+    for (const cfg of levels as { chestGroup: string }[]) {
+        const weights = chestWeights[cfg.chestGroup];
+        if (!weights) {
+            err(`ChestWeights: 缺少权重组 "${cfg.chestGroup}"`);
+            continue;
+        }
+        let total = 0;
+        for (const type of VALID_CHESTS) total += Math.max(0, weights[type] ?? 0);
+        if (total <= 0) err(`ChestWeights[${cfg.chestGroup}]: 权重总和必须 > 0`);
+    }
+
+    const config = {
+        global: {
+            maxHours: global.maxHours ?? 8,
+            efficiency: global.efficiency ?? 0.7,
+            maxBattles: global.maxBattles ?? 240,
+        },
+        levels,
+        chestWeights,
+    };
+    const summary = `levels=${levels.length} chestWeightGroups=${Object.keys(chestWeights).length} maxHours=${config.global.maxHours}`;
+    return { config, summary };
+}
+
 // ============ 源清单（加模块就在这里加一行）============
 interface ConfigSource {
     name: string;        // 模块名（日志/报错用）
@@ -500,6 +596,13 @@ const SOURCES: ConfigSource[] = [
         outRel: '../assets/scripts/config/drop.config.generated.ts',
         exportVar: 'generatedDropConfig',
         build: buildDropConfig,
+    },
+    {
+        name: 'offline',
+        xlsxRel: 'config-xlsx/offline.xlsx',
+        outRel: '../assets/scripts/config/offline.config.generated.ts',
+        exportVar: 'generatedOfflineConfig',
+        build: buildOfflineConfig,
     },
 ];
 

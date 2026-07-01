@@ -8,18 +8,21 @@
 import { sys } from 'cc';
 import type { InventorySave } from '../../inventory/InventoryModel';
 import type { ProgressSave } from '../../progression/ProgressModel';
+import type { ChestSave } from '../../chest/ChestModel';
 
 // 玩家存档的数据结构（数据模型）。以后加背包、关卡进度等就往这里加字段。
 export interface PlayerData {
     gold: number;          // 金币
+    exp: number;           // 经验
     power: number;         // 战力
     lastSaveTime: number;  // 上次存档的时间戳（毫秒）——离线收益靠它计算
     inventory?: InventorySave;  // 装备存储（背包/仓库/装备栏）；老存档缺它，由默认值兜底
     progress?: ProgressSave;    // 关卡进度（当前关/最高解锁）；老存档缺它，由默认值兜底
+    chests?: ChestSave;         // 宝箱库存；离线战斗先产宝箱，后续开箱再给装备
 }
 
 function defaultData(): PlayerData {
-    return { gold: 0, power: 0, lastSaveTime: Date.now() };
+    return { gold: 0, exp: 0, power: 0, lastSaveTime: Date.now() };
 }
 
 // 数据源接口：本地和远程都要实现这两个方法
