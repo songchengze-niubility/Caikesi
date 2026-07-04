@@ -1553,7 +1553,7 @@ export class BattleEntry extends Component {
             g.strokeColor = new Color(255, 255, 255, 90);
             g.lineWidth = 1;
             g.roundRect(cx, cy, cardW, 46, 6); g.stroke();
-            lbl(cx + cardW / 2, cy + 28, `${QUALITY_LABEL[r.item.quality]} · ${r.item.name}`, 14, new Color(245, 248, 255));
+            lbl(cx + cardW / 2, cy + 28, `Lv.${r.item.level ?? 1} ${QUALITY_LABEL[r.item.quality]} · ${r.item.name}`, 14, new Color(245, 248, 255));
             lbl(cx + cardW / 2, cy + 12, `${SLOT_LABEL[r.item.slot]} → ${r.target}`, 12, new Color(245, 248, 255));
         }
         if (result.received.length > items.length) lbl(x + w / 2, y + 18, `另有 ${result.received.length - items.length} 件装备已入库`, 14, new Color(190, 198, 214));
@@ -2193,7 +2193,7 @@ export class BattleEntry extends Component {
     }
 
     private _formatEquipReward(item: EquipItem): string {
-        return `${QUALITY_LABEL[item.quality]}·${item.name}`;
+        return `Lv.${item.level ?? 1} ${QUALITY_LABEL[item.quality]}·${item.name}`;
     }
 
     private _formatMaterials(materials: MaterialItem[], maxParts = 3): string {

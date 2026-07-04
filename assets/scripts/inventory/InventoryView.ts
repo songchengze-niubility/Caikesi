@@ -148,7 +148,7 @@ export class InventoryView {
             this.drawCell(g, ex, topY, it, this.sel?.zone === 'equipped' && this.sel.slot === slot, this.isPressed(hot));
             lbl(ex + CELL / 2, topY + CELL + 2, SLOT_LABEL[slot], 14, new Color(170, 170, 180));
             if (it) {
-                lbl(ex + CELL / 2, topY + CELL / 2 + 12, it.name, 15);
+                lbl(ex + CELL / 2, topY + CELL / 2 + 12, `Lv.${it.level ?? 1} ${it.name}`, 15);
                 const st = formatEquipStats(it.stats);
                 if (st) lbl(ex + CELL / 2, topY + CELL / 2 - 12, st, 12);
                 if (it.locked) lbl(ex + CELL - 16, topY + CELL - 16, '锁', 14, new Color(255, 235, 140));
@@ -226,7 +226,7 @@ export class InventoryView {
             const it = list[i];
             const hot = { x, y, w: CELL, h: CELL, kind: 'cell', zone, id: it.id } as Hot;
             this.drawCell(g, x, y, it, this.sel?.zone === zone && this.sel.id === it.id, this.isPressed(hot));
-            lbl(x + CELL / 2, y + CELL / 2 + 12, it.name, 15);
+            lbl(x + CELL / 2, y + CELL / 2 + 12, `Lv.${it.level ?? 1} ${it.name}`, 15);
             const st = formatEquipStats(it.stats);
             if (st) lbl(x + CELL / 2, y + CELL / 2 - 12, st, 12);
             if (it.locked) lbl(x + CELL - 16, y + CELL - 16, '锁', 14, new Color(255, 235, 140));
@@ -291,7 +291,7 @@ export class InventoryView {
         if (!d) return;
         const x = d.x - CELL / 2, y = d.y - CELL / 2;
         this.drawCell(g, x, y, d.item, true);
-        lbl(d.x, d.y + 10, d.item.name, 15);
+        lbl(d.x, d.y + 10, `Lv.${d.item.level ?? 1} ${d.item.name}`, 15);
         const st = formatEquipStats(d.item.stats);
         if (st) lbl(d.x, d.y - 14, st, 12);
     }
@@ -336,7 +336,7 @@ export class InventoryView {
 
         const qColor = QUALITY_COLOR[item.quality];
         const titleColor = new Color(qColor[0], qColor[1], qColor[2]);
-        lbl(x + 80, y + h - 28, `${QUALITY_LABEL[item.quality]} · ${item.name}`, 20, titleColor);
+        lbl(x + 80, y + h - 28, `Lv.${item.level ?? 1} ${QUALITY_LABEL[item.quality]} · ${item.name}`, 20, titleColor);
         lbl(x + 82, y + h - 54, `${SLOT_LABEL[item.slot]}  ${this.sel?.zone === 'equipped' ? '已穿戴' : `给${CHARACTER_LABEL[this.activeChar]}对比`}${item.locked ? '  已锁' : ''}`, 15, new Color(190, 198, 214));
         lbl(x + w - 90, y + h - 30, `售价 ${sellPriceOf(item)}`, 15, new Color(255, 220, 150));
 
