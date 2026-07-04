@@ -19,14 +19,15 @@ const QUALITIES_ROWS: (string | number)[][] = [
 // value 是该部位的基础加成；实际掉落 = value × 品质倍率 × 随机 roll。
 const SLOT_BONUSES_HEADER = ['slot', 'stat', 'value'];
 const SLOT_BONUSES_ROWS: (string | number)[][] = [
-    ['weapon', 'atk', 12],
+    // hp/atk 平铺值 2026-07-04 随 dps 基础面板 ×5（battle.xlsx Stats），保持装备相对价值；百分比类词条不动
+    ['weapon', 'atk', 60],
     ['weapon', 'critRate', 0.02],
-    ['helmet', 'hp', 40],
+    ['helmet', 'hp', 200],
     ['helmet', 'def', 2],
-    ['chest', 'hp', 60],
+    ['chest', 'hp', 300],
     ['chest', 'def', 4],
     ['chest', 'dmgReduce', 0.02],
-    ['pants', 'hp', 45],
+    ['pants', 'hp', 225],
     ['pants', 'dodgeRate', 0.015],
     ['shoes', 'range', 20],
     ['shoes', 'attackSpeed', 0.08],
@@ -35,8 +36,8 @@ const SLOT_BONUSES_ROWS: (string | number)[][] = [
 // 高品质装备额外抽取的词条池；实际加成同样吃品质倍率和随机 roll。
 const AFFIXES_HEADER = ['stat', 'value'];
 const AFFIXES_ROWS: (string | number)[][] = [
-    ['hp', 28],
-    ['atk', 5],
+    ['hp', 140],
+    ['atk', 25],
     ['def', 1.5],
     ['range', 10],
     ['attackSpeed', 0.03],

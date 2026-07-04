@@ -31,7 +31,7 @@ function baseStats(): CombatStats {
 
 test('calcEquipItemStats：按部位基础值 × 品质倍率生成属性', () => {
     const st = calcEquipItemStats('weapon', 'rare', () => 0.5);
-    assert.equal(st.atk, 22);          // 12 × 1.8 = 21.6 → 四舍五入
+    assert.equal(st.atk, 108);         // 60 × 1.8 = 108
     assert.equal(st.critRate, 0.036);  // 概率保留小数
 });
 
@@ -48,8 +48,8 @@ test('calcEquipItemStats：等级系数与品质倍率独立叠乘，不传 leve
     const lvl1 = calcEquipItemStats('weapon', 'common', () => 0.5, 1);
     const lvl30 = calcEquipItemStats('weapon', 'common', () => 0.5, 30);
     assert.equal(noLevelArg.atk, lvl1.atk, '不传 level 应等价于 1 级');
-    assert.equal(lvl1.atk, 12);   // 12(基础) × 1.0(普通品质) × 1.0(1级系数) × 1.0(roll中值)
-    assert.equal(lvl30.atk, 22);  // 12 × 1.0 × 1.87(1+29×0.03) × 1.0 = 22.44 → 四舍五入
+    assert.equal(lvl1.atk, 60);   // 60(基础) × 1.0(普通品质) × 1.0(1级系数) × 1.0(roll中值)
+    assert.equal(lvl30.atk, 112); // 60 × 1.0 × 1.87(1+29×0.03) × 1.0 = 112.2 → 四舍五入
     assert.ok(lvl30.atk > lvl1.atk, '等级系数应让高等级装备属性更高');
 });
 

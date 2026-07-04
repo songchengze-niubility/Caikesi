@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/equip.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/equip.xlsx
-// 生成时间：2026-07-04T14:14:54.116Z
+// 生成时间：2026-07-04T14:33:27.976Z
 
 /* eslint-disable */
 // @ts-nocheck
@@ -45,20 +45,20 @@ export const generatedEquipConfig = {
     },
     "slotBonuses": {
         "weapon": {
-            "atk": 12,
+            "atk": 60,
             "critRate": 0.02
         },
         "helmet": {
-            "hp": 40,
+            "hp": 200,
             "def": 2
         },
         "chest": {
-            "hp": 60,
+            "hp": 300,
             "def": 4,
             "dmgReduce": 0.02
         },
         "pants": {
-            "hp": 45,
+            "hp": 225,
             "dodgeRate": 0.015
         },
         "shoes": {
@@ -69,11 +69,11 @@ export const generatedEquipConfig = {
     "affixes": [
         {
             "stat": "hp",
-            "value": 28
+            "value": 140
         },
         {
             "stat": "atk",
-            "value": 5
+            "value": 25
         },
         {
             "stat": "def",

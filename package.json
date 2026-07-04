@@ -14,6 +14,7 @@
     "test:services": "tsx tools/services-test.ts",
     "test:art": "tsx tools/art-test.ts",
     "test:craft": "tsx tools/craft-test.ts",
+    "sim:pacing": "tsx tools/pacing-sim.ts",
     "check:art": "tsx tools/check-art.ts",
     "check:ui-alpha": "tsx tools/check-ui-alpha.ts",
     "seed:equip": "tsx tools/seed-equip-xlsx.ts",
