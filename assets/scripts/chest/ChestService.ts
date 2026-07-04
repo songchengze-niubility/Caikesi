@@ -1,5 +1,5 @@
 import { BattleConfig } from '../config/BattleConfig';
-import { rollDropItems } from '../config/DropConfig';
+import { DropConfig, rollDropItems } from '../config/DropConfig';
 import { hashSeed, createSeededRng } from '../core/Random';
 import { emptyRewardBundle, type MaterialId, type RewardBundle } from '../services/RewardTypes';
 import type { ChestItem, ChestType } from './ChestModel';
@@ -73,12 +73,16 @@ export function openChest(chest: ChestItem): OpenChestResult {
     if (!chest.sourceDropGroup) return { ok: false, reason: '宝箱缺少掉落组' };
 
     const levelIndex = clampLevelIndex(chest.sourceLevelIndex);
+    // 老存档兼容：宝箱身上的掉落组可能已在表里改名/删除，按来源关卡的现行掉落组兜底
+    const dropGroup = DropConfig.groups[chest.sourceDropGroup]
+        ? chest.sourceDropGroup
+        : BattleConfig.levels[levelIndex].dropGroup;
     const materialLevelBonus = Math.floor(levelIndex / 2);
     const reward = emptyRewardBundle();
 
     for (let i = 0; i < profile.equipmentRolls; i++) {
         const rng = createSeededRng(`${chest.seed}|open|${chest.type}|${i}`);
-        const items = rollDropItems(chest.sourceDropGroup, rng);
+        const items = rollDropItems(dropGroup, rng);
         for (const item of items) {
             reward.equipments.push({
                 ...item,

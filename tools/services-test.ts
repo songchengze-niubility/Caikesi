@@ -124,6 +124,19 @@ test('ChestService：高阶宝箱奖励更多，宝箱可移除', () => {
     assert.equal(model.chests.length, 0);
 });
 
+test('ChestService：宝箱掉落组已不存在时按来源关卡现行掉落组兜底', () => {
+    const chest = createChestItem({
+        type: 'normal',
+        sourceLevelIndex: 0,
+        sourceDropGroup: 'gone_group',
+        seed: 'legacy-chest',
+        createdAt: 1000,
+    });
+    const res = openChest(chest);
+    assert.equal(res.ok, true);
+    assert.ok(res.reward!.equipments.length > 0);
+});
+
 test('ChestDropService：同 seed 的小怪/关底掉落结果一致', () => {
     const mob = rollChestDrop({ levelIndex: 0, dropGroup: 'level_1', source: 'monster', seed: 'same-mob', createdAt: 1000 });
     const mobAgain = rollChestDrop({ levelIndex: 0, dropGroup: 'level_1', source: 'monster', seed: 'same-mob', createdAt: 1000 });
