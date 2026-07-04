@@ -2,12 +2,13 @@
 // 一张「源清单」(SOURCES) 描述：哪个 xlsx → 哪个 parser → 生成哪个产物。
 // `npm run config` 会遍历所有源依次导出，每源独立校验、独立产物。
 //
-// 目前包含 battle/equip/drop/chest/offline 五个模块：
+// 目前包含 battle/equip/drop/chest/offline/craft 六个模块：
 // - tools/config-xlsx/battle.xlsx → battle.config.generated.ts
 // - tools/config-xlsx/equip.xlsx  → equip.config.generated.ts
 // - tools/config-xlsx/drop.xlsx   → drop.config.generated.ts
 // - tools/config-xlsx/chest.xlsx  → chest.config.generated.ts
 // - tools/config-xlsx/offline.xlsx → offline.config.generated.ts
+// - tools/config-xlsx/craft.xlsx  → craft.config.generated.ts
 // 【加新模块（如掉装备）】：① 写一个 buildXxxConfig(wb) 解析函数；
 //   ② 在 SOURCES 末尾加一行 {name,xlsxRel,outRel,exportVar,build}。主流程不用改。
 //
@@ -621,6 +622,83 @@ function buildChestConfig(wb: XLSX.WorkBook): { config: unknown; summary: string
     return { config, summary };
 }
 
+// ============ craft 模块解析器 ============
+// 读 craft.xlsx 的 2 sheet → 合成配置。
+// Tiers: tierId, label, levelMin, levelMax, costForgeStone, costGemShard, costRuneDust
+// QualityWeights: tierId, quality, weight
+function buildCraftConfig(wb: XLSX.WorkBook): { config: unknown; summary: string } {
+    const VALID_QUALITIES = ['common', 'fine', 'rare', 'epic', 'legend'];
+    const validQualitySet = new Set(VALID_QUALITIES);
+    const MATERIAL_COLUMNS: [string, string][] = [
+        ['forge_stone', 'costForgeStone'],
+        ['gem_shard', 'costGemShard'],
+        ['rune_dust', 'costRuneDust'],
+    ];
+
+    const { rows: tierRows } = sheetToRows(wb, 'Tiers');
+    const tierDefs: Record<string, { label: string; levelMin: number; levelMax: number; cost: Record<string, number> }> = {};
+    for (const r of tierRows) {
+        const tierId = reqStr(r['tierId'], 'Tiers.tierId');
+        if (tierDefs[tierId]) err(`Tiers: tierId "${tierId}" 重复定义`);
+        const levelMin = reqNum(r['levelMin'], `Tiers[${tierId}].levelMin`);
+        const levelMax = reqNum(r['levelMax'], `Tiers[${tierId}].levelMax`);
+        if (levelMin < 1) err(`Tiers[${tierId}].levelMin 必须 >= 1`);
+        if (levelMax < levelMin) err(`Tiers[${tierId}]: levelMax 必须 >= levelMin`);
+        const cost: Record<string, number> = {};
+        for (const [materialId, col] of MATERIAL_COLUMNS) {
+            const value = reqNum(r[col], `Tiers[${tierId}].${col}`);
+            if (value < 0) err(`Tiers[${tierId}].${col} 不可为负`);
+            if (value > 0) cost[materialId] = value;
+        }
+        tierDefs[tierId] = {
+            label: reqStr(r['label'], `Tiers[${tierId}].label`),
+            levelMin,
+            levelMax,
+            cost,
+        };
+    }
+    if (Object.keys(tierDefs).length === 0) err('Tiers: 至少需要 1 个合成档位');
+
+    const { rows: weightRows } = sheetToRows(wb, 'QualityWeights');
+    const qualityWeightsByTier: Record<string, Record<string, number>> = {};
+    const seen = new Set<string>();
+    for (const r of weightRows) {
+        const tierId = reqStr(r['tierId'], 'QualityWeights.tierId');
+        const quality = reqStr(r['quality'], `QualityWeights[${tierId}].quality`);
+        const key = `${tierId}.${quality}`;
+        if (!validQualitySet.has(quality)) err(`QualityWeights[${tierId}]: quality "${quality}" 非法`);
+        if (seen.has(key)) err(`QualityWeights: ${key} 重复定义`);
+        seen.add(key);
+        const weight = reqNum(r['weight'], `QualityWeights[${key}].weight`);
+        if (weight < 0) err(`QualityWeights[${key}].weight 不可为负`);
+        if (!qualityWeightsByTier[tierId]) qualityWeightsByTier[tierId] = {};
+        qualityWeightsByTier[tierId][quality] = weight;
+    }
+
+    const tiers: Record<string, unknown> = {};
+    for (const [tierId, def] of Object.entries(tierDefs)) {
+        const weights = qualityWeightsByTier[tierId];
+        if (!weights) {
+            err(`QualityWeights: 缺少档位 "${tierId}"`);
+            continue;
+        }
+        const out: Record<string, number> = {};
+        let total = 0;
+        for (const q of VALID_QUALITIES) {
+            if (weights[q] === undefined) err(`QualityWeights[${tierId}]: 缺少 "${q}" 权重`);
+            const w = weights[q] ?? 0;
+            out[q] = w;
+            total += Math.max(0, w);
+        }
+        if (total <= 0) err(`QualityWeights[${tierId}]: 权重总和必须 > 0`);
+        tiers[tierId] = { label: def.label, levelMin: def.levelMin, levelMax: def.levelMax, cost: def.cost, qualityWeights: out };
+    }
+
+    const config = { tiers };
+    const summary = `tiers=${Object.keys(tiers).length}`;
+    return { config, summary };
+}
+
 // ============ 源清单（加模块就在这里加一行）============
 interface ConfigSource {
     name: string;        // 模块名（日志/报错用）
@@ -664,6 +742,13 @@ const SOURCES: ConfigSource[] = [
         outRel: '../assets/scripts/config/offline.config.generated.ts',
         exportVar: 'generatedOfflineConfig',
         build: buildOfflineConfig,
+    },
+    {
+        name: 'craft',
+        xlsxRel: 'config-xlsx/craft.xlsx',
+        outRel: '../assets/scripts/config/craft.config.generated.ts',
+        exportVar: 'generatedCraftConfig',
+        build: buildCraftConfig,
     },
 ];
 
