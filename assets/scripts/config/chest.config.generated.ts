@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/chest.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/chest.xlsx
-// 生成时间：2026-07-01T13:30:38.345Z
+// 生成时间：2026-07-04T14:14:54.119Z
 
 /* eslint-disable */
 // @ts-nocheck
@@ -13,17 +13,29 @@ export const generatedChestConfig = {
             "mobWeightGroup": "mob_default",
             "finalWeightGroup": "final_default"
         },
-        "level_1": {
+        "c1_early": {
             "mobChance": 0.03,
             "finalChance": 0.35,
             "mobWeightGroup": "mob_default",
             "finalWeightGroup": "final_default"
         },
-        "level_2": {
+        "c1_mid": {
             "mobChance": 0.03,
             "finalChance": 0.35,
             "mobWeightGroup": "mob_default",
             "finalWeightGroup": "final_default"
+        },
+        "c1_late": {
+            "mobChance": 0.03,
+            "finalChance": 0.35,
+            "mobWeightGroup": "mob_default",
+            "finalWeightGroup": "final_default"
+        },
+        "c1_boss": {
+            "mobChance": 0.03,
+            "finalChance": 1,
+            "mobWeightGroup": "mob_default",
+            "finalWeightGroup": "final_boss"
         }
     },
     "typeWeights": {
@@ -36,6 +48,11 @@ export const generatedChestConfig = {
             "normal": 65,
             "boss": 35,
             "chapter": 0
+        },
+        "final_boss": {
+            "normal": 20,
+            "boss": 60,
+            "chapter": 20
         }
     }
 };

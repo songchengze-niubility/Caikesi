@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/battle.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/battle.xlsx
-// 生成时间：2026-06-30T16:18:49.695Z
+// 生成时间：2026-07-04T14:14:54.113Z
 
 /* eslint-disable */
 // @ts-nocheck
@@ -125,13 +125,38 @@ export const generatedBattleConfig = {
                 "dmgBonus": 0,
                 "dmgReduce": 0.15
             }
+        },
+        "boss_butcher": {
+            "name": "屠夫领主",
+            "speed": 40,
+            "radius": 60,
+            "attackInterval": 1.5,
+            "color": [
+                150,
+                40,
+                40
+            ],
+            "stats": {
+                "hp": 4500,
+                "atk": 55,
+                "def": 20,
+                "range": 0,
+                "attackSpeed": 0.8,
+                "critRate": 0.05,
+                "critDmg": 0.5,
+                "dodgeRate": 0,
+                "blockRate": 0,
+                "blockRatio": 0,
+                "dmgBonus": 0,
+                "dmgReduce": 0.3
+            }
         }
     },
     "levels": [
         {
             "name": "第1关 · 试炼",
             "waveGap": 2,
-            "dropGroup": "level_1",
+            "dropGroup": "c1_early",
             "waves": [
                 {
                     "spawns": [
@@ -173,9 +198,58 @@ export const generatedBattleConfig = {
             ]
         },
         {
-            "name": "第2关 · 猛攻",
-            "waveGap": 1.8,
-            "dropGroup": "level_2",
+            "name": "第2关 · 前哨",
+            "waveGap": 2,
+            "dropGroup": "c1_early",
+            "waves": [
+                {
+                    "spawns": [
+                        {
+                            "type": "zombie",
+                            "count": 10,
+                            "interval": 0.6
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "zombie",
+                            "count": 8,
+                            "interval": 0.5
+                        },
+                        {
+                            "type": "runner",
+                            "count": 4,
+                            "interval": 1
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "brute",
+                            "count": 2,
+                            "interval": 1.6
+                        },
+                        {
+                            "type": "zombie",
+                            "count": 8,
+                            "interval": 0.45
+                        },
+                        {
+                            "type": "runner",
+                            "count": 3,
+                            "interval": 1
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "第3关 · 溃堤",
+            "waveGap": 1.9,
+            "dropGroup": "c1_early",
             "waves": [
                 {
                     "spawns": [
@@ -192,7 +266,7 @@ export const generatedBattleConfig = {
                             "type": "zombie",
                             "count": 12,
                             "interval": 0.4,
-                            "hp": 180
+                            "hp": 150
                         },
                         {
                             "type": "runner",
@@ -205,9 +279,44 @@ export const generatedBattleConfig = {
                     "spawns": [
                         {
                             "type": "brute",
+                            "count": 3,
+                            "interval": 1.5
+                        },
+                        {
+                            "type": "zombie",
+                            "count": 10,
+                            "interval": 0.4
+                        },
+                        {
+                            "type": "runner",
                             "count": 4,
-                            "interval": 1.3,
-                            "hp": 460
+                            "interval": 0.8
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "第4关 · 铁壁",
+            "waveGap": 1.8,
+            "dropGroup": "c1_mid",
+            "waves": [
+                {
+                    "spawns": [
+                        {
+                            "type": "zombie",
+                            "count": 10,
+                            "interval": 0.5,
+                            "hp": 150
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "brute",
+                            "count": 4,
+                            "interval": 1.3
                         }
                     ]
                 },
@@ -216,18 +325,421 @@ export const generatedBattleConfig = {
                         {
                             "type": "brute",
                             "count": 3,
+                            "interval": 1.4
+                        },
+                        {
+                            "type": "runner",
+                            "count": 6,
+                            "interval": 0.8
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "brute",
+                            "count": 4,
+                            "interval": 1.2,
+                            "hp": 460
+                        },
+                        {
+                            "type": "zombie",
+                            "count": 8,
+                            "interval": 0.4,
+                            "hp": 150
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "第5关 · 缓坡",
+            "waveGap": 1.8,
+            "dropGroup": "c1_mid",
+            "waves": [
+                {
+                    "spawns": [
+                        {
+                            "type": "zombie",
+                            "count": 14,
+                            "interval": 0.45,
+                            "hp": 150
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "runner",
+                            "count": 10,
+                            "interval": 0.5,
+                            "hp": 90
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "brute",
+                            "count": 3,
+                            "interval": 1.4,
+                            "hp": 460
+                        },
+                        {
+                            "type": "zombie",
+                            "count": 10,
+                            "interval": 0.4,
+                            "hp": 150
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "brute",
+                            "count": 2,
                             "interval": 1.5,
                             "hp": 460
                         },
                         {
                             "type": "runner",
-                            "count": 8,
-                            "interval": 0.4
+                            "count": 10,
+                            "interval": 0.5,
+                            "hp": 90
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "第6关 · 夹击",
+            "waveGap": 1.8,
+            "dropGroup": "c1_mid",
+            "waves": [
+                {
+                    "spawns": [
+                        {
+                            "type": "runner",
+                            "count": 12,
+                            "interval": 0.4,
+                            "hp": 90
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "zombie",
+                            "count": 14,
+                            "interval": 0.4,
+                            "hp": 160
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "brute",
+                            "count": 4,
+                            "interval": 1.3,
+                            "hp": 460
+                        },
+                        {
+                            "type": "runner",
+                            "count": 6,
+                            "interval": 0.7,
+                            "hp": 90
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "brute",
+                            "count": 3,
+                            "interval": 1.4,
+                            "hp": 460
+                        },
+                        {
+                            "type": "zombie",
+                            "count": 12,
+                            "interval": 0.4,
+                            "hp": 160
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "第7关 · 壁垒",
+            "waveGap": 1.6,
+            "dropGroup": "c1_late",
+            "waves": [
+                {
+                    "spawns": [
+                        {
+                            "type": "zombie",
+                            "count": 12,
+                            "interval": 0.4,
+                            "hp": 200
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "brute",
+                            "count": 4,
+                            "interval": 1.2,
+                            "hp": 560
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "runner",
+                            "count": 12,
+                            "interval": 0.4,
+                            "hp": 110
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "brute",
+                            "count": 4,
+                            "interval": 1.2,
+                            "hp": 560
                         },
                         {
                             "type": "zombie",
                             "count": 10,
-                            "interval": 0.4
+                            "interval": 0.4,
+                            "hp": 200
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "brute",
+                            "count": 2,
+                            "interval": 1.4,
+                            "hp": 560
+                        },
+                        {
+                            "type": "runner",
+                            "count": 6,
+                            "interval": 0.6,
+                            "hp": 110
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "第8关 · 风暴",
+            "waveGap": 1.6,
+            "dropGroup": "c1_late",
+            "waves": [
+                {
+                    "spawns": [
+                        {
+                            "type": "runner",
+                            "count": 14,
+                            "interval": 0.35,
+                            "hp": 110
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "zombie",
+                            "count": 16,
+                            "interval": 0.35,
+                            "hp": 200
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "brute",
+                            "count": 4,
+                            "interval": 1.2,
+                            "hp": 560
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "zombie",
+                            "count": 12,
+                            "interval": 0.4,
+                            "hp": 200
+                        },
+                        {
+                            "type": "runner",
+                            "count": 8,
+                            "interval": 0.5,
+                            "hp": 110
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "brute",
+                            "count": 3,
+                            "interval": 1.3,
+                            "hp": 560
+                        },
+                        {
+                            "type": "runner",
+                            "count": 6,
+                            "interval": 0.6,
+                            "hp": 110
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "第9关 · 黑潮",
+            "waveGap": 1.6,
+            "dropGroup": "c1_late",
+            "waves": [
+                {
+                    "spawns": [
+                        {
+                            "type": "zombie",
+                            "count": 14,
+                            "interval": 0.35,
+                            "hp": 220
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "brute",
+                            "count": 4,
+                            "interval": 1.2,
+                            "hp": 600
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "runner",
+                            "count": 14,
+                            "interval": 0.35,
+                            "hp": 120
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "brute",
+                            "count": 4,
+                            "interval": 1.2,
+                            "hp": 600
+                        },
+                        {
+                            "type": "zombie",
+                            "count": 10,
+                            "interval": 0.4,
+                            "hp": 220
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "brute",
+                            "count": 2,
+                            "interval": 1.4,
+                            "hp": 600
+                        },
+                        {
+                            "type": "runner",
+                            "count": 8,
+                            "interval": 0.5,
+                            "hp": 120
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "第10关 · 屠夫领主",
+            "waveGap": 1.8,
+            "dropGroup": "c1_boss",
+            "waves": [
+                {
+                    "spawns": [
+                        {
+                            "type": "zombie",
+                            "count": 14,
+                            "interval": 0.35,
+                            "hp": 240
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "runner",
+                            "count": 12,
+                            "interval": 0.4,
+                            "hp": 120
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "brute",
+                            "count": 4,
+                            "interval": 1.2,
+                            "hp": 600
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "zombie",
+                            "count": 12,
+                            "interval": 0.4,
+                            "hp": 240
+                        },
+                        {
+                            "type": "runner",
+                            "count": 8,
+                            "interval": 0.5,
+                            "hp": 120
+                        }
+                    ]
+                },
+                {
+                    "spawns": [
+                        {
+                            "type": "boss_butcher",
+                            "count": 1,
+                            "interval": 1
+                        },
+                        {
+                            "type": "runner",
+                            "count": 6,
+                            "interval": 0.8,
+                            "hp": 120
                         }
                     ]
                 }

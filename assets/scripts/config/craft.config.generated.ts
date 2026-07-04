@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/craft.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/craft.xlsx
-// 生成时间：2026-07-04T09:34:33.543Z
+// 生成时间：2026-07-04T14:14:54.122Z
 
 /* eslint-disable */
 // @ts-nocheck

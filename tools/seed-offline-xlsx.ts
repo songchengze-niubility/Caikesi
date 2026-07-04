@@ -16,8 +16,17 @@ const GLOBAL_ROWS: (string | number)[][] = [
 
 const LEVELS_HEADER = ['levelIndex', 'avgClearSeconds', 'winRate', 'goldPerWin', 'expPerWin'];
 const LEVELS_ROWS: (string | number)[][] = [
-    [0, 45, 1, 8, 5],
-    [1, 55, 0.95, 12, 8],
+    // 台阶关（第4/7/10 = levelIndex 3/6/9）胜率下调，体现卡点
+    [0, 45,  1,    8,  5],
+    [1, 50,  0.95, 10, 7],
+    [2, 60,  0.9,  13, 9],
+    [3, 75,  0.85, 17, 12],
+    [4, 80,  0.9,  22, 15],
+    [5, 90,  0.88, 28, 20],
+    [6, 100, 0.75, 36, 26],
+    [7, 105, 0.82, 47, 33],
+    [8, 115, 0.8,  60, 43],
+    [9, 120, 0.6,  78, 56],
 ];
 
 const wb = XLSX.utils.book_new();

@@ -15,20 +15,34 @@ function rngSeq(values: number[]): () => number {
     return () => values[Math.min(i++, values.length - 1)];
 }
 
-test('关卡表通过 dropGroup 指向掉落配置', () => {
-    assert.equal(BattleConfig.levels[0].dropGroup, 'level_1');
-    assert.equal(BattleConfig.levels[1].dropGroup, 'level_2');
-    assert.equal(getDropGroup(BattleConfig.levels[0].dropGroup).itemCount, 1);
+test('第一章 10 关按台阶分段指向掉落组', () => {
+    assert.equal(BattleConfig.levels.length, 10);
+    assert.equal(BattleConfig.levels[0].dropGroup, 'c1_early');
+    assert.equal(BattleConfig.levels[2].dropGroup, 'c1_early');
+    assert.equal(BattleConfig.levels[3].dropGroup, 'c1_mid');
+    assert.equal(BattleConfig.levels[5].dropGroup, 'c1_mid');
+    assert.equal(BattleConfig.levels[6].dropGroup, 'c1_late');
+    assert.equal(BattleConfig.levels[8].dropGroup, 'c1_late');
+    assert.equal(BattleConfig.levels[9].dropGroup, 'c1_boss');
+    assert.equal(getDropGroup('c1_early').itemCount, 1);
+});
+
+test('第 10 关最后一波包含 Boss 怪', () => {
+    const finalWave = BattleConfig.levels[9].waves[BattleConfig.levels[9].waves.length - 1];
+    assert.ok(finalWave.spawns.some(s => s.type === 'boss_butcher'), '末波缺少 boss_butcher');
+    assert.ok(BattleConfig.enemyTypes.boss_butcher, 'enemyTypes 缺少 boss_butcher');
 });
 
 test('dropGroup 覆盖完整品质/部位权重', () => {
-    const g = getDropGroup('level_1');
-    for (const q of QUALITIES) assert.ok(g.qualityWeights[q] !== undefined, `缺少品质权重 ${q}`);
-    for (const s of SLOTS) assert.ok(g.slotWeights[s] !== undefined, `缺少部位权重 ${s}`);
+    for (const id of ['c1_early', 'c1_mid', 'c1_late', 'c1_boss']) {
+        const g = getDropGroup(id);
+        for (const q of QUALITIES) assert.ok(g.qualityWeights[q] !== undefined, `${id} 缺少品质权重 ${q}`);
+        for (const s of SLOTS) assert.ok(g.slotWeights[s] !== undefined, `${id} 缺少部位权重 ${s}`);
+    }
 });
 
 test('rollDropItems 按配置生成带属性装备', () => {
-    const items = rollDropItems('level_1', () => 0);
+    const items = rollDropItems('c1_early', () => 0);
     assert.equal(items.length, 1);
     assert.equal(items[0].slot, 'weapon');
     assert.equal(items[0].quality, 'common');
@@ -36,25 +50,37 @@ test('rollDropItems 按配置生成带属性装备', () => {
 });
 
 test('高随机值可命中高品质尾段权重', () => {
-    const items = rollDropItems('level_2', rngSeq([0, 0.995, 0, 0, 0, 0]));
+    const items = rollDropItems('c1_mid', rngSeq([0, 0.995, 0, 0, 0, 0]));
     assert.equal(items[0].quality, 'legend');
 });
 
-test('rollDropItems 产出的装备等级落在 dropGroup 的区间内', () => {
-    for (let i = 0; i < 30; i++) {
-        const items = rollDropItems('level_2', Math.random);
-        for (const item of items) {
-            assert.ok(item.level !== undefined && item.level >= 6 && item.level <= 15,
-                `level_2 掉落等级应在 [6,15]，得到 ${item.level}`);
+test('掉落等级落在各 dropGroup 区间内', () => {
+    const ranges: Array<[string, number, number]> = [
+        ['c1_early', 1, 5],
+        ['c1_mid', 4, 9],
+        ['c1_late', 8, 14],
+        ['c1_boss', 12, 18],
+    ];
+    for (const [id, min, max] of ranges) {
+        for (let i = 0; i < 30; i++) {
+            for (const item of rollDropItems(id, Math.random)) {
+                assert.ok(item.level !== undefined && item.level >= min && item.level <= max,
+                    `${id} 掉落等级应在 [${min},${max}]，得到 ${item.level}`);
+            }
         }
     }
 });
 
 test('rollDropItems：level 区间边界（rng=0 取最低，rng 接近 1 取最高）', () => {
-    const low = rollDropItems('level_1', () => 0);
+    const low = rollDropItems('c1_early', () => 0);
     assert.equal(low[0].level, 1);
-    const high = rollDropItems('level_1', () => 0.999999);
-    assert.equal(high[0].level, 10);
+    const high = rollDropItems('c1_early', () => 0.999999);
+    assert.equal(high[0].level, 5);
+});
+
+test('Boss 掉落组一次掉两件', () => {
+    const items = rollDropItems('c1_boss', Math.random);
+    assert.equal(items.length, 2);
 });
 
 console.log(`\n掉落配置测试：${pass} 通过，${fail} 失败`);
