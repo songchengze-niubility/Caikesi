@@ -417,16 +417,22 @@ function buildDropConfig(wb: XLSX.WorkBook): { config: unknown; summary: string 
     const validSlotSet = new Set(VALID_SLOTS);
 
     const { rows: groupRows } = sheetToRows(wb, 'DropGroups');
-    const groupDefs: Record<string, { itemCount: number; qualityGroup: string; slotGroup: string }> = {};
+    const groupDefs: Record<string, { itemCount: number; qualityGroup: string; slotGroup: string; levelMin: number; levelMax: number }> = {};
     for (const r of groupRows) {
         const group = reqStr(r['group'], 'DropGroups.group');
         if (groupDefs[group]) err(`DropGroups: group "${group}" 重复定义`);
         const itemCount = reqNum(r['itemCount'], `DropGroups[${group}].itemCount`);
         if (itemCount < 1) warn(`DropGroups[${group}].itemCount = ${itemCount}（胜利奖励通常应 ≥ 1）`);
+        const levelMin = reqNum(r['levelMin'], `DropGroups[${group}].levelMin`);
+        const levelMax = reqNum(r['levelMax'], `DropGroups[${group}].levelMax`);
+        if (levelMin < 1) err(`DropGroups[${group}].levelMin 必须 >= 1`);
+        if (levelMax < levelMin) err(`DropGroups[${group}]: levelMax 必须 >= levelMin`);
         groupDefs[group] = {
             itemCount,
             qualityGroup: reqStr(r['qualityGroup'], `DropGroups[${group}].qualityGroup`),
             slotGroup: reqStr(r['slotGroup'], `DropGroups[${group}].slotGroup`),
+            levelMin,
+            levelMax,
         };
     }
     if (Object.keys(groupDefs).length === 0) err('DropGroups: 至少需要 1 个掉落组');
@@ -485,6 +491,8 @@ function buildDropConfig(wb: XLSX.WorkBook): { config: unknown; summary: string 
     for (const [group, def] of Object.entries(groupDefs)) {
         groups[group] = {
             itemCount: def.itemCount,
+            levelMin: def.levelMin,
+            levelMax: def.levelMax,
             qualityWeights: completeWeights('QualityWeights', def.qualityGroup, VALID_QUALITIES, qualityWeightGroups),
             slotWeights: completeWeights('SlotWeights', def.slotGroup, VALID_SLOTS, slotWeightGroups),
         };

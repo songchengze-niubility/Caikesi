@@ -7,10 +7,10 @@ import { dirname, resolve } from 'node:path';
 
 const OUT = resolve(__dirname, 'config-xlsx/drop.xlsx');
 
-const DROP_GROUPS_HEADER = ['group', 'itemCount', 'qualityGroup', 'slotGroup'];
+const DROP_GROUPS_HEADER = ['group', 'itemCount', 'qualityGroup', 'slotGroup', 'levelMin', 'levelMax'];
 const DROP_GROUPS_ROWS: (string | number)[][] = [
-    ['level_1', 1, 'level_1', 'any'],
-    ['level_2', 1, 'level_2', 'any'],
+    ['level_1', 1, 'level_1', 'any', 1, 10],
+    ['level_2', 1, 'level_2', 'any', 6, 15],
 ];
 
 const QUALITY_WEIGHTS_HEADER = ['group', 'quality', 'weight'];

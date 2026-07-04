@@ -9,6 +9,8 @@ import { createEquipItem, EquipItem, EquipSlot, Quality, QUALITIES, SLOTS } from
 
 export interface DropGroupConfig {
     itemCount: number;
+    levelMin: number;
+    levelMax: number;
     qualityWeights: Record<Quality, number>;
     slotWeights: Record<EquipSlot, number>;
 }
@@ -47,7 +49,8 @@ export function rollDropItems(groupId: string, rng: () => number = Math.random):
     for (let i = 0; i < count; i++) {
         const slot = pickWeighted(SLOTS, group.slotWeights, rng);
         const quality = pickWeighted(QUALITIES, group.qualityWeights, rng);
-        items.push(createEquipItem(slot, quality, rng));
+        const level = group.levelMin + Math.floor(rng() * (group.levelMax - group.levelMin + 1));
+        items.push(createEquipItem(slot, quality, rng, level));
     }
     return items;
 }

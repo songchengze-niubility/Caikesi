@@ -40,5 +40,22 @@ test('高随机值可命中高品质尾段权重', () => {
     assert.equal(items[0].quality, 'legend');
 });
 
+test('rollDropItems 产出的装备等级落在 dropGroup 的区间内', () => {
+    for (let i = 0; i < 30; i++) {
+        const items = rollDropItems('level_2', Math.random);
+        for (const item of items) {
+            assert.ok(item.level !== undefined && item.level >= 6 && item.level <= 15,
+                `level_2 掉落等级应在 [6,15]，得到 ${item.level}`);
+        }
+    }
+});
+
+test('rollDropItems：level 区间边界（rng=0 取最低，rng 接近 1 取最高）', () => {
+    const low = rollDropItems('level_1', () => 0);
+    assert.equal(low[0].level, 1);
+    const high = rollDropItems('level_1', () => 0.999999);
+    assert.equal(high[0].level, 10);
+});
+
 console.log(`\n掉落配置测试：${pass} 通过，${fail} 失败`);
 process.exit(fail ? 1 : 0);
