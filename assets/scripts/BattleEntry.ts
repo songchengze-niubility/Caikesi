@@ -29,16 +29,22 @@ import { ProgressModel } from './progression/ProgressModel';
 import type { CompleteLevelResult } from './progression/ProgressModel';
 import { loadProgress, saveProgress } from './progression/ProgressPersistence';
 import { loadPlayerData, savePlayerData } from './core/data/PlayerDataStore';
-import { QUALITY_LABEL, QUALITY_COLOR, SLOT_LABEL, formatEquipStats } from './inventory/EquipDefs';
-import type { EquipItem } from './inventory/EquipDefs';
+import { QUALITY_LABEL, QUALITY_COLOR, SLOT_LABEL, SLOTS, formatEquipStats } from './inventory/EquipDefs';
+import type { EquipItem, EquipSlot } from './inventory/EquipDefs';
+import { MATERIAL_LABEL } from './services/RewardTypes';
+import type { MaterialId, MaterialItem, MaterialSave } from './services/RewardTypes';
+import { craftEquipment } from './craft/CraftService';
+import { craftTierIds, getCraftTier } from './config/CraftConfig';
+import type { CraftTierConfig } from './config/CraftConfig';
 
 const { ccclass } = _decorator;
 
 interface RewardEntry { item: EquipItem; target: string; }
 interface SettleHot { x: number; y: number; w: number; h: number; kind: 'next' | 'bag' | 'retry'; }
 interface ChestHot { x: number; y: number; w: number; h: number; kind: 'open' | 'close' | 'select'; chestId?: string; }
+interface CraftHot { x: number; y: number; w: number; h: number; kind: 'tier' | 'slot' | 'craft' | 'close'; tierId?: string; slot?: EquipSlot; }
 interface UiRect { x: number; y: number; w: number; h: number; }
-interface ChestOpenDisplay { chestLabel: string; gold: number; exp: number; received: RewardEntry[]; }
+interface ChestOpenDisplay { chestLabel: string; received: RewardEntry[]; materials: MaterialItem[]; }
 
 const UI_REF_W = 941;
 const UI_REF_H = 1672;
@@ -139,6 +145,9 @@ interface FrameClip {
     loop: boolean;
     pingpong: boolean;
     blend: number;
+    bodyH?: number;    // 身体基准（0-1 归一化，见 ArtManifest 注释）；缺省走整帧缩放旧行为
+    anchorX?: number;
+    footY?: number;
 }
 
 interface SoldierVisual {
@@ -147,6 +156,8 @@ interface SoldierVisual {
     clips: Partial<Record<UnitAction, FrameClip>>;
     currentAction: UnitAction | null;
     visualHeight: number;
+    offsetX: number;   // 当前动作的锚点修正（节点中心相对单位坐标），切动作时更新
+    offsetY: number;
 }
 
 type BootPhase = 'loading' | 'ready' | 'playing';
@@ -206,6 +217,18 @@ export class BattleEntry extends Component {
     private _selectedChestId = '';
     private _chestMessage = '';
     private _lastChestOpen: ChestOpenDisplay | null = null;
+    private _craftRoot: Node = null!;
+    private _craftGfx: Graphics = null!;
+    private _craftLabels: Label[] = [];
+    private _craftHots: CraftHot[] = [];
+    private _pressedCraftKind: CraftHot['kind'] | null = null;
+    private _pressedCraftTierId = '';
+    private _pressedCraftSlot: EquipSlot | null = null;
+    private _craftSelectedTier = '';
+    private _craftSelectedSlot: EquipSlot = 'weapon';
+    private _craftMessage = '';
+    private _lastCraftResult: RewardEntry | null = null;
+    private _materials: MaterialSave = {};
     private _offlineNoticeText = '';
     private _offlineNoticeTtl = 0;
     private _battleSeed = '';
@@ -232,6 +255,9 @@ export class BattleEntry extends Component {
     private _cBullet = new Color(75, 206, 164, 230);
     private _cHealBeam = new Color(110, 220, 170, 170);
     private _cMeleeBeam = new Color(240, 244, 232, 210);
+    private _cEnemyAtkRing = new Color(245, 228, 196, 160);
+    private _cSolShadow = new Color(28, 26, 22, 55);
+    private _tmpColor = new Color();   // 每帧动态色复用，避免热路径 new Color
 
     onLoad() {
         // 强制竖屏：设计分辨率 = 美术稿基准 941×1672（9:16），SHOW_ALL 等比 letterbox。
@@ -328,13 +354,14 @@ export class BattleEntry extends Component {
         this._invView = new InventoryView(this.node, this._halfW, this._halfH, this._inv, (kind, payload) => {
             void this._handleInventoryChanged(kind, payload);
         }, () => this._configuredDebugDrop());
-        const dataReady = loadInventory(this._inv).then(() => loadProgress(this._progress)).then(() => this._claimOfflineRewards()).then(() => loadChests(this._chests)).then(() => {
+        const dataReady = loadInventory(this._inv).then(() => loadProgress(this._progress)).then(() => this._claimOfflineRewards()).then(() => loadChests(this._chests)).then(() => this._refreshMaterialsCache()).then(() => {
             this._invView.refresh();
         }).catch(() => {
             // 读档失败时仍允许进游戏，掉落会从空背包开始存。
         });
         this._createSettlementView();
         this._createChestView();
+        this._createCraftView();
 
         // 底部导航热区：视觉由切片提供，触摸区域保持透明。
         const noop = () => {};
@@ -346,7 +373,7 @@ export class BattleEntry extends Component {
         this._makeUiHotZone('NavBattleHot', UI_RECTS.navBattle, noop, 'BottomNav');
         this._makeUiHotZone('NavEquipmentHot', UI_RECTS.navEquipment, () => this._invView.toggle(), 'BottomNav');
         this._makeUiHotZone('NavBagHot', UI_RECTS.navBag, () => this._invView.toggle(), 'BottomNav');
-        this._makeUiHotZone('NavSectHot', UI_RECTS.navSect, noop, 'BottomNav');
+        this._makeUiHotZone('NavSectHot', UI_RECTS.navSect, () => this._toggleCraftPanel(), 'BottomNav');
         this._makeUiHotZone('RewardCardHot', UI_RECTS.reward, () => this._toggleChestPanel(), 'StageReward');
 
         // 挂载游戏内实时调参面板（仅网页预览生效；点「重开战斗」重置局内数值）
@@ -374,6 +401,7 @@ export class BattleEntry extends Component {
         const levelIndex = this._progress ? this._progress.currentLevel : BattleConfig.startLevel;
         this._battleSeed = `${Date.now()}|${Math.random()}|${levelIndex}`;
         this._battleChestDropCount = 0;
+        this._shownWaveKey = -1;   // 强制下一帧刷新波次文本
         this._mgr = new BattleManager(this._halfW, this._halfH, levelIndex, effective);
         this._winRewardText = '';
         this._lastComplete = null;
@@ -428,11 +456,29 @@ export class BattleEntry extends Component {
         return cls === 'dps' ? 180 : BattleConfig.classes[cls].size;
     }
 
-    private _soldierVisualBox(cls: SoldierClass, frame: SpriteFrame): { w: number; h: number } {
-        const h = this._soldierVisualHeight(cls);
-        const rect = frame.rect;
-        const aspect = Math.max(1, rect.width) / Math.max(1, rect.height);
-        return { w: h * aspect, h };
+    // 一个动作的显示框与锚点修正。
+    // 有 bodyH（身体基准）：把「身体高」缩到职业目标高，帧框按同比例放大，并算出脚点对齐偏移——
+    //   各动作按自身透明边界裁切后帧高比例不同，若按帧高归一会切动作时身体忽大忽小、左右横移。
+    // 无 bodyH（老资源）：整帧缩到目标高、中心对齐（原行为）。
+    private _clipVisualBox(cls: SoldierClass, clip: FrameClip): { w: number; h: number; offsetX: number; offsetY: number } {
+        return this._clipBoxForHeight(this._soldierVisualHeight(cls), clip);
+    }
+
+    private _clipBoxForHeight(targetH: number, clip: FrameClip): { w: number; h: number; offsetX: number; offsetY: number } {
+        const rect = clip.frames[0].rect;
+        const fw = Math.max(1, rect.width);
+        const fh = Math.max(1, rect.height);
+        if (!clip.bodyH || clip.bodyH <= 0) {
+            return { w: targetH * (fw / fh), h: targetH, offsetX: 0, offsetY: 0 };
+        }
+        const scale = targetH / (clip.bodyH * fh);
+        const w = fw * scale;
+        const h = fh * scale;
+        // 横向：脚接触列对齐到单位 x（节点中心锚点，帧内 anchorX 是 0-1 从左起）
+        const offsetX = clip.anchorX != null ? (0.5 - clip.anchorX) * w : 0;
+        // 纵向：身体底（脚）对齐到 sol.y - targetH/2（与旧行为帧底位置一致；footY 是 0-1 从顶起）
+        const offsetY = clip.footY != null ? (clip.footY - 0.5) * h - targetH / 2 : 0;
+        return { w, h, offsetX, offsetY };
     }
 
     private _loadSoldierClips(cls: SoldierClass): Partial<Record<UnitAction, FrameClip>> {
@@ -459,7 +505,7 @@ export class BattleEntry extends Component {
 
         const n = new Node('Sol_' + cls);
         n.layer = this.node.layer;
-        const box = this._soldierVisualBox(cls, clip.frames[0]);
+        const box = this._clipVisualBox(cls, clip);
         n.addComponent(UITransform).setContentSize(box.w, box.h);
 
         const sprite = n.addComponent(Sprite);
@@ -479,7 +525,9 @@ export class BattleEntry extends Component {
             anim: new FrameAnimPlayer(sprite, clip.frames, clip.fps, clip.loop, clip.pingpong, blendSprite, clip.blend),
             clips,
             currentAction: null,
-            visualHeight: box.h,
+            visualHeight: this._soldierVisualHeight(cls),
+            offsetX: box.offsetX,
+            offsetY: box.offsetY,
         };
         this._setSoldierVisualAction(cls, 'idle', true);
     }
@@ -490,11 +538,13 @@ export class BattleEntry extends Component {
         const clip = visual.clips[action] ?? visual.clips.idle ?? this._firstSoldierClip(visual.clips);
         if (!clip) return;
 
-        const box = this._soldierVisualBox(cls, clip.frames[0]);
+        const box = this._clipVisualBox(cls, clip);
         visual.node.getComponent(UITransform)!.setContentSize(box.w, box.h);
         const blend = visual.node.getChildByName('SolBlend_' + cls);
         if (blend) blend.getComponent(UITransform)!.setContentSize(box.w, box.h);
-        visual.visualHeight = box.h;
+        visual.visualHeight = this._soldierVisualHeight(cls);
+        visual.offsetX = box.offsetX;
+        visual.offsetY = box.offsetY;
         visual.currentAction = action;
         visual.anim.setClip(clip.frames, clip.fps, clip.loop, clip.pingpong, clip.blend);
     }
@@ -945,6 +995,184 @@ export class BattleEntry extends Component {
         this._chestRoot.on(Node.EventType.TOUCH_CANCEL, this._onChestTouchCancel, this);
     }
 
+    private async _refreshMaterialsCache(): Promise<void> {
+        const data = await loadPlayerData();
+        this._materials = { ...(data.materials ?? {}) };
+    }
+
+    private _createCraftView() {
+        this._craftRoot = new Node('CraftView');
+        this._craftRoot.layer = this.node.layer;
+        this._craftRoot.addComponent(UITransform).setContentSize(this._halfW * 2, this._halfH * 2);
+        const gfxNode = new Node('CraftGfx');
+        gfxNode.layer = this.node.layer;
+        gfxNode.addComponent(UITransform);
+        this._craftGfx = gfxNode.addComponent(Graphics);
+        this._craftRoot.addChild(gfxNode);
+        this.node.addChild(this._craftRoot);
+        this._craftRoot.active = false;
+        this._craftRoot.on(Node.EventType.TOUCH_START, this._onCraftTouchStart, this);
+        this._craftRoot.on(Node.EventType.TOUCH_MOVE, this._onCraftTouchMove, this);
+        this._craftRoot.on(Node.EventType.TOUCH_END, this._onCraftTap, this);
+        this._craftRoot.on(Node.EventType.TOUCH_CANCEL, this._onCraftTouchCancel, this);
+    }
+
+    private _craftOpen(): boolean {
+        return !!this._craftRoot && this._craftRoot.active;
+    }
+
+    private _toggleCraftPanel() {
+        if (this._craftOpen()) this._hideCraftPanel();
+        else this._showCraftPanel();
+    }
+
+    private _showCraftPanel() {
+        if (!this._craftRoot) return;
+        this._hideSettlement();
+        this._hideChestPanel();
+        this._ensureSelectedCraftTier();
+        this._craftRoot.active = true;
+        this._craftRoot.setSiblingIndex(this.node.children.length - 1);
+        this._renderCraftPanel();
+    }
+
+    private _hideCraftPanel() {
+        if (this._craftRoot) this._craftRoot.active = false;
+        this._pressedCraftKind = null;
+        this._pressedCraftTierId = '';
+        this._pressedCraftSlot = null;
+    }
+
+    private _ensureSelectedCraftTier(): string {
+        const ids = craftTierIds();
+        if (ids.includes(this._craftSelectedTier)) return this._craftSelectedTier;
+        this._craftSelectedTier = ids[0] ?? '';
+        return this._craftSelectedTier;
+    }
+
+    private _craftLabel(i: number): Label {
+        while (i >= this._craftLabels.length) {
+            const n = new Node('CraftLbl');
+            n.layer = this._craftRoot.layer;
+            n.addComponent(UITransform);
+            const lb = n.addComponent(Label);
+            this._craftRoot.addChild(n);
+            this._craftLabels.push(lb);
+        }
+        return this._craftLabels[i];
+    }
+
+    // Task 6 会把这里替换成完整的 Graphics 绘制；本任务先给一个最小占位，
+    // 保证「面板能打开/关闭 + 数据链路能跑」可以先验证。
+    private _renderCraftPanel() {
+        const g = this._craftGfx;
+        g.clear();
+        this._craftHots = [];
+        const lb = this._craftLabel(0);
+        lb.node.active = true;
+        lb.node.setPosition(0, 0, 0);
+        lb.string = `[占位] 合成面板 · 材料=${JSON.stringify(this._materials)} · 消息=${this._craftMessage}`;
+        lb.fontSize = 16;
+        lb.color = new Color(230, 230, 230);
+        for (let i = 1; i < this._craftLabels.length; i++) this._craftLabels[i].node.active = false;
+    }
+
+    private async _craftSelectedEquipment(): Promise<void> {
+        if (this._availableEquipmentSlots() < 1) {
+            this._craftMessage = '背包/仓库空间不足，无法合成';
+            this._renderCraftPanel();
+            return;
+        }
+        const tierId = this._ensureSelectedCraftTier();
+        const result = craftEquipment(this._materials, tierId, this._craftSelectedSlot, Math.random);
+        if (!result.ok || !result.item || !result.remainingMaterials) {
+            this._craftMessage = result.reason ?? '合成失败';
+            this._renderCraftPanel();
+            return;
+        }
+        const placed = this._addRewardEquipments([result.item]);
+        if (placed.failed > 0 || placed.received.length === 0) {
+            this._craftMessage = '装备入库失败，材料未消耗';
+            this._renderCraftPanel();
+            return;
+        }
+        const data = await loadPlayerData();
+        data.materials = result.remainingMaterials;
+        data.inventory = this._inv.serialize();
+        this._materials = { ...result.remainingMaterials };
+        await savePlayerData();
+        this._invView.refresh();
+        const receivedEntry = placed.received[0];
+        this._lastCraftResult = receivedEntry;
+        this._craftMessage = `合成成功：${this._formatEquipReward(receivedEntry.item)}（进${receivedEntry.target}）`;
+        this._renderCraftPanel();
+    }
+
+    private _craftHit(e: EventTouch): CraftHot | null {
+        if (!this._craftOpen()) return null;
+        const ui = e.getUILocation();
+        const p = this._craftRoot.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
+        return this._craftHots.find(h => p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h) ?? null;
+    }
+
+    private _onCraftTouchStart(e: EventTouch) {
+        if (!this._craftOpen()) return;
+        e.propagationStopped = true;
+        const hit = this._craftHit(e);
+        this._pressedCraftKind = hit?.kind ?? null;
+        this._pressedCraftTierId = hit?.tierId ?? '';
+        this._pressedCraftSlot = hit?.slot ?? null;
+        if (this._pressedCraftKind) this._renderCraftPanel();
+    }
+
+    private _onCraftTouchMove(e: EventTouch) {
+        if (!this._pressedCraftKind) return;
+        const hit = this._craftHit(e);
+        if (hit?.kind === this._pressedCraftKind && (hit.tierId ?? '') === this._pressedCraftTierId && (hit.slot ?? null) === this._pressedCraftSlot) return;
+        this._pressedCraftKind = null;
+        this._pressedCraftTierId = '';
+        this._pressedCraftSlot = null;
+        this._renderCraftPanel();
+    }
+
+    private _onCraftTouchCancel() {
+        if (!this._pressedCraftKind) return;
+        this._pressedCraftKind = null;
+        this._pressedCraftTierId = '';
+        this._pressedCraftSlot = null;
+        this._renderCraftPanel();
+    }
+
+    private _onCraftTap(e: EventTouch) {
+        if (!this._craftOpen()) return;
+        e.propagationStopped = true;
+        const hit = this._craftHit(e);
+        if (this._pressedCraftKind) {
+            this._pressedCraftKind = null;
+            this._pressedCraftTierId = '';
+            this._pressedCraftSlot = null;
+            this._renderCraftPanel();
+        }
+        if (!hit) return;
+        if (hit.kind === 'close') {
+            this._hideCraftPanel();
+            return;
+        }
+        if (hit.kind === 'tier' && hit.tierId) {
+            this._craftSelectedTier = hit.tierId;
+            this._craftMessage = '';
+            this._renderCraftPanel();
+            return;
+        }
+        if (hit.kind === 'slot' && hit.slot) {
+            this._craftSelectedSlot = hit.slot;
+            this._craftMessage = '';
+            this._renderCraftPanel();
+            return;
+        }
+        if (hit.kind === 'craft') void this._craftSelectedEquipment();
+    }
+
     private _chestOpen(): boolean {
         return !!this._chestRoot && this._chestRoot.active;
     }
@@ -957,6 +1185,7 @@ export class BattleEntry extends Component {
     private _showChestPanel() {
         if (!this._chestRoot) return;
         this._hideSettlement();
+        this._hideCraftPanel();
         this._ensureSelectedChest();
         this._chestRoot.active = true;
         this._chestRoot.setSiblingIndex(this.node.children.length - 1);
@@ -1016,9 +1245,10 @@ export class BattleEntry extends Component {
         g.stroke();
 
         const total = this._chests?.chests.length ?? 0;
-        lbl(0, y + h - 42, `宝箱库存：${total}`, 30, new Color(255, 226, 126));
+        const maxChests = this._chests?.maxChests ?? 0;
+        lbl(0, y + h - 42, `宝箱库存：${total}/${maxChests}`, 30, new Color(255, 226, 126));
         if (total === 0) {
-            lbl(0, y + h - 118, '暂无宝箱，离线战斗会自动积累', 20, new Color(190, 198, 214));
+            lbl(0, y + h - 118, '暂无宝箱，战斗和离线会自动积累', 20, new Color(190, 198, 214));
         } else {
             const counts = this._chestCountsText();
             lbl(0, y + h - 82, counts, 18, new Color(190, 220, 190));
@@ -1100,8 +1330,9 @@ export class BattleEntry extends Component {
         const levelName = BattleConfig.levels[chest.sourceLevelIndex]?.name ?? `第 ${chest.sourceLevelIndex + 1} 关`;
         const preview = openChest(chest);
         const equipCount = preview.reward?.equipments.length ?? 0;
+        const materials = this._formatMaterials(preview.reward?.materials ?? []);
         lbl(x + w / 2, topY - 62, `${chestTypeLabel(chest.type)} · ${levelName}`, 20, new Color(255, 226, 126));
-        lbl(x + w / 2, topY - 94, `预计：金币 +${preview.reward?.gold ?? 0}  经验 +${preview.reward?.exp ?? 0}  装备 ${equipCount} 件`, 15, new Color(205, 214, 232));
+        lbl(x + w / 2, topY - 94, `预计：装备 ${equipCount} 件  材料 ${materials || '无'}`, 15, new Color(205, 214, 232));
         lbl(x + w / 2, topY - 122, `空间：${this._availableEquipmentSlots()} / 需要 ${equipCount}`, 15, new Color(170, 220, 180));
     }
 
@@ -1124,7 +1355,7 @@ export class BattleEntry extends Component {
             return;
         }
         const result = this._lastChestOpen;
-        lbl(x + w / 2, y + h - 62, `${result.chestLabel}：金币 +${result.gold}  经验 +${result.exp}`, 17, new Color(255, 226, 126));
+        lbl(x + w / 2, y + h - 62, `${result.chestLabel}：装备 ${result.received.length} 件  材料 ${this._formatMaterials(result.materials) || '无'}`, 17, new Color(255, 226, 126));
         const items = result.received.slice(0, 6);
         const cardW = Math.min(176, (w - 56) / 3);
         for (let i = 0; i < items.length; i++) {
@@ -1445,6 +1676,7 @@ export class BattleEntry extends Component {
             node.layer = this.node.layer;
             node.addComponent(UITransform);
             const lb = node.addComponent(Label);
+            lb.cacheMode = Label.CacheMode.CHAR;   // 飘字每帧变，逐字符缓存避免整张纹理重建
             this._battleRoot.addChild(node);
             this._floats.push(lb);
         }
@@ -1461,10 +1693,10 @@ export class BattleEntry extends Component {
             lb.string = ft.text;
             const a = Math.max(0, Math.min(1, ft.ttl / ft.maxTtl)) * 255;
             switch (ft.kind) {
-                case 'crit':  lb.fontSize = 42; lb.color = new Color(255, 180, 40, a); break;
-                case 'block': lb.fontSize = 28; lb.color = new Color(120, 200, 255, a); break;
-                case 'dodge': lb.fontSize = 28; lb.color = new Color(210, 210, 210, a); break;
-                default:      lb.fontSize = 30; lb.color = new Color(255, 255, 255, a); break;
+                case 'crit':  lb.fontSize = 42; lb.color = this._tmpColor.set(255, 180, 40, a); break;
+                case 'block': lb.fontSize = 28; lb.color = this._tmpColor.set(120, 200, 255, a); break;
+                case 'dodge': lb.fontSize = 28; lb.color = this._tmpColor.set(210, 210, 210, a); break;
+                default:      lb.fontSize = 30; lb.color = this._tmpColor.set(255, 255, 255, a); break;
             }
             lb.lineHeight = lb.fontSize + 4;
         }
@@ -1494,7 +1726,7 @@ export class BattleEntry extends Component {
             const actionScale = e.action === 'attack' ? 1.08 : (e.action === 'death' ? 1.12 : 1);
             const er = e.radius * actionScale;
             const alpha = e.action === 'death' ? Math.max(35, Math.round(180 * deathFade)) : 220;
-            g.fillColor = new Color(
+            g.fillColor = this._tmpColor.set(
                 Math.max(48, Math.round(e.color[0] * 0.42)),
                 Math.max(42, Math.round(e.color[1] * 0.42)),
                 Math.max(38, Math.round(e.color[2] * 0.42)),
@@ -1504,7 +1736,7 @@ export class BattleEntry extends Component {
             g.fill();
 
             if (e.action === 'attack' && e.alive) {
-                g.strokeColor = new Color(245, 228, 196, 160);
+                g.strokeColor = this._cEnemyAtkRing;
                 g.lineWidth = 3;
                 g.circle(e.x, e.y, er + 5);
                 g.stroke();
@@ -1524,10 +1756,11 @@ export class BattleEntry extends Component {
             g.fill();
         }
 
-        // 近战劈砍连线（白色粗线，近战单位→正在劈的怪）
+        // 近战劈砍连线（白色粗线，近战单位→正在劈的怪）；光束数组是池，只有前 count 条有效
         g.strokeColor = this._cMeleeBeam;
         g.lineWidth = 7;
-        for (const mb of this._mgr.meleeBeams) {
+        for (let i = 0; i < this._mgr.meleeBeamCount; i++) {
+            const mb = this._mgr.meleeBeams[i];
             g.moveTo(mb.fromX, mb.fromY);
             g.lineTo(mb.toX, mb.toY);
         }
@@ -1536,7 +1769,8 @@ export class BattleEntry extends Component {
         // 治疗光束（绿色细线，治疗→被奶的队友）
         g.strokeColor = this._cHealBeam;
         g.lineWidth = 4;
-        for (const hb of this._mgr.healBeams) {
+        for (let i = 0; i < this._mgr.healBeamCount; i++) {
+            const hb = this._mgr.healBeams[i];
             g.moveTo(hb.fromX, hb.fromY);
             g.lineTo(hb.toX, hb.toY);
         }
@@ -1556,10 +1790,10 @@ export class BattleEntry extends Component {
             const art = this._solSprite[sol.cls];
             if (art) {
                 art.node.active = true;
-                art.node.setPosition(sol.x, sol.y, 0);
+                art.node.setPosition(sol.x + art.offsetX, sol.y + art.offsetY, 0);
             }
             if (!art) {
-                g.fillColor = new Color(28, 26, 22, 55);
+                g.fillColor = this._cSolShadow;
                 g.circle(sol.x, sol.y - size * 0.48, size * 0.45);
                 g.fill();
                 g.fillColor = ratio > 0.35 ? this._cClass[sol.cls] : this._cSoldierHurt;
@@ -1582,10 +1816,16 @@ export class BattleEntry extends Component {
         }
     }
 
+    private _shownWaveKey = -1;   // levelIndex*1000+waveIndex，波次文本脏标记（避免每帧拼字符串）
+
     private _updateLabels() {
         const m = this._mgr;
         if (this._waveLabel.node.active) this._waveLabel.string = m.levelName;
-        if (this._hpLabel.node.active) this._hpLabel.string = `${m.waveIndex + 1}/${m.totalWaves}波`;
+        const waveKey = m.levelIndex * 1000 + m.waveIndex;
+        if (this._hpLabel.node.active && this._shownWaveKey !== waveKey) {
+            this._shownWaveKey = waveKey;
+            this._hpLabel.string = `${m.waveIndex + 1}/${m.totalWaves}波`;
+        }
 
         if (m.phase === 'won') {
             this._statusLabel.string = '通关！';
@@ -1737,8 +1977,11 @@ export class BattleEntry extends Component {
         }
 
         const data = await loadPlayerData();
-        data.gold = (data.gold ?? 0) + reward.gold;
-        data.exp = (data.exp ?? 0) + reward.exp;
+        data.materials = data.materials ?? {};
+        for (const material of reward.materials) {
+            data.materials[material.id] = (data.materials[material.id] ?? 0) + material.count;
+        }
+        this._materials = { ...data.materials };
         this._chests.removeChest(chest.id);
         this._selectedChestId = this._chests.chests[0]?.id ?? '';
         await saveInventory(this._inv);
@@ -1747,11 +1990,11 @@ export class BattleEntry extends Component {
         this._invView.refresh();
         this._lastChestOpen = {
             chestLabel: chestTypeLabel(chest.type),
-            gold: reward.gold,
-            exp: reward.exp,
             received: received.received,
+            materials: reward.materials,
         };
-        this._chestMessage = `开启${chestTypeLabel(chest.type)}：+${reward.gold} 金币 +${reward.exp} 经验，${received.received.length} 件装备`;
+        const materialText = this._formatMaterials(reward.materials);
+        this._chestMessage = `开启${chestTypeLabel(chest.type)}：${received.received.length} 件装备${materialText ? `，${materialText}` : ''}`;
         this._offlineNoticeText = this._chestMessage;
         this._offlineNoticeTtl = 8;
         this._renderChestPanel();
@@ -1770,11 +2013,22 @@ export class BattleEntry extends Component {
         return `${QUALITY_LABEL[item.quality]}·${item.name}`;
     }
 
+    private _formatMaterials(materials: MaterialItem[], maxParts = 3): string {
+        const visible = materials.filter(material => material.count > 0);
+        if (visible.length === 0) return '';
+        const parts = visible
+            .slice(0, maxParts)
+            .map(material => `${MATERIAL_LABEL[material.id]} +${material.count}`);
+        const extra = visible.length > maxParts ? ` 等${visible.length}种` : '';
+        return parts.join('、') + extra;
+    }
+
     private async _claimOfflineRewards(): Promise<void> {
         const result = await claimOfflineReward({ levelIndex: this._progress.currentLevel });
-        const hasReward = result.gold > 0 || result.exp > 0 || result.chests.length > 0;
+        const hasReward = result.gold > 0 || result.exp > 0 || result.chests.length > 0 || result.chestOverflow > 0;
         if (!hasReward || result.seconds <= 0) return;
-        this._offlineNoticeText = `离线收益：+${result.gold} 金币 +${result.exp} 经验 +${result.chests.length} 宝箱`;
+        const overflow = result.chestOverflow > 0 ? `，${result.chestOverflow} 个宝箱因库存已满未入库` : '';
+        this._offlineNoticeText = `离线收益：+${result.gold} 金币 +${result.exp} 经验 +${result.chests.length} 宝箱${overflow}`;
         this._offlineNoticeTtl = 10;
     }
 
@@ -1839,17 +2093,19 @@ export class BattleEntry extends Component {
         const spriteNode = this._actionPreviewNode!;
         const blendNode = this._actionPreviewBlendNode!;
         const anim = this._actionPreviewAnim!;
-        const frame = clip.frames[0];
-        const aspect = Math.max(1, frame.rect.width) / Math.max(1, frame.rect.height);
-        const h = Math.max(32, req.height);
-        const w = h * aspect;
+        // 与战斗单位同一套显示框/锚点算法，预览即所得
+        const targetH = Math.max(32, req.height);
+        const box = this._clipBoxForHeight(targetH, clip);
+        const w = box.w;
+        const h = box.h;
 
         root.active = true;
         root.setSiblingIndex(this.node.children.length - 1);
         spriteNode.active = true;
         spriteNode.getComponent(UITransform)!.setContentSize(w, h);
         blendNode.getComponent(UITransform)!.setContentSize(w, h);
-        spriteNode.setPosition(req.x, req.floorY + h / 2, 0);
+        // 等价于战斗里 sol.y = floorY + targetH/2，脚点（身体底）落在地面线
+        spriteNode.setPosition(req.x + box.offsetX, req.floorY + targetH / 2 + box.offsetY, 0);
         anim.setClip(clip.frames, clip.fps, clip.loop, clip.pingpong, clip.blend);
         this._drawActionPreviewGuide(req, w, h);
         if (this._actionPreviewLabel) {
