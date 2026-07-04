@@ -20,10 +20,16 @@ export interface EquipAffixConfig {
     value: number;
 }
 
+export interface EquipLevelScalingConfig {
+    growthPerLevel: number;
+    maxLevel: number;
+}
+
 export interface EquipConfigShape {
     qualities: Record<Quality, EquipQualityConfig>;
     slotBonuses: Record<EquipSlot, EquipStats>;
     affixes: EquipAffixConfig[];
+    levelScaling: EquipLevelScalingConfig;
 }
 
 export const EquipConfig = generatedEquipConfig as EquipConfigShape;
@@ -43,16 +49,33 @@ function addStat(out: EquipStats, key: EquipStatKey, value: number) {
     out[key] = roundStat(key, (out[key] ?? 0) + value);
 }
 
-export function calcEquipItemStats(slot: EquipSlot, quality: Quality, rng: () => number = Math.random): EquipStats {
+export function levelCoefficient(level: number): number {
+    const growth = EquipConfig.levelScaling?.growthPerLevel ?? 0;
+    const clamped = Math.max(1, Math.floor(level));
+    return 1 + (clamped - 1) * growth;
+}
+
+export function clampEquipLevel(level: number): number {
+    const max = EquipConfig.levelScaling?.maxLevel ?? 30;
+    return Math.max(1, Math.min(max, Math.floor(level)));
+}
+
+export function calcEquipItemStats(
+    slot: EquipSlot,
+    quality: Quality,
+    rng: () => number = Math.random,
+    level = 1,
+): EquipStats {
     const base = EquipConfig.slotBonuses[slot] ?? {};
     const q = EquipConfig.qualities[quality];
     const mul = q?.multiplier ?? 1;
     const rollMin = q?.rollMin ?? 1;
     const rollMax = q?.rollMax ?? 1;
+    const lvlCoef = levelCoefficient(level);
     const out: EquipStats = {};
     for (const k of Object.keys(base) as EquipStatKey[]) {
         const v = base[k] ?? 0;
-        addStat(out, k, v * mul * rollBetween(rollMin, rollMax, rng));
+        addStat(out, k, v * mul * lvlCoef * rollBetween(rollMin, rollMax, rng));
     }
     const pool = (EquipConfig.affixes ?? []).filter(a => base[a.stat] === undefined);
     const used: Partial<Record<EquipStatKey, boolean>> = {};
@@ -64,7 +87,7 @@ export function calcEquipItemStats(slot: EquipSlot, quality: Quality, rng: () =>
         }
         const affix = pool[pick];
         used[affix.stat] = true;
-        addStat(out, affix.stat, affix.value * mul * rollBetween(rollMin, rollMax, rng));
+        addStat(out, affix.stat, affix.value * mul * lvlCoef * rollBetween(rollMin, rollMax, rng));
     }
     return out;
 }

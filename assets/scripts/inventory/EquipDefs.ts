@@ -13,6 +13,7 @@ export interface EquipItem {
     slot: EquipSlot;   // 部位
     name: string;      // 占位名
     quality: Quality;  // 品质
+    level?: number;     // 装备等级；与品质独立叠乘，读老存档时按 1 补齐
     stats?: EquipStats; // 属性加成；读老存档时会补齐
     locked?: boolean;  // 锁定后不可出售；老存档缺字段按未锁处理
 }
@@ -109,9 +110,12 @@ function seededRng(seed: number): () => number {
 }
 
 export function ensureEquipItemStats(item: EquipItem): EquipItem {
-    if (hasStats(item.stats)) return item;
+    const level = item.level ?? 1;
+    if (hasStats(item.stats)) {
+        return item.level === level ? item : { ...item, level };
+    }
     const seed = seedFromString(`${item.id}|${item.slot}|${item.quality}|${item.name}`);
-    return { ...item, stats: calcEquipItemStats(item.slot, item.quality, seededRng(seed)) };
+    return { ...item, level, stats: calcEquipItemStats(item.slot, item.quality, seededRng(seed), level) };
 }
 
 let _seq = 0;
@@ -124,9 +128,14 @@ function pick<T>(arr: T[], rng: () => number = Math.random): T {
     return arr[Math.floor(rng() * arr.length)];
 }
 
-export function createEquipItem(slot: EquipSlot, quality: Quality, rng: () => number = Math.random): EquipItem {
+export function createEquipItem(
+    slot: EquipSlot,
+    quality: Quality,
+    rng: () => number = Math.random,
+    level = 1,
+): EquipItem {
     const name = pick(NAME_POOL[slot], rng);
-    return { id: makeId(), slot, name, quality, stats: calcEquipItemStats(slot, quality, rng) };
+    return { id: makeId(), slot, name, quality, level, stats: calcEquipItemStats(slot, quality, rng, level) };
 }
 
 export function randomItem(rng: () => number = Math.random): EquipItem {

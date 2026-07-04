@@ -48,6 +48,13 @@ const AFFIXES_ROWS: (string | number)[][] = [
     ['dmgReduce', 0.01],
 ];
 
+// 装备等级 → 属性系数：levelCoefficient = 1 + (level-1) × growthPerLevel。
+const LEVEL_SCALING_HEADER = ['key', 'value'];
+const LEVEL_SCALING_ROWS: (string | number)[][] = [
+    ['growthPerLevel', 0.03],
+    ['maxLevel', 30],
+];
+
 const wb = XLSX.utils.book_new();
 
 function addSheet(name: string, header: string[], rows: (string | number)[][]) {
@@ -58,10 +65,11 @@ function addSheet(name: string, header: string[], rows: (string | number)[][]) {
 addSheet('Qualities', QUALITIES_HEADER, QUALITIES_ROWS);
 addSheet('SlotBonuses', SLOT_BONUSES_HEADER, SLOT_BONUSES_ROWS);
 addSheet('Affixes', AFFIXES_HEADER, AFFIXES_ROWS);
+addSheet('LevelScaling', LEVEL_SCALING_HEADER, LEVEL_SCALING_ROWS);
 
 mkdirSync(dirname(OUT), { recursive: true });
 const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 writeFileSync(OUT, buf);
 
 console.log(`✓ 已生成 ${OUT}`);
-console.log(`  sheets: Qualities(${QUALITIES_ROWS.length}) SlotBonuses(${SLOT_BONUSES_ROWS.length}) Affixes(${AFFIXES_ROWS.length})`);
+console.log(`  sheets: Qualities(${QUALITIES_ROWS.length}) SlotBonuses(${SLOT_BONUSES_ROWS.length}) Affixes(${AFFIXES_ROWS.length}) LevelScaling(${LEVEL_SCALING_ROWS.length})`);

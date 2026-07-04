@@ -333,5 +333,24 @@ test('deserialize：老存档装备缺 stats 时自动补属性', () => {
     assert.ok(m.equipped.tank.helmet?.stats && Object.keys(m.equipped.tank.helmet.stats).length > 0, '已穿旧装备未补 stats');
 });
 
+test('deserialize：老存档装备缺 level 时按 1 补齐（不管是否已有 stats）', () => {
+    const m = new InventoryModel();
+    m.deserialize({
+        backpack: [
+            { id: 'no-level-no-stats', slot: 'helmet', name: '头巾', quality: 'rare' },
+            { id: 'no-level-has-stats', slot: 'weapon', name: '铁剑', quality: 'common', stats: { atk: 5 } },
+        ],
+        warehouse: [],
+        equipped: {
+            tank: Object.fromEntries(SLOTS.map(s => [s, null])) as any,
+            dps: Object.fromEntries(SLOTS.map(s => [s, null])) as any,
+            healer: Object.fromEntries(SLOTS.map(s => [s, null])) as any,
+        },
+    });
+    assert.equal(m.backpack[0].level, 1, '缺 stats 也缺 level 的老装备应按 1 补齐');
+    assert.equal(m.backpack[1].level, 1, '已有 stats 但缺 level 的老装备应按 1 补齐');
+    assert.deepEqual(m.backpack[1].stats, { atk: 5 }, '已有 stats 的老装备不应被重新计算覆盖');
+});
+
 console.log(`\n装备测试：${pass} 通过，${fail} 失败`);
 process.exit(fail ? 1 : 0);

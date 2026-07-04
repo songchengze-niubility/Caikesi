@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/equip.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/equip.xlsx
-// 生成时间：2026-06-30T16:18:49.698Z
+// 生成时间：2026-07-04T09:21:39.800Z
 
 /* eslint-disable */
 // @ts-nocheck
@@ -111,5 +111,9 @@ export const generatedEquipConfig = {
             "stat": "dmgReduce",
             "value": 0.01
         }
-    ]
+    ],
+    "levelScaling": {
+        "growthPerLevel": 0.03,
+        "maxLevel": 30
+    }
 };

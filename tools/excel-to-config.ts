@@ -378,8 +378,30 @@ function buildEquipConfig(wb: XLSX.WorkBook): { config: unknown; summary: string
     }
     if (affixes.length === 0) err('Affixes: 至少需要 1 条可抽取词条');
 
-    const config = { qualities, slotBonuses, affixes };
-    const summary = `qualities=${Object.keys(qualities).length} slots=${Object.keys(slotBonuses).length} bonuses=${bonusCount} affixes=${affixes.length}`;
+    const { rows: levelScalingRows } = sheetToRows(wb, 'LevelScaling');
+    const levelScaling: Record<string, number> = {};
+    const levelScalingKeys = new Set<string>();
+    for (const r of levelScalingRows) {
+        const key = reqStr(r['key'], 'LevelScaling.key');
+        if (levelScalingKeys.has(key)) err(`LevelScaling: key "${key}" 重复定义`);
+        levelScalingKeys.add(key);
+        levelScaling[key] = reqNum(r['value'], `LevelScaling[${key}].value`);
+    }
+    const LEVEL_SCALING_REQUIRED = ['growthPerLevel', 'maxLevel'];
+    for (const k of LEVEL_SCALING_REQUIRED) if (!levelScalingKeys.has(k)) err(`LevelScaling: 缺少必填 key "${k}"`);
+    if ((levelScaling.growthPerLevel ?? 0) < 0) warn(`LevelScaling.growthPerLevel = ${levelScaling.growthPerLevel} 为负`);
+    if ((levelScaling.maxLevel ?? 0) < 1) err(`LevelScaling.maxLevel = ${levelScaling.maxLevel} 必须 >= 1`);
+
+    const config = {
+        qualities,
+        slotBonuses,
+        affixes,
+        levelScaling: {
+            growthPerLevel: levelScaling.growthPerLevel,
+            maxLevel: levelScaling.maxLevel,
+        },
+    };
+    const summary = `qualities=${Object.keys(qualities).length} slots=${Object.keys(slotBonuses).length} bonuses=${bonusCount} affixes=${affixes.length} maxLevel=${levelScaling.maxLevel}`;
     return { config, summary };
 }
 
