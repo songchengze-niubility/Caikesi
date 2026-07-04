@@ -34,7 +34,7 @@ import type { EquipItem, EquipSlot } from './inventory/EquipDefs';
 import { MATERIAL_LABEL } from './services/RewardTypes';
 import type { MaterialId, MaterialItem, MaterialSave } from './services/RewardTypes';
 import { craftEquipment } from './craft/CraftService';
-import { craftTierIds, getCraftTier } from './config/CraftConfig';
+import { canAffordCraftTier, craftTierIds, getCraftTier } from './config/CraftConfig';
 import type { CraftTierConfig } from './config/CraftConfig';
 
 const { ccclass } = _decorator;
@@ -1062,19 +1062,202 @@ export class BattleEntry extends Component {
         return this._craftLabels[i];
     }
 
-    // Task 6 会把这里替换成完整的 Graphics 绘制；本任务先给一个最小占位，
-    // 保证「面板能打开/关闭 + 数据链路能跑」可以先验证。
     private _renderCraftPanel() {
         const g = this._craftGfx;
         g.clear();
         this._craftHots = [];
-        const lb = this._craftLabel(0);
-        lb.node.active = true;
-        lb.node.setPosition(0, 0, 0);
-        lb.string = `[占位] 合成面板 · 材料=${JSON.stringify(this._materials)} · 消息=${this._craftMessage}`;
-        lb.fontSize = 16;
-        lb.color = new Color(230, 230, 230);
-        for (let i = 1; i < this._craftLabels.length; i++) this._craftLabels[i].node.active = false;
+        const tierId = this._ensureSelectedCraftTier();
+        const tier = tierId ? getCraftTier(tierId) : null;
+        let li = 0;
+        const lbl = (x: number, y: number, text: string, size = 20, color = new Color(235, 238, 245)) => {
+            const lb = this._craftLabel(li++);
+            lb.node.active = true;
+            lb.node.setPosition(x, y, 0);
+            lb.string = text;
+            lb.fontSize = size;
+            lb.lineHeight = size + 4;
+            lb.color = color;
+            lb.horizontalAlign = Label.HorizontalAlign.CENTER;
+            lb.verticalAlign = Label.VerticalAlign.CENTER;
+        };
+
+        g.fillColor = new Color(8, 10, 14, 170);
+        g.rect(-this._halfW, -this._halfH, this._halfW * 2, this._halfH * 2);
+        g.fill();
+
+        const w = Math.min(760, this._halfW * 2 - 80);
+        const h = Math.min(650, this._halfH * 2 - 90);
+        const x = -w / 2;
+        const y = -h / 2;
+        g.fillColor = new Color(28, 31, 40, 246);
+        g.roundRect(x, y, w, h, 8);
+        g.fill();
+        g.strokeColor = new Color(140, 200, 255, 205);
+        g.lineWidth = 2;
+        g.roundRect(x, y, w, h, 8);
+        g.stroke();
+
+        lbl(0, y + h - 42, '材料合成', 30, new Color(140, 200, 255));
+        lbl(0, y + h - 82, this._materialsHoldingText(), 18, new Color(190, 220, 190));
+
+        this._drawCraftTierRow(g, lbl, x + 28, y + h - 130, w - 56, 54);
+        this._drawCraftSlotRow(g, lbl, x + 28, y + h - 206, w - 56, 54);
+        this._drawCraftCost(g, lbl, x + 28, y + h - 260, w - 56, 78, tier);
+        this._drawCraftResult(g, lbl, x + 28, y + 96, w - 56, 150);
+        if (this._craftMessage) lbl(0, y + 78, this._craftMessage, 17, new Color(255, 210, 150));
+
+        const by = y + 40;
+        const canCraft = !!tier && canAffordCraftTier(this._materials, tierId);
+        this._craftButton(g, lbl, x + 70, by, 200, 50, '合成', 'craft', canCraft);
+        this._craftButton(g, lbl, x + w - 250, by, 180, 50, '关闭', 'close', true);
+
+        for (let i = li; i < this._craftLabels.length; i++) this._craftLabels[i].node.active = false;
+    }
+
+    private _materialsHoldingText(): string {
+        const ids: MaterialId[] = ['forge_stone', 'gem_shard', 'rune_dust'];
+        return ids.map(id => `${MATERIAL_LABEL[id]} ${this._materials[id] ?? 0}`).join('  ·  ');
+    }
+
+    private _drawCraftTierRow(
+        g: Graphics,
+        lbl: (x: number, y: number, text: string, size?: number, color?: Color) => void,
+        x: number,
+        topY: number,
+        w: number,
+        rowH: number,
+    ) {
+        const ids = craftTierIds();
+        const gap = 10;
+        const btnW = (w - gap * Math.max(0, ids.length - 1)) / Math.max(1, ids.length);
+        for (let i = 0; i < ids.length; i++) {
+            const tierId = ids[i];
+            const tier = getCraftTier(tierId);
+            const bx = x + i * (btnW + gap);
+            const selected = tierId === this._craftSelectedTier;
+            const pressed = this._pressedCraftKind === 'tier' && this._pressedCraftTierId === tierId;
+            const r = this._pressRect(bx, topY, btnW, rowH, pressed);
+            g.fillColor = selected ? new Color(72, 110, 150, 245) : new Color(43, 48, 60, 235);
+            g.roundRect(r.x, r.y, r.w, r.h, 8); g.fill();
+            g.strokeColor = selected ? new Color(140, 200, 255, 230) : new Color(88, 96, 112, 190);
+            g.lineWidth = selected ? 3 : 2;
+            g.roundRect(r.x, r.y, r.w, r.h, 8); g.stroke();
+            lbl(bx + btnW / 2, topY + rowH / 2 + 8, tier.label, 17, new Color(245, 248, 255));
+            lbl(bx + btnW / 2, topY + rowH / 2 - 13, `Lv.${tier.levelMin}-${tier.levelMax}`, 13, new Color(180, 188, 204));
+            this._craftHots.push({ x: bx, y: topY, w: btnW, h: rowH, kind: 'tier', tierId });
+        }
+    }
+
+    private _drawCraftSlotRow(
+        g: Graphics,
+        lbl: (x: number, y: number, text: string, size?: number, color?: Color) => void,
+        x: number,
+        topY: number,
+        w: number,
+        rowH: number,
+    ) {
+        const gap = 8;
+        const btnW = (w - gap * (SLOTS.length - 1)) / SLOTS.length;
+        for (let i = 0; i < SLOTS.length; i++) {
+            const slot = SLOTS[i];
+            const bx = x + i * (btnW + gap);
+            const selected = slot === this._craftSelectedSlot;
+            const pressed = this._pressedCraftKind === 'slot' && this._pressedCraftSlot === slot;
+            const r = this._pressRect(bx, topY, btnW, rowH, pressed);
+            g.fillColor = selected ? new Color(72, 110, 150, 245) : new Color(43, 48, 60, 235);
+            g.roundRect(r.x, r.y, r.w, r.h, 8); g.fill();
+            g.strokeColor = selected ? new Color(140, 200, 255, 230) : new Color(88, 96, 112, 190);
+            g.lineWidth = selected ? 3 : 2;
+            g.roundRect(r.x, r.y, r.w, r.h, 8); g.stroke();
+            lbl(bx + btnW / 2, topY + rowH / 2, SLOT_LABEL[slot], 16, new Color(245, 248, 255));
+            this._craftHots.push({ x: bx, y: topY, w: btnW, h: rowH, kind: 'slot', slot });
+        }
+    }
+
+    private _drawCraftCost(
+        g: Graphics,
+        lbl: (x: number, y: number, text: string, size?: number, color?: Color) => void,
+        x: number,
+        topY: number,
+        w: number,
+        h: number,
+        tier: CraftTierConfig | null,
+    ) {
+        g.fillColor = new Color(35, 39, 50, 235);
+        g.roundRect(x, topY - h, w, h, 8); g.fill();
+        g.strokeColor = new Color(88, 96, 112, 190);
+        g.lineWidth = 2;
+        g.roundRect(x, topY - h, w, h, 8); g.stroke();
+        if (!tier) {
+            lbl(x + w / 2, topY - h / 2, '暂无可用合成档位', 17, new Color(170, 178, 194));
+            return;
+        }
+        const materialIds: MaterialId[] = ['forge_stone', 'gem_shard', 'rune_dust'];
+        const costText = materialIds
+            .filter(id => (tier.cost[id] ?? 0) > 0)
+            .map(id => {
+                const need = tier.cost[id] ?? 0;
+                const have = this._materials[id] ?? 0;
+                return `${MATERIAL_LABEL[id]} ${have}/${need}${have >= need ? '' : '（不足）'}`;
+            })
+            .join('   ');
+        lbl(x + w / 2, topY - 26, `消耗材料：${costText}`, 16, new Color(230, 232, 238));
+        lbl(x + w / 2, topY - 54, `产出：Lv.${tier.levelMin}-${tier.levelMax} 随机品质装备`, 15, new Color(180, 220, 190));
+    }
+
+    private _drawCraftResult(
+        g: Graphics,
+        lbl: (x: number, y: number, text: string, size?: number, color?: Color) => void,
+        x: number,
+        y: number,
+        w: number,
+        h: number,
+    ) {
+        g.fillColor = new Color(32, 35, 45, 235);
+        g.roundRect(x, y, w, h, 8); g.fill();
+        g.strokeColor = new Color(88, 96, 112, 190);
+        g.lineWidth = 2;
+        g.roundRect(x, y, w, h, 8); g.stroke();
+        lbl(x + w / 2, y + h - 28, '本次合成结果', 20, new Color(230, 232, 238));
+        if (!this._lastCraftResult) {
+            lbl(x + w / 2, y + h / 2 - 8, '合成后在这里查看结果', 17, new Color(165, 174, 192));
+            return;
+        }
+        const r = this._lastCraftResult;
+        const qc = QUALITY_COLOR[r.item.quality];
+        const cardW = Math.min(260, w - 40);
+        const cx = x + (w - cardW) / 2;
+        const cy = y + h - 118;
+        g.fillColor = new Color(qc[0], qc[1], qc[2], 210);
+        g.roundRect(cx, cy, cardW, 60, 6); g.fill();
+        g.strokeColor = new Color(255, 255, 255, 90);
+        g.lineWidth = 1;
+        g.roundRect(cx, cy, cardW, 60, 6); g.stroke();
+        lbl(cx + cardW / 2, cy + 38, `Lv.${r.item.level ?? 1} ${QUALITY_LABEL[r.item.quality]} · ${r.item.name}`, 15, new Color(245, 248, 255));
+        lbl(cx + cardW / 2, cy + 16, `${SLOT_LABEL[r.item.slot]} → ${r.target}`, 13, new Color(245, 248, 255));
+    }
+
+    private _craftButton(
+        g: Graphics,
+        lbl: (x: number, y: number, text: string, size?: number, color?: Color) => void,
+        x: number,
+        y: number,
+        w: number,
+        h: number,
+        text: string,
+        kind: CraftHot['kind'],
+        enabled: boolean,
+    ) {
+        const r = this._pressRect(x, y, w, h, enabled && this._pressedCraftKind === kind);
+        g.fillColor = enabled ? new Color(67, 76, 96, 245) : new Color(48, 52, 62, 200);
+        g.roundRect(r.x, r.y, r.w, r.h, 8);
+        g.fill();
+        g.strokeColor = enabled ? new Color(140, 200, 255, 220) : new Color(90, 94, 104, 180);
+        g.lineWidth = 2;
+        g.roundRect(r.x, r.y, r.w, r.h, 8);
+        g.stroke();
+        lbl(x + w / 2, y + h / 2, text, 18, enabled ? new Color(245, 248, 255) : new Color(145, 150, 160));
+        if (enabled) this._craftHots.push({ x, y, w, h, kind });
     }
 
     private async _craftSelectedEquipment(): Promise<void> {
