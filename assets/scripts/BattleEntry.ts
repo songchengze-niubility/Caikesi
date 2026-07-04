@@ -397,6 +397,7 @@ export class BattleEntry extends Component {
         if (!this._gameStarted) return;
         this._hideSettlement();
         this._hideChestPanel();
+        this._hideCraftPanel();
         const effective = this._inv ? buildEffectiveStatsMap(this._inv.equipped) : {};
         const levelIndex = this._progress ? this._progress.currentLevel : BattleConfig.startLevel;
         this._battleSeed = `${Date.now()}|${Math.random()}|${levelIndex}`;
@@ -1656,6 +1657,7 @@ export class BattleEntry extends Component {
     }
 
     private _showSettlement(rewards: RewardEntry[], failed: number, complete: CompleteLevelResult) {
+        this._hideCraftPanel();
         this._lastComplete = complete;
         this._settleRewards = rewards;
         this._settleFailed = failed;
