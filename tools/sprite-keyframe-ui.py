@@ -10,6 +10,7 @@ import os
 import re
 import secrets
 import shutil
+import statistics
 import subprocess
 import sys
 import webbrowser
@@ -245,14 +246,79 @@ def make_sequence_preview(paths: list[Path], out_path: Path, columns: int, color
     preview.save(out_path)
 
 
-def build_game_preview_frames(keyframes: list[Path], out_dir: Path, columns: int) -> tuple[list[Path], dict[str, int]]:
+def build_game_preview_frames(
+    keyframes: list[Path],
+    out_dir: Path,
+    columns: int,
+    target_height: int = 0,
+) -> tuple[list[Path], dict[str, int], dict[str, object]]:
     clear_pngs(out_dir)
     targets = [out_dir / f"key_{index:03d}.png" for index in range(len(keyframes))]
     crop = crop_sequence_to_shared_bbox(keyframes, targets)
+    scale = 1.0
+    if target_height > 0 and crop["height"] > target_height:
+        scale = target_height / crop["height"]
+        for target in targets:
+            with Image.open(target) as image:
+                resized = image.convert("RGBA").resize(
+                    (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
+                    Image.Resampling.LANCZOS,
+                )
+            resized.save(target)
+    with Image.open(targets[0]) as image:
+        output_size = {"width": image.width, "height": image.height}
     make_sequence_strip(targets, out_dir.parent / "game_keyframes_strip.png")
     make_sequence_preview(targets, out_dir.parent / "game_keyframes_preview.png", columns)
     make_sequence_preview(targets, out_dir.parent / "game_keyframes_preview_dark.png", columns, (42, 48, 50))
-    return targets, crop
+    scale_info: dict[str, object] = {
+        "targetHeight": target_height,
+        "scale": round(scale, 4),
+        "outputSize": output_size,
+    }
+    return targets, crop, scale_info
+
+
+def sequence_body_metrics(paths: list[Path], threshold: int = ALPHA_BBOX_THRESHOLD) -> dict[str, float] | None:
+    """逐帧量身体指标，写进 ArtManifest 供游戏跨动作归一（均相对帧宽高 0-1 归一化）：
+    bodyH = alpha bbox 高的中位数 / 帧高；footY = bbox 底边的中位数 / 帧高；
+    anchorX = 脚接触行（bbox 底部最多 3 行）alpha 加权质心 X 的中位数 / 帧宽。
+    取中位数是为了抗单帧异常（挥武器伸出、拖尾特效）。全透明序列返回 None。"""
+    body_hs: list[float] = []
+    foot_ys: list[float] = []
+    anchor_xs: list[float] = []
+    for path in paths:
+        with Image.open(path) as image:
+            alpha = image.convert("RGBA").getchannel("A")
+        width, height = alpha.size
+        if width <= 0 or height <= 0:
+            continue
+        mask = alpha.point(lambda v: 255 if v > threshold else 0)
+        box = mask.getbbox()
+        if box is None:
+            continue
+        left, top, right, bottom = box
+        body_hs.append((bottom - top) / height)
+        foot_ys.append(bottom / height)
+        rows_top = max(top, bottom - 3)
+        region = alpha.crop((left, rows_top, right, bottom))
+        row_w = right - left
+        total = 0.0
+        weighted = 0.0
+        for idx, val in enumerate(region.getdata()):
+            if val > threshold:
+                total += val
+                weighted += val * (left + (idx % row_w) + 0.5)
+        if total > 0:
+            anchor_xs.append(weighted / total / width)
+    if not body_hs:
+        return None
+    metrics: dict[str, float] = {
+        "bodyH": round(statistics.median(body_hs), 4),
+        "footY": round(statistics.median(foot_ys), 4),
+    }
+    if anchor_xs:
+        metrics["anchorX"] = round(statistics.median(anchor_xs), 4)
+    return metrics
 
 
 def copy_sequence_frames(sources: list[Path], targets: list[Path]) -> None:
@@ -420,6 +486,9 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/import-art":
             self.handle_import_art()
             return
+        if parsed.path == "/api/patch-metas":
+            self.handle_patch_metas()
+            return
         self.send_error(404)
 
     def read_body(self) -> bytes:
@@ -491,7 +560,9 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
 
             option_defaults = {
                 "sample_fps": "12",
-                "video_seconds": "1",
+                "video_start": "0",
+                "video_end": "1",
+                "video_seconds": "0",
                 "diff_threshold": "12",
                 "min_gap": "2",
                 "max_keyframes": "24",
@@ -509,6 +580,7 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
                 "fringe_radius": "2",
                 "fringe_strength": "0.85",
                 "fringe_brightness": "155",
+                "edge_contract": "1",
                 "frame_size": "512",
                 "padding": "8",
                 "anchor_mode": "foot",
@@ -525,6 +597,10 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
                 command.append("--no-anchor-stabilize")
             if fields.get("scale_stabilize") == "on":
                 command.append("--scale-stabilize")
+            if fields.get("visual_stabilize") == "on":
+                command.append("--visual-stabilize")
+            if fields.get("foot_contact_lock") != "on":
+                command.append("--no-foot-contact-lock")
             if fields.get("no_decontaminate") == "on":
                 command.append("--no-decontaminate")
             if fields.get("hole_cleanup") != "on":
@@ -555,10 +631,19 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
                     preview_columns = int(form_value(fields, "preview_columns", "6"))
                 except ValueError:
                     preview_columns = 6
-                game_keyframes, game_crop = build_game_preview_frames(keyframes, out_dir / "game_keyframes", preview_columns)
+                try:
+                    game_target_height = max(0, int(form_value(fields, "game_target_height", "240")))
+                except ValueError:
+                    game_target_height = 240
+                game_keyframes, game_crop, game_scale = build_game_preview_frames(
+                    keyframes, out_dir / "game_keyframes", preview_columns, game_target_height
+                )
                 manifest["game_import"] = {
                     "cropMode": "shared-alpha-bbox",
                     "crop": game_crop,
+                    "targetHeight": game_scale["targetHeight"],
+                    "scale": game_scale["scale"],
+                    "outputSize": game_scale["outputSize"],
                     "framesDir": str(out_dir / "game_keyframes"),
                     "note": "These frames match the PNGs copied by /api/import-art when available.",
                 }
@@ -757,12 +842,29 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
             else:
                 crop = crop_sequence_to_shared_bbox(source_frames, target_files)
             patched_metas = patch_existing_cocos_metas(target_files)
+            # 帧数变少时清掉没有对应 PNG 的孤儿 .meta（帧按路径加载不依赖 uuid，删除安全）
+            orphan_metas = 0
+            for meta in target_dir.glob(f"{prefix}_*.png.meta"):
+                if not meta.with_suffix("").exists():
+                    meta.unlink()
+                    orphan_metas += 1
+
+            # 身体基准指标：游戏侧据此跨动作归一（身体缩放/脚点对齐），详见 ArtManifest 注释
+            metrics = sequence_body_metrics(target_files)
+            metrics_ts = ""
+            if metrics:
+                parts = [f"bodyH: {metrics['bodyH']:g}"]
+                if "anchorX" in metrics:
+                    parts.append(f"anchorX: {metrics['anchorX']:g}")
+                parts.append(f"footY: {metrics['footY']:g}")
+                metrics_ts = ", " + ", ".join(parts)
 
             entry = (
                 f"{{ type: 'frames', dir: {ts_string(relative_dir)}, "
                 f"prefix: {ts_string(prefix)}, frames: {len(source_frames)}, fps: {fps}, loop: {str(loop).lower()}"
                 f"{', pingpong: true' if pingpong else ''}"
-                f"{f', blend: {blend:g}' if blend > 0 else ''} }}"
+                f"{f', blend: {blend:g}' if blend > 0 else ''}"
+                f"{metrics_ts} }}"
             )
             upsert_manifest_entry(art_key, entry)
 
@@ -783,7 +885,44 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
                     "sourceMode": source_mode,
                     "crop": crop,
                     "patchedMetas": patched_metas,
+                    "orphanMetasRemoved": orphan_metas,
+                    "bodyMetrics": metrics,
                     "files": [str(path) for path in target_files],
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.send_json(500, {"ok": False, "error": str(exc)})
+
+    def handle_patch_metas(self) -> None:
+        # 独立修补入口：把指定资源目录下全部帧的 sprite-frame .meta 改成全帧 custom。
+        # 用途：新目录首次经 Cocos 编辑器导入后（默认 trimType=auto，SizeMode.CUSTOM 下会拉伸），
+        # 不必重新覆盖导入，直接对目录跑一遍修补；配合 `npm run check:art` 的 meta 校验使用。
+        try:
+            payload = json.loads(self.read_body().decode("utf-8"))
+            art_key = normalize_art_key(str(payload.get("artKey", "")))
+            if not art_key:
+                self.send_json(400, {"ok": False, "error": "缺少 artKey。"})
+                return
+            target_dir = RESOURCES_ROOT / f"art/{art_key}"
+            if not inside(RESOURCES_ROOT, target_dir) or not target_dir.is_dir():
+                self.send_json(404, {"ok": False, "error": f"资源目录不存在：art/{art_key}"})
+                return
+            pngs = sorted(target_dir.glob("*.png"))
+            if not pngs:
+                self.send_json(400, {"ok": False, "error": "目录里没有 PNG 帧。"})
+                return
+            patched = patch_existing_cocos_metas(pngs)
+            missing = sum(1 for path in pngs if not path.with_suffix(path.suffix + ".meta").exists())
+            self.send_json(
+                200,
+                {
+                    "ok": True,
+                    "artKey": art_key,
+                    "dir": str(target_dir),
+                    "frames": len(pngs),
+                    "patchedMetas": patched,
+                    "missingMetas": missing,
+                    "hint": "missingMetas>0 表示这些帧还没经 Cocos 编辑器导入，导入后再跑一次。" if missing else "",
                 },
             )
         except Exception as exc:  # noqa: BLE001

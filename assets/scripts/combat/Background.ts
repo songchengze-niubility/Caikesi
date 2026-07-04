@@ -19,6 +19,9 @@ export class Background {
     private hillX = 0;   // 山丘滚动累计
     private t = 0;       // 总时间（地面纹理滚动用）
     private _useSprite = false;
+    private _tmpColor = new Color();                       // 每帧动态色复用，避免热路径 new Color
+    private _cHorizon = new Color(255, 255, 255, 110);    // 地平线高光
+    private _cGroundDash = new Color(255, 255, 255, 40);  // 地面浅色斑块
 
     constructor(g: Graphics, halfW: number, halfH: number) {
         this.g = g;
@@ -72,14 +75,14 @@ export class Background {
         this._groundRow(S.horizonY - 34, 92, 30, 7, S.groundScroll * 0.55);
         this._groundRow(-this.halfH * 0.45, 140, 54, 12, S.groundScroll);
         // 地平线高光
-        g.strokeColor = new Color(255, 255, 255, 110);
+        g.strokeColor = this._cHorizon;
         g.lineWidth = 3;
         g.moveTo(-this.halfW, S.horizonY);
         g.lineTo(this.halfW, S.horizonY);
         g.stroke();
-        // 云（最近层）
+        // 云（最近层）；颜色仍每帧读配置（保留调参面板实时生效），但复用 Color 对象
         const cc = S.cloud.color;
-        g.fillColor = new Color(cc[0], cc[1], cc[2], 235);
+        g.fillColor = this._tmpColor.set(cc[0], cc[1], cc[2], 235);
         for (const c of this.clouds) this._cloud(c);
     }
 
@@ -91,10 +94,11 @@ export class Background {
         const h = (yHigh - yLow) / steps;
         for (let i = 0; i < steps; i++) {
             const t = i / (steps - 1);
-            this.g.fillColor = new Color(
+            this.g.fillColor = this._tmpColor.set(
                 colorLow[0] + (colorHigh[0] - colorLow[0]) * t,
                 colorLow[1] + (colorHigh[1] - colorLow[1]) * t,
                 colorLow[2] + (colorHigh[2] - colorLow[2]) * t,
+                255,
             );
             this.g.rect(x, yLow + i * h, w, h + 1);
             this.g.fill();
@@ -108,7 +112,7 @@ export class Background {
         const baseY = S.horizonY - r + 55;   // 丘顶高出地平线约 55
         const off = ((this.hillX % period) + period) % period;
         const c = S.hill.color;
-        this.g.fillColor = new Color(c[0], c[1], c[2]);
+        this.g.fillColor = this._tmpColor.set(c[0], c[1], c[2], 255);
         for (let x = -this.halfW - period; x < this.halfW + period; x += period) {
             this.g.circle(x - off, baseY, r);
         }
@@ -118,7 +122,7 @@ export class Background {
     // 地面一行纹理（小色块），随时间向左滚
     private _groundRow(y: number, spacing: number, dashW: number, dashH: number, speed: number) {
         const off = (this.t * speed) % spacing;
-        this.g.fillColor = new Color(255, 255, 255, 40);   // 浅色斑块，叠在地面上
+        this.g.fillColor = this._cGroundDash;   // 浅色斑块，叠在地面上
         for (let x = -this.halfW - spacing; x < this.halfW + spacing; x += spacing) {
             this.g.rect(x - off, y, dashW, dashH);
         }

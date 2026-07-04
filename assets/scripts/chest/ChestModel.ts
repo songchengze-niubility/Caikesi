@@ -4,6 +4,7 @@ import { hashSeed } from '../core/Random';
 
 export type ChestType = 'normal' | 'boss' | 'chapter';
 export const CHEST_TYPES: ChestType[] = ['normal', 'boss', 'chapter'];
+export const MAX_CHEST_COUNT = 30;
 
 export interface ChestItem {
     id: string;
@@ -58,9 +59,16 @@ function isChestType(value: unknown): value is ChestType {
 export class ChestInventoryModel {
     chests: ChestItem[] = [];
 
+    constructor(public readonly maxChests = MAX_CHEST_COUNT) {}
+
+    remainingSlots(): number {
+        return Math.max(0, this.maxChests - this.chests.length);
+    }
+
     addChest(chest: ChestItem): ChestOpResult {
         if (!isChestType(chest.type)) return fail('宝箱类型非法');
         if (!chest.sourceDropGroup) return fail('宝箱缺少掉落组');
+        if (this.chests.length >= this.maxChests) return fail('宝箱库存已满');
         const stored = cloneChest(chest);
         this.chests.push(stored);
         return { ok: true, chest: stored };
@@ -93,6 +101,7 @@ export class ChestInventoryModel {
         for (const raw of save ?? []) {
             if (!raw || !isChestType(raw.type)) continue;
             if (typeof raw.sourceDropGroup !== 'string' || raw.sourceDropGroup.length === 0) continue;
+            if (this.chests.length >= this.maxChests) break;
             this.chests.push({
                 id: typeof raw.id === 'string' && raw.id ? raw.id : makeChestId(String(raw.seed ?? Date.now()), Number(raw.createdAt ?? Date.now())),
                 type: raw.type,

@@ -75,7 +75,8 @@ export function mountActionPreviewPanel(
     head.appendChild(title);
 
     const body = doc.createElement('div');
-    const toggle = button(doc, '-', '#444', () => {
+    body.style.display = 'none';
+    const toggle = button(doc, '+', '#444', () => {
         const collapsed = body.style.display !== 'none';
         body.style.display = collapsed ? 'none' : 'block';
         toggle.textContent = collapsed ? '+' : '-';
@@ -146,7 +147,7 @@ export function mountActionPreviewPanel(
     floorY.oninput = livePreview;
 
     doc.body.appendChild(panel);
-    if (keys.length) onPreview(current());
+    onHide();
     return () => panel.remove();
 }
 

@@ -20,6 +20,7 @@ export interface OfflineRewardPreview extends RewardBundle {
 
 export interface OfflineClaimResult extends OfflineRewardPreview {
     claimed: boolean;
+    chestOverflow: number;
 }
 
 function clampLevelIndex(index: number): number {

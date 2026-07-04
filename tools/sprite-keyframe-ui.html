@@ -567,7 +567,9 @@
             <p class="section-label">视频</p>
             <div class="grid">
               <label class="control"><span>采样 FPS</span><input name="sample_fps" type="number" min="1" max="60" step="1" value="12"></label>
-              <label class="control"><span>前几秒</span><input name="video_seconds" type="number" min="0" max="60" step="0.1" value="1"></label>
+              <label class="control"><span>起始秒</span><input name="video_start" type="number" min="0" max="3600" step="0.1" value="0"></label>
+              <label class="control"><span>结束秒</span><input name="video_end" type="number" min="0" max="3600" step="0.1" value="1"></label>
+              <input name="video_seconds" type="hidden" value="0">
               <label class="control"><span>变化阈值</span><input name="diff_threshold" type="number" min="1" max="80" step="1" value="12"></label>
               <label class="control"><span>最小间隔</span><input name="min_gap" type="number" min="1" max="30" step="1" value="2"></label>
               <label class="control"><span>最多关键帧</span><input name="max_keyframes" type="number" min="0" max="120" step="1" value="24"></label>
@@ -604,7 +606,9 @@
               <label class="control"><span>白边半径</span><input name="fringe_radius" type="number" min="0" max="8" step="1" value="2"></label>
               <label class="control"><span>白边强度</span><input name="fringe_strength" type="number" min="0" max="1" step="0.05" value="0.85"></label>
               <label class="control"><span>白边亮度阈值</span><input name="fringe_brightness" type="number" min="80" max="240" step="1" value="155"></label>
+              <label class="control"><span>边缘收缩(px)</span><input name="edge_contract" type="number" min="0" max="4" step="1" value="1" title="抠图后向内腐蚀 alpha 边缘 N 像素，切掉半透明抗锯齿白边。0=关闭，小人尺寸建议 1，白边重可调 2。"></label>
               <label class="control"><span>输出画布</span><input name="frame_size" type="text" value="512" autocomplete="off"></label>
+              <label class="control"><span>游戏帧高上限</span><input name="game_target_height" type="number" min="0" max="2048" step="1" value="240" title="game_keyframes 高度超过该值时整体等比缩小；0 表示不缩放。按游戏内显示高度×2 设定。"></label>
               <label class="control"><span>内边距</span><input name="padding" type="number" min="0" max="64" step="1" value="8"></label>
               <label class="control">
                 <span>锚点模式</span>
@@ -619,6 +623,8 @@
               <label class="check"><input name="allow_upscale" type="checkbox">允许放大</label>
               <label class="check"><input name="keep_raw_frames" type="checkbox">保留原帧</label>
               <label class="check"><input name="anchor_stabilize" type="checkbox" checked>多点稳定</label>
+              <label class="check"><input name="visual_stabilize" type="checkbox" checked>视觉锁定</label>
+              <label class="check"><input name="foot_contact_lock" type="checkbox" checked>脚尖硬锁</label>
               <label class="check"><input name="scale_stabilize" type="checkbox">稳定缩放</label>
               <label class="check"><input name="hole_cleanup" type="checkbox" checked>清理内部白孔</label>
               <label class="check"><input name="fringe_cleanup" type="checkbox" checked>净化浅色白边</label>
@@ -714,6 +720,7 @@
             </div>
             <div class="action-row">
               <div class="status" id="importStatus">生成后可导入</div>
+              <button class="ghost" id="patchMetasButton" type="button" title="把「资源键」目录下全部帧的 .meta 改成全帧 custom。新目录经 Cocos 首次导入后（trimType=auto 会拉伸）跑一次；不需要先生成关键帧。">修补 .meta</button>
               <button class="primary" id="importButton" type="button" disabled>导入到 Cocos</button>
             </div>
           </div>
@@ -1042,8 +1049,9 @@
         importFps.value = String(recommendedFps);
       }
       frameCount.textContent = String(count);
-      frameSize.textContent = gameCrop
-        ? `${gameCrop.width}x${gameCrop.height}`
+      const gameSize = gameImport.outputSize || gameCrop;
+      frameSize.textContent = gameSize
+        ? `${gameSize.width}x${gameSize.height}`
         : (Array.isArray(normalization.frame_size) ? normalization.frame_size.join("x") : "--");
       sharedScale.textContent = typeof normalization.shared_scale === "number"
         ? normalization.shared_scale.toFixed(3)
@@ -1212,6 +1220,37 @@
         importStatus.textContent = String(error);
       } finally {
         importButton.disabled = false;
+      }
+    });
+
+    const patchMetasButton = document.querySelector("#patchMetasButton");
+    patchMetasButton.addEventListener("click", async () => {
+      const artKey = importArtKey.value.trim();
+      if (!artKey) {
+        importStatus.textContent = "先填资源键（对应 assets/resources/art/ 下的目录）";
+        return;
+      }
+      patchMetasButton.disabled = true;
+      importStatus.textContent = "正在修补 .meta ...";
+      try {
+        const response = await fetch(serverUrl("/api/patch-metas"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ artKey }),
+        });
+        const data = await response.json();
+        if (!response.ok || !data.ok) {
+          importStatus.textContent = data.error || "修补失败";
+          logBox.textContent = JSON.stringify(data, null, 2);
+          logBox.classList.add("visible");
+          return;
+        }
+        const missing = data.missingMetas > 0 ? ` · ${data.missingMetas} 帧缺 .meta（先开 Cocos 导入再跑一次）` : "";
+        importStatus.textContent = `已修补 ${data.patchedMetas}/${data.frames} 帧 .meta：${data.artKey}${missing}`;
+      } catch (error) {
+        importStatus.textContent = String(error);
+      } finally {
+        patchMetasButton.disabled = false;
       }
     });
   </script>

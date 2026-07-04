@@ -38,10 +38,22 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--sample-fps", type=float, default=12.0, help="Video sampling FPS before keyframe picking.")
     parser.add_argument(
+        "--video-start",
+        type=float,
+        default=0.0,
+        help="Start timestamp in seconds for video sampling.",
+    )
+    parser.add_argument(
+        "--video-end",
+        type=float,
+        default=0.0,
+        help="End timestamp in seconds for video sampling. 0 means use --video-seconds or sample to the end.",
+    )
+    parser.add_argument(
         "--video-seconds",
         type=float,
         default=1.0,
-        help="Only process the first N seconds of the reference video. 0 uses the full video.",
+        help="Compatibility duration from --video-start. Ignored when --video-end is greater than 0. 0 samples to the end.",
     )
     parser.add_argument(
         "--diff-threshold",
@@ -137,6 +149,13 @@ def parse_args() -> argparse.Namespace:
         help="Minimum mean RGB brightness treated as pale fringe near transparent edges.",
     )
     parser.add_argument("--no-decontaminate", action="store_true", help="Do not remove white edge contamination.")
+    parser.add_argument(
+        "--edge-contract",
+        type=int,
+        default=1,
+        help="Erode the alpha edge inward by N pixels after cutout to remove the semi-transparent anti-aliased fringe. "
+        "0 disables. 1 is a safe default for small sprites; raise to 2 if a heavy fringe remains.",
+    )
 
     parser.add_argument(
         "--frame-size",
@@ -166,6 +185,22 @@ def parse_args() -> argparse.Namespace:
         "--scale-stabilize",
         action="store_true",
         help="Also apply per-frame scale stabilization. Disabled by default because it can cause zoom jitter.",
+    )
+    parser.add_argument(
+        "--visual-stabilize",
+        action="store_true",
+        help="Apply a final horizontal torso visual-center lock. Useful for idle/standing loops with tiny perceived sway.",
+    )
+    parser.add_argument(
+        "--no-foot-contact-lock",
+        action="store_true",
+        help="Disable the final pixel-precise foot contact lock used by foot anchor mode.",
+    )
+    parser.add_argument(
+        "--foot-contact-freeze-rows",
+        type=int,
+        default=4,
+        help="Bottom contact rows copied from a reference frame after foot locking. Use 0 to disable.",
     )
     parser.add_argument("--preview-columns", type=int, default=6, help="Columns in the preview sheet.")
     parser.add_argument("--keep-raw-frames", action="store_true", help="Keep sampled raw frames after processing.")
@@ -285,6 +320,22 @@ def dilate_mask(mask: np.ndarray, radius: int) -> np.ndarray:
     return result
 
 
+def erode_alpha(alpha: np.ndarray, radius: int) -> np.ndarray:
+    """把 alpha 通道向内腐蚀 radius 圈（灰度腐蚀：每像素取 3x3 邻域最小值）。
+    边缘那圈半透明像素会被外侧的 0 拉低，主体内部的高 alpha 不受影响——
+    直接切掉抗锯齿混合边（白边根源），代价是轮廓向内缩 radius 像素。"""
+    result = alpha
+    radius = max(0, radius)
+    for _ in range(radius):
+        padded = np.pad(result, 1, mode="edge")
+        result = np.minimum.reduce([
+            padded[0:-2, 0:-2], padded[0:-2, 1:-1], padded[0:-2, 2:],
+            padded[1:-1, 0:-2], padded[1:-1, 1:-1], padded[1:-1, 2:],
+            padded[2:, 0:-2], padded[2:, 1:-1], padded[2:, 2:],
+        ])
+    return result
+
+
 def sampled_edge_color(rgb: np.ndarray) -> np.ndarray:
     height, width, _ = rgb.shape
     strip = max(3, min(height, width) // 32)
@@ -324,6 +375,7 @@ def cut_white_background(
     fringe_strength: float,
     fringe_brightness: float,
     decontaminate: bool,
+    edge_contract: int = 0,
 ) -> Image.Image:
     image = source.convert("RGBA")
     arr = np.asarray(image, dtype=np.float32).copy()
@@ -394,6 +446,11 @@ def cut_white_background(
             rgb[edge] = np.clip((rgb[edge] - decontam_color * (1.0 - a)) / a, 0.0, 255.0)
         rgb[background & (alpha_unit <= 0.001)] = decontam_color
 
+    # 最后一步：向内腐蚀 alpha 边缘，切掉抗锯齿混合边（半透明白边根源）。
+    # 放在 decontaminate 之后——先把边缘颜色修对，再砍掉最外圈。
+    if edge_contract > 0:
+        new_alpha = erode_alpha(new_alpha, edge_contract)
+
     arr[:, :, :3] = rgb
     arr[:, :, 3] = np.clip(new_alpha, 0.0, 255.0)
     return Image.fromarray(arr.astype(np.uint8), "RGBA")
@@ -437,6 +494,18 @@ def alpha_composite_clipped(canvas: Image.Image, source: Image.Image, dest: tupl
     canvas.alpha_composite(source.crop((src_left, src_top, src_right, src_bottom)), (dst_x, dst_y))
 
 
+def shift_image_fractional(image: Image.Image, dx: float, dy: float = 0.0) -> Image.Image:
+    if abs(dx) < 0.001 and abs(dy) < 0.001:
+        return image.copy()
+    return image.transform(
+        image.size,
+        Image.Transform.AFFINE,
+        (1.0, 0.0, -dx, 0.0, 1.0, -dy),
+        resample=Image.Resampling.BICUBIC,
+        fillcolor=(0, 0, 0, 0),
+    )
+
+
 def lower_alpha_center_x(
     image: Image.Image,
     bbox: tuple[int, int, int, int],
@@ -475,6 +544,72 @@ def body_anchor_x(
     return lower_alpha_center_x(image, bbox, alpha_threshold)
 
 
+def foot_contact_anchor_x(
+    image: Image.Image,
+    bbox: tuple[int, int, int, int],
+    alpha_threshold: int,
+) -> float:
+    left, top, right, bottom = bbox
+    height = bottom - top
+    alpha = np.asarray(image.convert("RGBA"))[:, :, 3]
+    body_x = body_anchor_x(image, bbox, alpha_threshold)
+
+    contact_row = alpha[bottom - 1, left:right]
+    row_xs = np.where(contact_row > alpha_threshold)[0]
+    if len(row_xs) >= 2:
+        min_x = left + int(row_xs.min())
+        max_x = left + int(row_xs.max())
+        return float(min_x if abs(min_x - body_x) >= abs(max_x - body_x) else max_x)
+
+    band_heights = [
+        max(2, min(10, int(round(height * 0.012)))),
+        max(4, min(14, int(round(height * 0.02)))),
+        max(6, min(20, int(round(height * 0.035)))),
+    ]
+    for band_height in band_heights:
+        band_top = max(top, bottom - band_height)
+        band_alpha = alpha[band_top:bottom, left:right]
+        ys, xs = np.where(band_alpha > alpha_threshold)
+        if len(xs) < 4:
+            continue
+
+        unique_x, counts = np.unique(xs, return_counts=True)
+        min_hits = max(1, int(math.ceil(band_height * 0.2)))
+        robust_x = unique_x[counts >= min_hits]
+        if len(robust_x) < 4:
+            robust_x = unique_x
+        min_x = left + int(robust_x.min())
+        max_x = left + int(robust_x.max())
+        return float(min_x if abs(min_x - body_x) >= abs(max_x - body_x) else max_x)
+
+    return lower_alpha_center_x(image, bbox, alpha_threshold)
+
+
+def visual_core_anchor_x(
+    image: Image.Image,
+    bbox: tuple[int, int, int, int],
+    alpha_threshold: int,
+) -> float:
+    left, top, right, bottom = bbox
+    height = bottom - top
+    alpha = np.asarray(image.convert("RGBA"))[:, :, 3]
+    centers: list[float] = []
+    for start, end in ((0.25, 0.40), (0.42, 0.58), (0.60, 0.78)):
+        band_top = max(top, int(round(top + height * start)))
+        band_bottom = min(bottom, int(round(top + height * end)))
+        if band_bottom <= band_top:
+            continue
+        band_alpha = alpha[band_top:band_bottom, left:right]
+        ys, xs = np.where(band_alpha > alpha_threshold)
+        if len(xs) < 8:
+            continue
+        weights = band_alpha[ys, xs].astype(np.float32)
+        centers.append(left + float(np.sum(xs * weights) / max(1.0, float(np.sum(weights)))))
+    if centers:
+        return float(np.median(centers))
+    return body_anchor_x(image, bbox, alpha_threshold)
+
+
 def body_anchor_point(
     image: Image.Image,
     bbox: tuple[int, int, int, int],
@@ -507,7 +642,7 @@ def foot_anchor_point(
     alpha_threshold: int,
 ) -> tuple[float, float]:
     _, _, _, bottom = bbox
-    anchor_x = body_anchor_x(image, bbox, alpha_threshold)
+    anchor_x = foot_contact_anchor_x(image, bbox, alpha_threshold)
     return anchor_x, float(bottom)
 
 
@@ -762,6 +897,9 @@ def normalize_images(
     anchor_mode: str = "foot",
     stabilize_search_radius: int = 48,
     scale_stabilize: bool = False,
+    visual_stabilize: bool = False,
+    foot_contact_lock_enabled: bool = True,
+    foot_contact_freeze_rows: int = 4,
 ) -> tuple[list[tuple[str, Image.Image, dict[str, Any]]], dict[str, Any]]:
     if anchor_mode not in {"foot", "body"}:
         fail(f"Unsupported anchor mode: {anchor_mode}")
@@ -1008,6 +1146,162 @@ def normalize_images(
                 ],
             }
 
+    visual_stabilization: dict[str, Any] | None = None
+    if visual_stabilize and len(normalized) > 1:
+        visual_anchors: list[tuple[int, float]] = []
+        for index, (_, image, _) in enumerate(normalized):
+            bbox = alpha_bbox(image, alpha_threshold)
+            if bbox is None:
+                continue
+            visual_anchors.append((index, visual_core_anchor_x(image, bbox, alpha_threshold)))
+
+        if visual_anchors:
+            reference_x = float(np.median([item[1] for item in visual_anchors]))
+            before_x = [item[1] for item in visual_anchors]
+            final_offsets_x: list[float] = [0.0 for _ in normalized]
+            recalibrated = list(normalized)
+            for index, anchor_x in visual_anchors:
+                dx = reference_x - anchor_x
+                final_offsets_x[index] = dx
+                if abs(dx) < 0.001:
+                    continue
+                name, image, stats = recalibrated[index]
+                shifted = shift_image_fractional(image, dx, 0.0)
+                stats = dict(stats)
+                stats["visual_stabilize_correction_x"] = round(dx, 4)
+                normalized_bbox = stats.get("normalized_bbox")
+                if isinstance(normalized_bbox, list) and len(normalized_bbox) == 4:
+                    stats["normalized_bbox"] = [
+                        round(normalized_bbox[0] + dx, 4),
+                        normalized_bbox[1],
+                        round(normalized_bbox[2] + dx, 4),
+                        normalized_bbox[3],
+                    ]
+                recalibrated[index] = (name, shifted, stats)
+            normalized = recalibrated
+
+            after_x: list[float] = []
+            for _, image, _ in normalized:
+                bbox = alpha_bbox(image, alpha_threshold)
+                if bbox is None:
+                    continue
+                after_x.append(visual_core_anchor_x(image, bbox, alpha_threshold))
+            visual_stabilization = {
+                "reference_x": round(reference_x, 4),
+                "before_range_x": round(max(before_x) - min(before_x), 4),
+                "after_range_x": round(max(after_x) - min(after_x), 4) if after_x else 0,
+                "offset_range_x": [
+                    round(min(final_offsets_x), 4),
+                    round(max(final_offsets_x), 4),
+                ],
+            }
+
+    foot_contact_lock: dict[str, Any] | None = None
+    if foot_contact_lock_enabled and stabilize_anchor and anchor_mode == "foot" and len(normalized) > 1:
+        contact_anchors: list[tuple[int, float, float]] = []
+        for index, (_, image, _) in enumerate(normalized):
+            bbox = alpha_bbox(image, alpha_threshold)
+            if bbox is None:
+                continue
+            anchor_x, anchor_y = foot_anchor_point(image, bbox, alpha_threshold)
+            contact_anchors.append((index, anchor_x, anchor_y))
+
+        if contact_anchors:
+            reference_x = float(round(float(np.median([item[1] for item in contact_anchors]))))
+            reference_y = float(round(float(np.median([item[2] for item in contact_anchors]))))
+            before_x = [item[1] for item in contact_anchors]
+            before_y = [item[2] for item in contact_anchors]
+            final_offsets: list[tuple[int, int]] = [(0, 0) for _ in normalized]
+            recalibrated = list(normalized)
+            for index, anchor_x, anchor_y in contact_anchors:
+                dx = int(round(reference_x - anchor_x))
+                dy = int(round(reference_y - anchor_y))
+                final_offsets[index] = (dx, dy)
+                if dx == 0 and dy == 0:
+                    continue
+                name, image, stats = recalibrated[index]
+                shifted = Image.new("RGBA", image.size, (0, 0, 0, 0))
+                alpha_composite_clipped(shifted, image, (dx, dy))
+                stats = dict(stats)
+                stats["foot_contact_lock_correction"] = [dx, dy]
+                normalized_bbox = stats.get("normalized_bbox")
+                if isinstance(normalized_bbox, list) and len(normalized_bbox) == 4:
+                    stats["normalized_bbox"] = [
+                        normalized_bbox[0] + dx,
+                        normalized_bbox[1] + dy,
+                        normalized_bbox[2] + dx,
+                        normalized_bbox[3] + dy,
+                    ]
+                recalibrated[index] = (name, shifted, stats)
+            normalized = recalibrated
+
+            after_anchors: list[tuple[float, float]] = []
+            for _, image, _ in normalized:
+                bbox = alpha_bbox(image, alpha_threshold)
+                if bbox is None:
+                    continue
+                after_anchors.append(foot_anchor_point(image, bbox, alpha_threshold))
+            after_x = [item[0] for item in after_anchors]
+            after_y = [item[1] for item in after_anchors]
+            final_dx = [item[0] for item in final_offsets]
+            final_dy = [item[1] for item in final_offsets]
+            foot_contact_lock = {
+                "reference": [round(reference_x, 4), round(reference_y, 4)],
+                "before_range": [
+                    round(max(before_x) - min(before_x), 4),
+                    round(max(before_y) - min(before_y), 4),
+                ],
+                "after_range": [
+                    round(max(after_x) - min(after_x), 4) if after_x else 0,
+                    round(max(after_y) - min(after_y), 4) if after_y else 0,
+                ],
+                "offset_range": [
+                    [min(final_dx), max(final_dx)],
+                    [min(final_dy), max(final_dy)],
+                ],
+            }
+
+            freeze_rows = max(0, int(foot_contact_freeze_rows))
+            if freeze_rows > 0 and after_anchors:
+                reference_index = contact_anchors[0][0]
+                reference_image = normalized[reference_index][1]
+                reference_bbox = alpha_bbox(reference_image, alpha_threshold)
+                if reference_bbox is not None:
+                    _, _, _, reference_bottom = reference_bbox
+                    patch_top = max(0, reference_bottom - freeze_rows)
+                    reference_strip = reference_image.crop((0, patch_top, reference_image.width, reference_bottom))
+                    frozen = list(normalized)
+                    for frame_index, (name, image, stats) in enumerate(frozen):
+                        bbox = alpha_bbox(image, alpha_threshold)
+                        if bbox is None:
+                            continue
+                        _, _, _, bottom = bbox
+                        strip_top = max(0, bottom - reference_strip.height)
+                        if bottom <= strip_top:
+                            continue
+                        shifted = image.copy()
+                        clear = Image.new("RGBA", (image.width, bottom - strip_top), (0, 0, 0, 0))
+                        shifted.paste(clear, (0, strip_top))
+                        shifted.alpha_composite(reference_strip, (0, strip_top))
+                        stats = dict(stats)
+                        stats["foot_contact_freeze_rows"] = reference_strip.height
+                        frozen[frame_index] = (name, shifted, stats)
+                    normalized = frozen
+
+                    frozen_anchors: list[tuple[float, float]] = []
+                    for _, image, _ in normalized:
+                        bbox = alpha_bbox(image, alpha_threshold)
+                        if bbox is None:
+                            continue
+                        frozen_anchors.append(foot_anchor_point(image, bbox, alpha_threshold))
+                    frozen_x = [item[0] for item in frozen_anchors]
+                    frozen_y = [item[1] for item in frozen_anchors]
+                    foot_contact_lock["freeze_rows"] = reference_strip.height
+                    foot_contact_lock["after_freeze_range"] = [
+                        round(max(frozen_x) - min(frozen_x), 4) if frozen_x else 0,
+                        round(max(frozen_y) - min(frozen_y), 4) if frozen_y else 0,
+                    ]
+
     info = {
         "frame_size": [canvas_w, canvas_h],
         "padding": padding,
@@ -1040,6 +1334,8 @@ def normalize_images(
         if alignment_info is not None
         else None,
         "output_position_calibration": output_position_calibration,
+        "visual_stabilization": visual_stabilization,
+        "foot_contact_lock": foot_contact_lock,
         "shared_scale": scale,
         "alpha_threshold": alpha_threshold,
         "max_content_size": [max_content_w, max_content_h],
@@ -1135,7 +1431,29 @@ def ffmpeg_executable() -> str:
         fail("ffmpeg is required for video extraction. Run `npm run sprite:keyframes:deps` or install ffmpeg in PATH.")
 
 
-def extract_video_frames(video: Path, frames_dir: Path, sample_fps: float, video_seconds: float) -> list[Path]:
+def video_clip_duration(video_start: float, video_end: float, video_seconds: float) -> float | None:
+    if video_start < 0:
+        fail("--video-start must be 0 or greater.")
+    if video_end < 0:
+        fail("--video-end must be 0 or greater.")
+    if video_seconds < 0:
+        fail("--video-seconds must be 0 or greater.")
+    if video_end > 0:
+        if video_end <= video_start:
+            fail("--video-end must be greater than --video-start.")
+        return video_end - video_start
+    if video_seconds > 0:
+        return video_seconds
+    return None
+
+
+def extract_video_frames(
+    video: Path,
+    frames_dir: Path,
+    sample_fps: float,
+    video_start: float,
+    clip_duration: float | None,
+) -> list[Path]:
     clear_pngs(frames_dir)
     frame_pattern = frames_dir / "frame_%05d.png"
     command = [
@@ -1147,8 +1465,10 @@ def extract_video_frames(video: Path, frames_dir: Path, sample_fps: float, video
         "-i",
         str(video),
     ]
-    if video_seconds > 0:
-        command += ["-t", f"{video_seconds:.4f}"]
+    if video_start > 0:
+        command += ["-ss", f"{video_start:.4f}"]
+    if clip_duration is not None and clip_duration > 0:
+        command += ["-t", f"{clip_duration:.4f}"]
     command += [
         "-vf",
         f"fps={sample_fps}",
@@ -1290,6 +1610,7 @@ def select_keyframes(
     frames: list[Path],
     *,
     sample_fps: float,
+    time_offset_sec: float,
     diff_threshold: float,
     min_gap: int,
     max_keyframes: int,
@@ -1372,7 +1693,8 @@ def select_keyframes(
         {
             "index": index,
             "source_frame": frames[index].name,
-            "time_sec": round(index / sample_fps, 4),
+            "time_sec": round(time_offset_sec + index / sample_fps, 4),
+            "segment_time_sec": round(index / sample_fps, 4),
             "diff_score": round(scores[index], 4),
             "selection_mode": selection_mode,
         }
@@ -1405,6 +1727,7 @@ def process_character(args: argparse.Namespace, manifest: dict[str, Any]) -> Non
             fringe_strength=args.fringe_strength,
             fringe_brightness=args.fringe_brightness,
             decontaminate=not args.no_decontaminate,
+            edge_contract=args.edge_contract,
         )
 
     cropped, bbox = crop_to_alpha(cut, args.padding, args.alpha_threshold)
@@ -1423,6 +1746,9 @@ def process_character(args: argparse.Namespace, manifest: dict[str, Any]) -> Non
         anchor_mode=args.anchor_mode,
         stabilize_search_radius=args.stabilize_search_radius,
         scale_stabilize=args.scale_stabilize,
+        visual_stabilize=args.visual_stabilize,
+        foot_contact_lock_enabled=not args.no_foot_contact_lock,
+        foot_contact_freeze_rows=args.foot_contact_freeze_rows,
     )
     normalized[0][1].save(normalized_path)
 
@@ -1444,12 +1770,15 @@ def process_video(args: argparse.Namespace, manifest: dict[str, Any]) -> None:
     raw_dir = args.out / "raw_frames"
     key_dir = args.out / "keyframes"
     clear_pngs(key_dir)
-    frames = extract_video_frames(video, raw_dir, args.sample_fps, args.video_seconds)
+    clip_duration = video_clip_duration(args.video_start, args.video_end, args.video_seconds)
+    clip_end = args.video_start + clip_duration if clip_duration is not None else None
+    frames = extract_video_frames(video, raw_dir, args.sample_fps, args.video_start, clip_duration)
     raw_preview_path = args.out / "raw_frames_preview.png"
     make_raw_preview(frames, raw_preview_path, args.preview_columns)
     selected, selected_details = select_keyframes(
         frames,
         sample_fps=args.sample_fps,
+        time_offset_sec=args.video_start,
         diff_threshold=args.diff_threshold,
         min_gap=args.min_gap,
         max_keyframes=args.max_keyframes,
@@ -1492,6 +1821,7 @@ def process_video(args: argparse.Namespace, manifest: dict[str, Any]) -> None:
                 fringe_strength=args.fringe_strength,
                 fringe_brightness=args.fringe_brightness,
                 decontaminate=not args.no_decontaminate,
+                edge_contract=args.edge_contract,
             )
         cut_images.append((f"key_{order:03d}", cut))
 
@@ -1505,6 +1835,9 @@ def process_video(args: argparse.Namespace, manifest: dict[str, Any]) -> None:
         anchor_mode=args.anchor_mode,
         stabilize_search_radius=args.stabilize_search_radius,
         scale_stabilize=args.scale_stabilize,
+        visual_stabilize=args.visual_stabilize,
+        foot_contact_lock_enabled=not args.no_foot_contact_lock,
+        foot_contact_freeze_rows=args.foot_contact_freeze_rows,
     )
 
     key_paths: list[Path] = []
@@ -1530,7 +1863,10 @@ def process_video(args: argparse.Namespace, manifest: dict[str, Any]) -> None:
     manifest["video"] = {
         "source": str(video),
         "sample_fps": args.sample_fps,
+        "video_start": args.video_start,
+        "video_end": clip_end,
         "video_seconds": args.video_seconds,
+        "clip_duration": clip_duration,
         "raw_frame_count": len(frames),
         "selected_keyframe_count": len(selected_details),
         "diff_threshold": args.diff_threshold,
@@ -1550,8 +1886,8 @@ def main() -> None:
     args = parse_args()
     if args.character is None and args.video is None:
         fail("Pass at least --character or --video.")
-    if args.video_seconds < 0:
-        fail("--video-seconds must be 0 or greater.")
+    if args.video is not None:
+        video_clip_duration(args.video_start, args.video_end, args.video_seconds)
 
     args.out = args.out.resolve()
     prepare_dir(args.out)
@@ -1574,7 +1910,10 @@ def main() -> None:
             "fringe_radius": args.fringe_radius,
             "fringe_strength": args.fringe_strength,
             "fringe_brightness": args.fringe_brightness,
+            "edge_contract": args.edge_contract,
             "selection_mode": args.selection_mode,
+            "video_start": args.video_start,
+            "video_end": args.video_end,
             "video_seconds": args.video_seconds,
             "frame_size": args.frame_size,
             "padding": args.padding,
@@ -1583,6 +1922,9 @@ def main() -> None:
             "anchor_mode": args.anchor_mode,
             "stabilize_search_radius": args.stabilize_search_radius,
             "scale_stabilize": args.scale_stabilize,
+            "visual_stabilize": args.visual_stabilize,
+            "foot_contact_lock": not args.no_foot_contact_lock,
+            "foot_contact_freeze_rows": args.foot_contact_freeze_rows,
         },
     }
 

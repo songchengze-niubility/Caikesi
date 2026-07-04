@@ -1,7 +1,7 @@
 import { BattleConfig } from '../config/BattleConfig';
 import { rollDropItems } from '../config/DropConfig';
 import { hashSeed, createSeededRng } from '../core/Random';
-import { emptyRewardBundle, type RewardBundle } from '../services/RewardTypes';
+import { emptyRewardBundle, type MaterialId, type RewardBundle } from '../services/RewardTypes';
 import type { ChestItem, ChestType } from './ChestModel';
 
 export interface OpenChestResult {
@@ -13,14 +13,35 @@ export interface OpenChestResult {
 
 interface ChestRewardProfile {
     equipmentRolls: number;
-    goldBase: number;
-    expBase: number;
+    materials: MaterialRoll[];
+}
+
+interface MaterialRoll {
+    id: MaterialId;
+    min: number;
+    max: number;
 }
 
 const CHEST_REWARD_PROFILE: Record<ChestType, ChestRewardProfile> = {
-    normal: { equipmentRolls: 1, goldBase: 6, expBase: 4 },
-    boss: { equipmentRolls: 2, goldBase: 18, expBase: 10 },
-    chapter: { equipmentRolls: 3, goldBase: 36, expBase: 20 },
+    normal: {
+        equipmentRolls: 1,
+        materials: [{ id: 'forge_stone', min: 2, max: 4 }],
+    },
+    boss: {
+        equipmentRolls: 2,
+        materials: [
+            { id: 'forge_stone', min: 4, max: 8 },
+            { id: 'gem_shard', min: 1, max: 3 },
+        ],
+    },
+    chapter: {
+        equipmentRolls: 3,
+        materials: [
+            { id: 'forge_stone', min: 8, max: 12 },
+            { id: 'gem_shard', min: 3, max: 5 },
+            { id: 'rune_dust', min: 1, max: 2 },
+        ],
+    },
 };
 
 function clampLevelIndex(index: number): number {
@@ -32,6 +53,19 @@ function deterministicEquipId(chest: ChestItem, index: number): string {
     return `eq_ch_${hashSeed(`${chest.id}|${chest.seed}|${index}`).toString(36)}`;
 }
 
+function rollInt(min: number, max: number, rng: () => number): number {
+    const low = Math.max(0, Math.floor(min));
+    const high = Math.max(low, Math.floor(max));
+    return low + Math.floor(rng() * (high - low + 1));
+}
+
+function addMaterial(reward: RewardBundle, id: MaterialId, count: number): void {
+    if (count <= 0) return;
+    const existing = reward.materials.find(item => item.id === id);
+    if (existing) existing.count += count;
+    else reward.materials.push({ id, count });
+}
+
 export function openChest(chest: ChestItem): OpenChestResult {
     if (!chest) return { ok: false, reason: '宝箱不存在' };
     const profile = CHEST_REWARD_PROFILE[chest.type];
@@ -39,10 +73,8 @@ export function openChest(chest: ChestItem): OpenChestResult {
     if (!chest.sourceDropGroup) return { ok: false, reason: '宝箱缺少掉落组' };
 
     const levelIndex = clampLevelIndex(chest.sourceLevelIndex);
-    const levelFactor = levelIndex + 1;
+    const materialLevelBonus = Math.floor(levelIndex / 2);
     const reward = emptyRewardBundle();
-    reward.gold = profile.goldBase * levelFactor;
-    reward.exp = profile.expBase * levelFactor;
 
     for (let i = 0; i < profile.equipmentRolls; i++) {
         const rng = createSeededRng(`${chest.seed}|open|${chest.type}|${i}`);
@@ -53,6 +85,10 @@ export function openChest(chest: ChestItem): OpenChestResult {
                 id: deterministicEquipId(chest, reward.equipments.length),
             });
         }
+    }
+    for (const roll of profile.materials) {
+        const rng = createSeededRng(`${chest.seed}|material|${chest.type}|${roll.id}|${levelIndex}`);
+        addMaterial(reward, roll.id, rollInt(roll.min, roll.max, rng) + materialLevelBonus);
     }
 
     return { ok: true, chest: { ...chest }, reward };

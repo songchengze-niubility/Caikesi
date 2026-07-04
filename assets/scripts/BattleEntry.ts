@@ -2208,6 +2208,16 @@ export class BattleEntry extends Component {
         return parts.join('、') + extra;
     }
 
+    private _formatMaterials(materials: MaterialItem[], maxParts = 3): string {
+        const visible = materials.filter(material => material.count > 0);
+        if (visible.length === 0) return '';
+        const parts = visible
+            .slice(0, maxParts)
+            .map(material => `${MATERIAL_LABEL[material.id]} +${material.count}`);
+        const extra = visible.length > maxParts ? ` 等${visible.length}种` : '';
+        return parts.join('、') + extra;
+    }
+
     private async _claimOfflineRewards(): Promise<void> {
         const result = await claimOfflineReward({ levelIndex: this._progress.currentLevel });
         const hasReward = result.gold > 0 || result.exp > 0 || result.chests.length > 0 || result.chestOverflow > 0;

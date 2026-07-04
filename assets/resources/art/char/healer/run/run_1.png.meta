@@ -41,12 +41,12 @@
       "userData": {
         "trimThreshold": 1,
         "rotated": false,
-        "offsetX": 1.5,
-        "offsetY": 3.5,
-        "trimX": 3,
+        "offsetX": 0,
+        "offsetY": 0,
+        "trimX": 0,
         "trimY": 0,
-        "width": 318,
-        "height": 407,
+        "width": 321,
+        "height": 414,
         "rawWidth": 321,
         "rawHeight": 414,
         "borderTop": 0,
@@ -60,17 +60,17 @@
         "meshType": 0,
         "vertices": {
           "rawPosition": [
-            -159,
-            -203.5,
+            -160.5,
+            -207.0,
             0,
-            159,
-            -203.5,
+            160.5,
+            -207.0,
             0,
-            -159,
-            203.5,
+            -160.5,
+            207.0,
             0,
-            159,
-            203.5,
+            160.5,
+            207.0,
             0
           ],
           "indexes": [
@@ -82,40 +82,40 @@
             3
           ],
           "uv": [
-            3,
+            0,
             414,
             321,
             414,
-            3,
-            7,
+            0,
+            0,
             321,
-            7
+            0
           ],
           "nuv": [
-            0.009345794392523364,
-            0.016908212560386472,
+            0,
+            0,
             1,
-            0.016908212560386472,
-            0.009345794392523364,
+            0,
+            0,
             1,
             1,
             1
           ],
           "minPos": [
-            -159,
-            -203.5,
+            -160.5,
+            -207.0,
             0
           ],
           "maxPos": [
-            159,
-            203.5,
+            160.5,
+            207.0,
             0
           ]
         },
         "isUuid": true,
         "imageUuidOrDatabaseUri": "494a726a-d38c-4733-9794-fbc61e07c07d@6c48a",
         "atlasUuid": "",
-        "trimType": "auto"
+        "trimType": "custom"
       },
       "ver": "1.0.12",
       "imported": true,

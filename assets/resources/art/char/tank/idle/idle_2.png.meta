@@ -60,17 +60,17 @@
         "meshType": 0,
         "vertices": {
           "rawPosition": [
-            -32,
-            -32,
+            -32.0,
+            -32.0,
             0,
-            32,
-            -32,
+            32.0,
+            -32.0,
             0,
-            -32,
-            32,
+            -32.0,
+            32.0,
             0,
-            32,
-            32,
+            32.0,
+            32.0,
             0
           ],
           "indexes": [
@@ -102,20 +102,20 @@
             1
           ],
           "minPos": [
-            -32,
-            -32,
+            -32.0,
+            -32.0,
             0
           ],
           "maxPos": [
-            32,
-            32,
+            32.0,
+            32.0,
             0
           ]
         },
         "isUuid": true,
         "imageUuidOrDatabaseUri": "ef21310f-25d4-48c4-a01f-27b6fa8668a0@6c48a",
         "atlasUuid": "",
-        "trimType": "auto"
+        "trimType": "custom"
       },
       "ver": "1.0.12",
       "imported": true,

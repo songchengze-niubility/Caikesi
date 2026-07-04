@@ -99,8 +99,11 @@ export class BattleManager {
     soldiers: Soldier[] = [];
     enemies: Enemy[] = [];
     bullets: Bullet[] = [];
+    // 光束数组做对象池复用：只有前 count 条有效，渲染层按 count 遍历（避免每帧新建数组/对象）
     healBeams: HealBeam[] = [];
+    healBeamCount = 0;
     meleeBeams: HealBeam[] = [];   // 近战正在劈的连线（仅供界面画反馈）
+    meleeBeamCount = 0;
     floatTexts: FloatText[] = [];  // 战斗飘字
     private events: BattleEvent[] = [];
     private killIndex = 0;
@@ -164,8 +167,17 @@ export class BattleManager {
         });
     }
 
-    private get aliveSoldiers(): Soldier[] {
-        return this.soldiers.filter(s => s.alive);
+    private _hasAliveSoldier(): boolean {
+        for (const s of this.soldiers) if (s.alive) return true;
+        return false;
+    }
+
+    // 复用 list[count] 上的旧对象写入一条光束，返回新的 count
+    private _pushBeam(list: HealBeam[], count: number, fromX: number, fromY: number, toX: number, toY: number): number {
+        let b = list[count];
+        if (!b) { b = { fromX: 0, fromY: 0, toX: 0, toY: 0 }; list[count] = b; }
+        b.fromX = fromX; b.fromY = fromY; b.toX = toX; b.toY = toY;
+        return count + 1;
     }
 
     // 防线 = 最前面还活着单位的【原始站位】（用 homeX，不随近战冲出去而漂移）
@@ -246,11 +258,14 @@ export class BattleManager {
     }
 
     private _updateActionClocks(dt: number) {
-        for (const u of [...this.soldiers, ...this.enemies]) {
-            u.actionTime += dt;
-            if (u.actionLock > 0) u.actionLock = Math.max(0, u.actionLock - dt);
-            if (u.alive && u.actionLock <= 0 && u.action !== 'idle') this._setAction(u, 'idle');
-        }
+        for (const u of this.soldiers) this._tickActionClock(u, dt);
+        for (const u of this.enemies) this._tickActionClock(u, dt);
+    }
+
+    private _tickActionClock(u: Soldier | Enemy, dt: number) {
+        u.actionTime += dt;
+        if (u.actionLock > 0) u.actionLock = Math.max(0, u.actionLock - dt);
+        if (u.alive && u.actionLock <= 0 && u.action !== 'idle') this._setAction(u, 'idle');
     }
 
     private _setAction(u: Soldier | Enemy, action: UnitAction, lock = 0) {
@@ -296,7 +311,13 @@ export class BattleManager {
     }
 
     private _cleanupDeadEnemies() {
-        this.enemies = this.enemies.filter(e => e.alive || e.actionLock > 0);
+        // 原地稳定压缩，不每帧新建数组
+        let w = 0;
+        for (let i = 0; i < this.enemies.length; i++) {
+            const e = this.enemies[i];
+            if (e.alive || e.actionLock > 0) this.enemies[w++] = e;
+        }
+        this.enemies.length = w;
     }
 
     // —— 移动：近战冲向最近的怪贴脸，没怪了退回站位；远程/治疗守在原位 ——
@@ -344,7 +365,7 @@ export class BattleManager {
 
     // —— 自动攻击：近战贴身劈、远程发子弹（都瞄最近敌人，受 range 限制）；治疗不攻击 ——
     private _updateFiring(dt: number) {
-        this.meleeBeams = [];
+        this.meleeBeamCount = 0;
         for (const s of this.soldiers) {
             if (!s.alive || s.attackType === 'heal' || s.stats.atk <= 0) continue;
 
@@ -361,7 +382,7 @@ export class BattleManager {
 
             // 近战：持续画一条「正在劈」的连线
             if (s.attackType === 'melee') {
-                this.meleeBeams.push({ fromX: s.x, fromY: s.y, toX: target.x, toY: target.y });
+                this.meleeBeamCount = this._pushBeam(this.meleeBeams, this.meleeBeamCount, s.x, s.y, target.x, target.y);
             }
 
             s.cd -= dt;
@@ -437,7 +458,12 @@ export class BattleManager {
                 }
             }
         }
-        this.bullets = this.bullets.filter(b => b.alive);
+        // 原地压缩存活子弹，不每帧新建数组
+        let w = 0;
+        for (let i = 0; i < this.bullets.length; i++) {
+            if (this.bullets[i].alive) this.bullets[w++] = this.bullets[i];
+        }
+        this.bullets.length = w;
     }
 
     // —— 敌人推进（向左）：无碰撞，全部冲到防线叠在一起，各自一起攻击（群殴） ——
@@ -464,16 +490,16 @@ export class BattleManager {
     }
 
     private _enemyAttack(e: Enemy) {
-        const alive = this.aliveSoldiers;
-        if (alive.length === 0) return;
-        // 打最近的士兵（贴在坦克前的怪自然打到坦克）
-        let target = alive[0];
+        // 打最近的活着士兵（贴在坦克前的怪自然打到坦克）
+        let target: Soldier | null = null;
         let bestD = Infinity;
-        for (const s of alive) {
+        for (const s of this.soldiers) {
+            if (!s.alive) continue;
             const dx = s.x - e.x, dy = s.y - e.y;
             const d = dx * dx + dy * dy;
             if (d < bestD) { bestD = d; target = s; }
         }
+        if (!target) return;
         this._applyDamage(e.stats, target);   // 走完整公式
     }
 
@@ -507,23 +533,26 @@ export class BattleManager {
     }
 
     private _updateFloats(dt: number) {
-        for (const ft of this.floatTexts) {
+        let w = 0;
+        for (let i = 0; i < this.floatTexts.length; i++) {
+            const ft = this.floatTexts[i];
             ft.y += ft.vy * dt;
             ft.ttl -= dt;
+            if (ft.ttl > 0) this.floatTexts[w++] = ft;
         }
-        this.floatTexts = this.floatTexts.filter(ft => ft.ttl > 0);
+        this.floatTexts.length = w;
     }
 
     // —— 治疗：每帧奶「血量百分比最低」的受伤队友 ——
     private _updateHealing(dt: number) {
-        this.healBeams = [];
+        this.healBeamCount = 0;
         for (const h of this.soldiers) {
             if (!h.alive || h.healPerSec <= 0) continue;
             const target = this._mostHurtAlly();
             if (!target) continue;
             target.hp = Math.min(target.maxHp, target.hp + h.healPerSec * dt);
             this._setAction(h, 'attack', ATTACK_ACTION_HOLD);
-            this.healBeams.push({ fromX: h.x, fromY: h.y, toX: target.x, toY: target.y });
+            this.healBeamCount = this._pushBeam(this.healBeams, this.healBeamCount, h.x, h.y, target.x, target.y);
         }
     }
 
@@ -540,7 +569,7 @@ export class BattleManager {
 
     // —— 胜负 / 波次推进 ——
     private _checkWinLose() {
-        if (this.aliveSoldiers.length === 0) { this.phase = 'lost'; return; }
+        if (!this._hasAliveSoldier()) { this.phase = 'lost'; return; }
 
         const waveCleared = this._waveFullySpawned && this.enemies.length === 0;
         if (!waveCleared) return;
@@ -555,9 +584,13 @@ export class BattleManager {
     }
 
     get squadHpTotal(): number {
-        return this.aliveSoldiers.reduce((s, x) => s + Math.max(0, x.hp), 0);
+        let sum = 0;
+        for (const s of this.soldiers) if (s.alive) sum += Math.max(0, s.hp);
+        return sum;
     }
     get squadHpMax(): number {
-        return this.soldiers.reduce((s, x) => s + x.maxHp, 0);
+        let sum = 0;
+        for (const s of this.soldiers) sum += s.maxHp;
+        return sum;
     }
 }

@@ -48,7 +48,34 @@ test('ChestInventoryModel：add/serialize/deserialize 往返', () => {
     assert.deepEqual(next.serializeChests(), save);
 });
 
-test('ChestService：同 seed 开箱结果一致且产出装备/金币/经验', () => {
+test('ChestInventoryModel：库存满了后新增宝箱失败，反序列化也会按上限裁掉', () => {
+    const model = new ChestInventoryModel(1);
+    const first = createChestItem({
+        type: 'normal',
+        sourceLevelIndex: 0,
+        sourceDropGroup: 'level_1',
+        seed: 'first',
+        createdAt: 1000,
+    });
+    const second = createChestItem({
+        type: 'boss',
+        sourceLevelIndex: 0,
+        sourceDropGroup: 'level_1',
+        seed: 'second',
+        createdAt: 1001,
+    });
+    assert.equal(model.addChest(first).ok, true);
+    const full = model.addChest(second);
+    assert.equal(full.ok, false);
+    assert.equal(full.reason, '宝箱库存已满');
+
+    const next = new ChestInventoryModel(1);
+    next.deserializeChests([first, second]);
+    assert.equal(next.chests.length, 1);
+    assert.equal(next.chests[0].id, first.id);
+});
+
+test('ChestService：同 seed 开箱结果一致，只产出装备/材料，不给金币经验', () => {
     const chest = createChestItem({
         type: 'normal',
         sourceLevelIndex: 0,
@@ -60,9 +87,11 @@ test('ChestService：同 seed 开箱结果一致且产出装备/金币/经验', 
     const b = openChest(chest);
     assert.equal(a.ok, true);
     assert.deepEqual(a.reward, b.reward);
-    assert.ok(a.reward!.gold > 0);
-    assert.ok(a.reward!.exp > 0);
+    assert.equal(a.reward!.gold, 0);
+    assert.equal(a.reward!.exp, 0);
     assert.ok(a.reward!.equipments.length > 0);
+    assert.ok(a.reward!.materials.length > 0);
+    assert.ok(a.reward!.materials.every(item => item.count > 0));
 });
 
 test('ChestService：高阶宝箱奖励更多，宝箱可移除', () => {
@@ -82,8 +111,12 @@ test('ChestService：高阶宝箱奖励更多，宝箱可移除', () => {
     });
     const normalReward = openChest(normal).reward!;
     const bossReward = openChest(boss).reward!;
-    assert.ok(bossReward.gold > normalReward.gold);
+    assert.equal(normalReward.gold, 0);
+    assert.equal(bossReward.gold, 0);
+    assert.equal(normalReward.exp, 0);
+    assert.equal(bossReward.exp, 0);
     assert.ok(bossReward.equipments.length > normalReward.equipments.length);
+    assert.ok(bossReward.materials.reduce((sum, item) => sum + item.count, 0) > normalReward.materials.reduce((sum, item) => sum + item.count, 0));
 
     const model = new ChestInventoryModel();
     model.addChest(normal);

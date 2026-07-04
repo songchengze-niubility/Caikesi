@@ -1,6 +1,6 @@
 // 资源管线纯逻辑单测（tsx）。art 下的 Manifest/Registry/FrameClock 不依赖 cc，可直接 import。
 import * as assert from 'node:assert/strict';
-import { entryFiles, ArtEntry } from '../assets/scripts/art/ArtManifest';
+import { ArtManifest, entryFiles, ArtEntry } from '../assets/scripts/art/ArtManifest';
 import { frameAt, frameBlendAt } from '../assets/scripts/art/FrameClock';
 import { ArtRegistry } from '../assets/scripts/art/ArtRegistry';
 
@@ -81,6 +81,21 @@ test('ArtRegistry：getFrames 返回全部帧 + fps/loop', async () => {
     assert.equal(r.loop, true);
     assert.equal(r.pingpong, false);
     assert.equal(r.blend, 0);
+});
+
+test('ArtRegistry：getFrames 透传身体基准 bodyH/anchorX/footY', async () => {
+    const { reg } = fakeReg();
+    await reg.preload(['char/dps/attack']);
+    const r = reg.getFrames('char/dps/attack')!;
+    const entry = ArtManifest['char/dps/attack'];
+    assert.ok(entry.type === 'frames');
+    assert.equal(r.bodyH, entry.bodyH);
+    assert.equal(r.anchorX, entry.anchorX);
+    assert.equal(r.footY, entry.footY);
+    // 指标必须是 0-1 归一化
+    for (const v of [r.bodyH, r.anchorX, r.footY]) {
+        if (v != null) assert.ok(v > 0 && v <= 1, `指标越界: ${v}`);
+    }
 });
 
 test('ArtRegistry：未登记键 → null 且记入 missing', async () => {
