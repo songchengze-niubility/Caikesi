@@ -1,4 +1,4 @@
-// CharacterGrowthModel 単テスト（純ロジック、tsx 実行）。
+// CharacterGrowthModel 单测（纯逻辑，tsx 运行）。
 import * as assert from 'node:assert/strict';
 import { CharacterGrowthModel } from '../assets/scripts/growth/CharacterGrowthModel';
 import { expToNext } from '../assets/scripts/growth/CharGrowthConfig';
