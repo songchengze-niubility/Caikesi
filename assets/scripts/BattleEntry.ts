@@ -35,14 +35,13 @@ import { CharacterGrowthModel } from './growth/CharacterGrowthModel';
 import { loadGrowth, saveGrowth } from './growth/CharacterGrowthPersistence';
 import { QUALITY_LABEL, QUALITY_COLOR, SLOT_LABEL, SLOTS, formatEquipStats, CHARACTERS, CHARACTER_LABEL, STAT_LABEL, formatStatValue } from './inventory/EquipDefs';
 import type { EquipItem, EquipSlot } from './inventory/EquipDefs';
-import { MATERIAL_LABEL } from './services/RewardTypes';
+import { MATERIAL_LABEL, gemMaterialId } from './services/RewardTypes';
 import type { MaterialId, MaterialItem, MaterialSave } from './services/RewardTypes';
 import { craftEquipment } from './craft/CraftService';
 import { canAffordCraftTier, craftTierIds, getCraftTier } from './config/CraftConfig';
 import type { CraftTierConfig } from './config/CraftConfig';
 import { socketGem, unsocketGem, applyInscription } from './inlay/InlayModel';
 import { socketCounts, gemTypes, gemMaxLevel } from './inlay/InlayConfig';
-import { gemMaterialId } from './services/RewardTypes';
 
 const { ccclass } = _decorator;
 
