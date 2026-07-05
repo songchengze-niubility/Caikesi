@@ -739,6 +739,68 @@ function buildSkillConfig(wb: XLSX.WorkBook): { config: unknown; summary: string
     return { config, summary };
 }
 
+// ============ inlay 模块解析器 ============
+// 读 inlay.xlsx 的 3 sheet → 镶嵌配置。
+// Gems: type, label, stat, baseValue, maxLevel
+// SocketCounts: quality, gemSockets, inscriptionSlots
+// Inscriptions: stat, valueMin, valueMax
+function buildInlayConfig(wb: XLSX.WorkBook): { config: unknown; summary: string } {
+    const VALID_GEM_TYPES = new Set(['atk', 'hp', 'def', 'crit', 'dmg']);
+    const VALID_QUALITIES = ['common', 'fine', 'rare', 'epic', 'legend'];
+
+    const { rows: gemRows } = sheetToRows(wb, 'Gems');
+    const gems: Record<string, unknown> = {};
+    const gemKeys = new Set<string>();
+    for (const r of gemRows) {
+        const type = reqStr(r['type'], 'Gems.type');
+        if (!VALID_GEM_TYPES.has(type)) err(`Gems: type "${type}" 非法（须为 atk/hp/def/crit/dmg）`);
+        if (gemKeys.has(type)) err(`Gems: type "${type}" 重复定义`);
+        gemKeys.add(type);
+        const stat = reqStr(r['stat'], `Gems[${type}].stat`);
+        if (!STAT_KEY_SET.has(stat)) err(`Gems[${type}]: stat "${stat}" 不在 CombatStats 中`);
+        const baseValue = reqNum(r['baseValue'], `Gems[${type}].baseValue`);
+        if (baseValue <= 0) warn(`Gems[${type}].baseValue = ${baseValue} 应 > 0`);
+        const maxLevel = reqNum(r['maxLevel'], `Gems[${type}].maxLevel`);
+        if (maxLevel < 1) err(`Gems[${type}].maxLevel 必须 >= 1`);
+        if (maxLevel > 4) warn(`Gems[${type}].maxLevel = ${maxLevel} 超过 4：MaterialId 联合类型只覆盖 1~4，需同步拓宽 RewardTypes`);
+        gems[type] = { label: reqStr(r['label'], `Gems[${type}].label`), stat, baseValue, maxLevel };
+    }
+    if (Object.keys(gems).length === 0) err('Gems: 至少需要 1 个宝石类型');
+
+    const { rows: socketRows } = sheetToRows(wb, 'SocketCounts');
+    const socketCounts: Record<string, unknown> = {};
+    const socketKeys = new Set<string>();
+    for (const r of socketRows) {
+        const quality = reqStr(r['quality'], 'SocketCounts.quality');
+        if (!VALID_QUALITIES.includes(quality)) err(`SocketCounts: quality "${quality}" 非法`);
+        if (socketKeys.has(quality)) err(`SocketCounts: quality "${quality}" 重复定义`);
+        socketKeys.add(quality);
+        const gemSockets = reqNum(r['gemSockets'], `SocketCounts[${quality}].gemSockets`);
+        const inscriptionSlots = reqNum(r['inscriptionSlots'], `SocketCounts[${quality}].inscriptionSlots`);
+        if (gemSockets < 0) err(`SocketCounts[${quality}].gemSockets 不可为负`);
+        if (inscriptionSlots < 0) err(`SocketCounts[${quality}].inscriptionSlots 不可为负`);
+        socketCounts[quality] = { gemSockets, inscriptionSlots };
+    }
+    for (const q of VALID_QUALITIES) if (!socketKeys.has(q)) err(`SocketCounts: 缺少品质 "${q}"`);
+
+    const { rows: inscRows } = sheetToRows(wb, 'Inscriptions');
+    const inscriptions: unknown[] = [];
+    for (const r of inscRows) {
+        const stat = reqStr(r['stat'], 'Inscriptions.stat');
+        if (!STAT_KEY_SET.has(stat)) err(`Inscriptions: stat "${stat}" 不在 CombatStats 中`);
+        const valueMin = reqNum(r['valueMin'], `Inscriptions[${stat}].valueMin`);
+        const valueMax = reqNum(r['valueMax'], `Inscriptions[${stat}].valueMax`);
+        if (valueMin <= 0) warn(`Inscriptions[${stat}].valueMin = ${valueMin} 应 > 0`);
+        if (valueMax < valueMin) err(`Inscriptions[${stat}]: valueMax 必须 >= valueMin`);
+        inscriptions.push({ stat, valueMin, valueMax });
+    }
+    if (inscriptions.length === 0) err('Inscriptions: 至少需要 1 条铭文效果');
+
+    const config = { gems, socketCounts, inscriptions };
+    const summary = `gems=${Object.keys(gems).length} socketCounts=${Object.keys(socketCounts).length} inscriptions=${inscriptions.length}`;
+    return { config, summary };
+}
+
 // ============ 源清单（加模块就在这里加一行）============
 interface ConfigSource {
     name: string;        // 模块名（日志/报错用）
@@ -796,6 +858,13 @@ const SOURCES: ConfigSource[] = [
         outRel: '../assets/scripts/config/skill.config.generated.ts',
         exportVar: 'generatedSkillConfig',
         build: buildSkillConfig,
+    },
+    {
+        name: 'inlay',
+        xlsxRel: 'config-xlsx/inlay.xlsx',
+        outRel: '../assets/scripts/config/inlay.config.generated.ts',
+        exportVar: 'generatedInlayConfig',
+        build: buildInlayConfig,
     },
 ];
 
