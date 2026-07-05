@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/battle.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/battle.xlsx
-// 生成时间：2026-07-05T04:32:15.713Z
+// 生成时间：2026-07-05T04:46:32.809Z
 
 /* eslint-disable */
 // @ts-nocheck
@@ -484,7 +484,7 @@ export const generatedBattleConfig = {
                             "type": "zombie",
                             "count": 12,
                             "interval": 0.4,
-                            "hp": 670
+                            "hp": 770
                         }
                     ]
                 },
@@ -494,7 +494,7 @@ export const generatedBattleConfig = {
                             "type": "brute",
                             "count": 4,
                             "interval": 1.2,
-                            "hp": 1885
+                            "hp": 2168
                         }
                     ]
                 },
@@ -504,7 +504,7 @@ export const generatedBattleConfig = {
                             "type": "runner",
                             "count": 12,
                             "interval": 0.4,
-                            "hp": 370
+                            "hp": 426
                         }
                     ]
                 },
@@ -514,13 +514,13 @@ export const generatedBattleConfig = {
                             "type": "brute",
                             "count": 4,
                             "interval": 1.2,
-                            "hp": 1885
+                            "hp": 2168
                         },
                         {
                             "type": "zombie",
                             "count": 10,
                             "interval": 0.4,
-                            "hp": 670
+                            "hp": 770
                         }
                     ]
                 },
@@ -530,13 +530,13 @@ export const generatedBattleConfig = {
                             "type": "brute",
                             "count": 2,
                             "interval": 1.4,
-                            "hp": 1885
+                            "hp": 2168
                         },
                         {
                             "type": "runner",
                             "count": 6,
                             "interval": 0.6,
-                            "hp": 370
+                            "hp": 426
                         }
                     ]
                 }
@@ -736,7 +736,8 @@ export const generatedBattleConfig = {
                         {
                             "type": "boss_butcher",
                             "count": 1,
-                            "interval": 1
+                            "interval": 1,
+                            "hp": 36000
                         },
                         {
                             "type": "runner",
@@ -781,6 +782,7 @@ export const generatedBattleConfig = {
         }
     },
     "roster": [
+        "tank",
         "dps"
     ],
     "layout": {

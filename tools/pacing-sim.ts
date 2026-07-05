@@ -8,7 +8,7 @@
 //   - t2 过第7关：4~6关掉落成型（fine/rare、Lv≈7）    F≈1.50×1.18≈1.77
 //   - t3 过第10关：7~9关掉落成型（rare/epic、Lv≈12）  F≈1.90×1.33≈2.53
 import { BattleManager } from '../assets/scripts/combat/BattleManager';
-import { BattleConfig } from '../assets/scripts/config/BattleConfig';
+import { BattleConfig, SoldierClass, CombatStats } from '../assets/scripts/config/BattleConfig';
 
 const RUNS = 5;            // 每个场景模拟次数（战斗内含暴击/闪避随机）
 const MAX_TICKS = 24000;   // 0.05s/tick → 最长 20 分钟战斗，防不收敛
@@ -23,14 +23,20 @@ const LOADOUTS = [
     { name: '7~9段装', hp: 1830, atk: 150 },
 ];
 
-function winRate(levelIndex: number, tier: number): number {
+// 基线出战组合：与 battle.xlsx/Misc.roster 的默认组合一致（前排肉 + 输出）。
+const DEFAULT_ROSTER: SoldierClass[] = ['tank', 'dps'];
+
+// 给每个出战角色套同一档装备平铺加成，构造多角色 effectiveStats + 传 roster。
+function winRate(levelIndex: number, tier: number, roster: SoldierClass[] = DEFAULT_ROSTER): number {
     let wins = 0;
     for (let run = 0; run < RUNS; run++) {
-        const base = BattleConfig.stats.dps;
         const gear = LOADOUTS[tier];
-        const mgr = new BattleManager(470, 836, levelIndex, {
-            dps: { ...base, hp: base.hp + gear.hp, atk: base.atk + gear.atk },
-        });
+        const eff: Record<string, CombatStats> = {};
+        for (const cls of roster) {
+            const base = BattleConfig.stats[cls];
+            eff[cls] = { ...base, hp: base.hp + gear.hp, atk: base.atk + gear.atk };
+        }
+        const mgr = new BattleManager(470, 836, levelIndex, eff, roster);
         for (let i = 0; i < MAX_TICKS && mgr.phase !== 'won' && mgr.phase !== 'lost'; i++) {
             mgr.tick(0.05);
             mgr.drainEvents();
