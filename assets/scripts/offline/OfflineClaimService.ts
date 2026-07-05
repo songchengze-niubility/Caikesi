@@ -2,6 +2,8 @@ import { BattleConfig } from '../config/BattleConfig';
 import { ChestInventoryModel } from '../chest/ChestModel';
 import { loadPlayerData, savePlayerData } from '../core/data/PlayerDataStore';
 import { calculateOfflineReward, type OfflineClaimResult, type OfflineRewardInput } from './OfflineCombatService';
+import { CharacterGrowthModel } from '../growth/CharacterGrowthModel';
+import { SquadModel } from '../squad/SquadModel';
 
 export async function claimOfflineReward(input: Partial<OfflineRewardInput> = {}): Promise<OfflineClaimResult> {
     const data = await loadPlayerData();
@@ -12,7 +14,12 @@ export async function claimOfflineReward(input: Partial<OfflineRewardInput> = {}
     const reward = calculateOfflineReward({ lastOnlineAt, now, levelIndex, seed });
 
     data.gold = (data.gold ?? 0) + reward.gold;
-    data.exp = (data.exp ?? 0) + reward.exp;
+    if (reward.exp > 0) {
+        const squad = SquadModel.deserialize(data.squad, BattleConfig.squadCap);
+        const growth = CharacterGrowthModel.deserialize(data.charGrowth);
+        for (const cls of squad.deployedList()) growth.gainExp(cls, reward.exp);
+        data.charGrowth = growth.serialize();
+    }
     const chests = new ChestInventoryModel();
     chests.deserializeChests(data.chests);
     const stored = chests.addChests(reward.chests);

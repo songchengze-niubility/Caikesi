@@ -31,6 +31,8 @@ import { loadProgress, saveProgress } from './progression/ProgressPersistence';
 import { loadPlayerData, savePlayerData } from './core/data/PlayerDataStore';
 import { SquadModel } from './squad/SquadModel';
 import { loadSquad, saveSquad } from './squad/SquadPersistence';
+import { CharacterGrowthModel } from './growth/CharacterGrowthModel';
+import { loadGrowth, saveGrowth } from './growth/CharacterGrowthPersistence';
 import { QUALITY_LABEL, QUALITY_COLOR, SLOT_LABEL, SLOTS, formatEquipStats, CHARACTERS, CHARACTER_LABEL } from './inventory/EquipDefs';
 import type { EquipItem, EquipSlot } from './inventory/EquipDefs';
 import { MATERIAL_LABEL } from './services/RewardTypes';
@@ -183,6 +185,7 @@ export class BattleEntry extends Component {
     private _chests: ChestInventoryModel = null!;
     private _progress: ProgressModel = null!;
     private _squad: SquadModel = null!;
+    private _growth: CharacterGrowthModel = null!;
     private _settleRoot: Node = null!;
     private _settleGfx: Graphics = null!;
     private _settleLabels: Label[] = [];
@@ -236,6 +239,7 @@ export class BattleEntry extends Component {
     private _offlineNoticeTtl = 0;
     private _battleSeed = '';
     private _battleChestDropCount = 0;
+    private _battleExpGained = 0;
     private _actionPreviewRoot: Node | null = null;
     private _actionPreviewGfx: Graphics | null = null;
     private _actionPreviewNode: Node | null = null;
@@ -367,7 +371,7 @@ export class BattleEntry extends Component {
         this._invView = new InventoryView(this.node, this._halfW, this._halfH, this._inv, (kind, payload) => {
             void this._handleInventoryChanged(kind, payload);
         }, () => this._configuredDebugDrop());
-        const dataReady = loadInventory(this._inv).then(() => loadProgress(this._progress)).then(() => this._claimOfflineRewards()).then(() => loadChests(this._chests)).then(() => this._refreshMaterialsCache()).then(() => loadSquad()).then((squad) => { this._squad = squad; }).then(() => {
+        const dataReady = loadInventory(this._inv).then(() => loadProgress(this._progress)).then(() => this._claimOfflineRewards()).then(() => loadChests(this._chests)).then(() => this._refreshMaterialsCache()).then(() => loadSquad()).then((squad) => { this._squad = squad; }).then(() => loadGrowth()).then((growth) => { this._growth = growth; }).then(() => {
             this._invView.refresh();
         }).catch(() => {
             // 读档失败时仍允许进游戏，掉落会从空背包开始存。
@@ -412,11 +416,15 @@ export class BattleEntry extends Component {
         this._hideSettlement();
         this._hideChestPanel();
         this._hideCraftPanel();
-        const effective = this._inv ? buildEffectiveStatsMap(this._inv.equipped) : {};
+        const levels = this._growth
+            ? Object.fromEntries(CHARACTERS.map(c => [c, this._growth.levelOf(c)])) as Partial<Record<SoldierClass, number>>
+            : {};
+        const effective = this._inv ? buildEffectiveStatsMap(this._inv.equipped, levels) : buildEffectiveStatsMap(undefined, levels);
         const levelIndex = this._progress ? this._progress.currentLevel : BattleConfig.startLevel;
         const roster = this._squad ? (this._squad.deployedList() as SoldierClass[]) : BattleConfig.roster;
         this._battleSeed = `${Date.now()}|${Math.random()}|${levelIndex}`;
         this._battleChestDropCount = 0;
+        this._battleExpGained = 0;
         this._shownWaveKey = -1;   // 强制下一帧刷新波次文本
         this._syncSoldierVisualsToRoster(roster);
         this._mgr = new BattleManager(this._halfW, this._halfH, levelIndex, effective, roster);
@@ -1994,6 +2002,7 @@ export class BattleEntry extends Component {
         this._mgr.tick(Math.min(dt, 0.05));
         this._processBattleEvents();
         if (phaseBefore !== 'won' && this._mgr.phase === 'won') this._awardVictoryDrop();
+        if (phaseBefore !== 'lost' && this._mgr.phase === 'lost') this._commitBattleExp();
         this._updateSoldierVisualActions();
         this._render();
         this._renderFloats();
@@ -2188,7 +2197,18 @@ export class BattleEntry extends Component {
         }
     }
 
+    // 战斗结束（胜或负）都提交本场累计经验：每个上阵角色各得全额。
+    private _commitBattleExp() {
+        if (!this._growth || !this._squad || this._battleExpGained <= 0) return;
+        for (const cls of this._squad.deployedList()) {
+            this._growth.gainExp(cls, this._battleExpGained);
+        }
+        void saveGrowth(this._growth);
+        this._battleExpGained = 0;
+    }
+
     private _awardVictoryDrop() {
+        this._commitBattleExp();
         const result = this._grantDropItems(this._mgr.levelIndex);
         const complete = this._progress.completeLevel(this._mgr.levelIndex);
         void saveProgress(this._progress);
@@ -2256,6 +2276,8 @@ export class BattleEntry extends Component {
                 this._onSkillCast(event);
                 continue;
             }
+            const enemyDef = BattleConfig.enemyTypes[event.enemyType];
+            if (enemyDef) this._battleExpGained += enemyDef.exp;
             const level = BattleConfig.levels[event.levelIndex];
             if (!level) continue;
             const mobReward = rollChestDrop({

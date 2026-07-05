@@ -11,6 +11,7 @@ import type { ProgressSave } from '../../progression/ProgressModel';
 import type { ChestSave } from '../../chest/ChestModel';
 import type { MaterialSave } from '../../services/RewardTypes';
 import type { SquadSave } from '../../squad/SquadModel';
+import type { CharGrowthSave } from '../../growth/CharacterGrowthModel';
 
 // 玩家存档的数据结构（数据模型）。以后加背包、关卡进度等就往这里加字段。
 export interface PlayerData {
@@ -23,6 +24,7 @@ export interface PlayerData {
     chests?: ChestSave;         // 宝箱库存；有数量上限，满了后新宝箱不再入库
     materials?: MaterialSave;   // 材料库存；开箱产打造/宝石/铭文等材料
     squad?: SquadSave;          // 出战小队（有序出战角色）；老存档缺它，由默认组合兜底
+    charGrowth?: CharGrowthSave; // 每角色成长（等级/经验）；老存档缺它，全角色按 Lv.1 兜底
 }
 
 function defaultData(): PlayerData {
