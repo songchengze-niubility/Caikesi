@@ -1125,16 +1125,22 @@ export class BattleEntry extends Component {
             }
         };
 
+        const nameWithLevel = (cls: SoldierClass): string => {
+            const lv = this._growth ? this._growth.levelOf(cls) : 1;
+            const maxLv = BattleConfig.charGrowth?.maxLevel ?? 30;
+            return `${CHARACTER_LABEL[cls]}  Lv.${lv}${lv >= maxLv ? '·满' : ''}`;
+        };
+
         let y = top;
         deployed.forEach((cls, i) => {
-            pushRow(CHARACTER_LABEL[cls], y, `出战${i + 1}`,
+            pushRow(nameWithLevel(cls), y, `出战${i + 1}`,
                 () => this._squadUndeploy(cls),
                 i > 0 ? () => this._squadMove(cls, i - 1) : undefined);
             y -= rowH;
         });
         y -= 24;
         for (const cls of this._squad.benchList()) {
-            pushRow(CHARACTER_LABEL[cls], y, '板凳', () => this._squadDeploy(cls));
+            pushRow(nameWithLevel(cls), y, '板凳', () => this._squadDeploy(cls));
             y -= rowH;
         }
 
