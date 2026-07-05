@@ -11,8 +11,8 @@ import {
 } from './EquipDefs';
 
 type Zone = 'backpack' | 'warehouse' | 'equipped';
-export type InventoryChangeKind = 'drop' | 'transfer' | 'equip' | 'unequip' | 'lock' | 'sell' | 'batchSell' | 'sort';
-export interface InventoryChangePayload { gold?: number; sold?: number; }
+export type InventoryChangeKind = 'drop' | 'transfer' | 'equip' | 'unequip' | 'lock' | 'sell' | 'batchSell' | 'sort' | 'inlay';
+export interface InventoryChangePayload { gold?: number; sold?: number; itemId?: string; }
 interface Hot { x: number; y: number; w: number; h: number; kind: string; zone?: Zone; id?: string; slot?: EquipSlot; char?: CharacterId; }
 type ListZone = 'backpack' | 'warehouse';
 interface ScrollArea { x: number; y: number; w: number; h: number; contentH: number; maxScroll: number; gridTop: number; drawScroll: number; }
@@ -189,6 +189,7 @@ export class InventoryView {
         btn(xStart + step * 5, '出售', 'sell');
         btn(xStart + step * 6, SORT_LABEL[this.sortMode], 'sort');
         btn(xStart + step * 7, '批售白绿', 'batchSell');
+        btn(xStart + step * 8, '镶嵌', 'inlay');
         btn(this.halfW - 110, '关闭', 'close');
 
         if (this.toast) lbl(0, by + 198, this.toast, 20, new Color(255, 120, 120));
@@ -577,6 +578,10 @@ export class InventoryView {
         let r = { ok: true, reason: '' } as { ok: boolean; reason?: string; gold?: number; sold?: EquipItem[]; item?: EquipItem };
         const selected = this.selectedItem();
         switch (kind) {
+            case 'inlay':
+                if (!selected) { this.setToast('先选要镶嵌的装备'); this.render(); return; }
+                this.onChanged('inlay', { itemId: selected.id });
+                return;
             case 'close': this.toggle(); return;
             case 'drop': r = this.onDrop ? this.onDrop() : m.dropRandom(); break;
             case 'lock':
@@ -615,7 +620,7 @@ export class InventoryView {
             if (kind === 'batchSell') this.setToast(`出售 ${r.sold?.length ?? 0} 件，获得 ${r.gold ?? 0} 金币`);
             if (kind === 'lock') this.setToast(r.item?.locked ? '已锁定' : '已解锁');
             if (kind !== 'lock' && kind !== 'sort') this.sel = null;
-            this.onChanged(kind as InventoryChangeKind, { gold: r.gold, sold: r.sold?.length });
+            this.onChanged(kind as InventoryChangeKind, { gold: r.gold, sold: r.sold?.length, returnedGems: (r as any).returnedGems } as any);
         }
         this.render();
     }

@@ -33,13 +33,16 @@ import { SquadModel } from './squad/SquadModel';
 import { loadSquad, saveSquad } from './squad/SquadPersistence';
 import { CharacterGrowthModel } from './growth/CharacterGrowthModel';
 import { loadGrowth, saveGrowth } from './growth/CharacterGrowthPersistence';
-import { QUALITY_LABEL, QUALITY_COLOR, SLOT_LABEL, SLOTS, formatEquipStats, CHARACTERS, CHARACTER_LABEL } from './inventory/EquipDefs';
+import { QUALITY_LABEL, QUALITY_COLOR, SLOT_LABEL, SLOTS, formatEquipStats, CHARACTERS, CHARACTER_LABEL, STAT_LABEL, formatStatValue } from './inventory/EquipDefs';
 import type { EquipItem, EquipSlot } from './inventory/EquipDefs';
 import { MATERIAL_LABEL } from './services/RewardTypes';
 import type { MaterialId, MaterialItem, MaterialSave } from './services/RewardTypes';
 import { craftEquipment } from './craft/CraftService';
 import { canAffordCraftTier, craftTierIds, getCraftTier } from './config/CraftConfig';
 import type { CraftTierConfig } from './config/CraftConfig';
+import { socketGem, unsocketGem, applyInscription } from './inlay/InlayModel';
+import { socketCounts, gemTypes, gemMaxLevel } from './inlay/InlayConfig';
+import { gemMaterialId } from './services/RewardTypes';
 
 const { ccclass } = _decorator;
 
@@ -380,6 +383,7 @@ export class BattleEntry extends Component {
         this._createChestView();
         this._createCraftView();
         this._createSquadView();
+        this._createInlayView();
 
         // 底部导航热区：视觉由切片提供，触摸区域保持透明。
         const noop = () => {};
@@ -435,8 +439,19 @@ export class BattleEntry extends Component {
     }
 
     private async _handleInventoryChanged(kind: InventoryChangeKind, payload?: InventoryChangePayload): Promise<void> {
+        if (kind === 'inlay') {
+            if (payload?.itemId) this._openInlayPanel(payload.itemId);
+            return;
+        }
         const data = await loadPlayerData();
         if (payload?.gold && payload.gold > 0) data.gold = (data.gold ?? 0) + payload.gold;
+        // 出售退回已镶宝石（Task 6 的 returnedGems 经此落到 materials）
+        const returned = (payload as any)?.returnedGems as { id: string; count: number }[] | undefined;
+        if (returned && returned.length) {
+            data.materials = data.materials ?? {};
+            for (const g of returned) data.materials[g.id] = (data.materials[g.id] ?? 0) + g.count;
+            this._materials = { ...data.materials };
+        }
         data.inventory = this._inv.serialize();
         await savePlayerData();
 
@@ -1042,6 +1057,15 @@ export class BattleEntry extends Component {
     private _squadLabels: Label[] = [];
     private _squadHots: { rect: { x: number; y: number; w: number; h: number }; act: () => void }[] = [];
 
+    // ===== 镶嵌面板（占位）：镶入/取出宝石 + 打铭文，镜像 SquadView =====
+    private _inlayRoot: Node = null!;
+    private _inlayGfx: Graphics = null!;
+    private _inlayLabels: Label[] = [];
+    private _inlayHots: { rect: { x: number; y: number; w: number; h: number }; act: () => void }[] = [];
+    private _inlayItemId: string | null = null;       // 当前聚焦装备
+    private _inlaySelSocket: number | null = null;     // 选中的空宝石孔（待填）
+    private _inlayMsg = '';
+
     private _createSquadView() {
         this._squadRoot = new Node('SquadView');
         this._squadRoot.layer = this.node.layer;
@@ -1175,6 +1199,207 @@ export class BattleEntry extends Component {
         void saveSquad(this._squad);
         this._drawSquadPanel();
         if (this._gameStarted && !this._settlementOpen()) this._startBattle();
+    }
+
+    // ===== 镶嵌面板方法 =====
+
+    private _createInlayView() {
+        this._inlayRoot = new Node('InlayView');
+        this._inlayRoot.layer = this.node.layer;
+        this._inlayRoot.addComponent(UITransform).setContentSize(this._halfW * 2, this._halfH * 2);
+        const gfxNode = new Node('InlayGfx');
+        gfxNode.layer = this.node.layer;
+        gfxNode.addComponent(UITransform);
+        this._inlayGfx = gfxNode.addComponent(Graphics);
+        this._inlayRoot.addChild(gfxNode);
+        this.node.addChild(this._inlayRoot);
+        this._inlayRoot.active = false;
+        this._inlayRoot.on(Node.EventType.TOUCH_END, this._onInlayTap, this);
+    }
+
+    private _inlayLabel(i: number): Label {
+        while (i >= this._inlayLabels.length) {
+            const n = new Node('InlayLbl');
+            n.layer = this._inlayRoot.layer;
+            n.addComponent(UITransform);
+            const lb = n.addComponent(Label);
+            this._inlayRoot.addChild(n);
+            this._inlayLabels.push(lb);
+        }
+        return this._inlayLabels[i];
+    }
+
+    private _hideInlayPanel() { if (this._inlayRoot) this._inlayRoot.active = false; }
+
+    private _openInlayPanel(itemId: string) {
+        if (!this._inlayRoot) return;
+        this._inlayItemId = itemId;
+        this._inlaySelSocket = null;
+        this._inlayMsg = '';
+        this._hideSettlement();
+        this._hideChestPanel();
+        this._hideCraftPanel();
+        this._hideSquadPanel();
+        this._inlayRoot.active = true;
+        this._inlayRoot.setSiblingIndex(this.node.children.length - 1);
+        this._drawInlayPanel();
+    }
+
+    // 在 backpack/warehouse 里按 id 找当前聚焦装备（镶嵌只针对未穿戴装备）
+    private _inlayItem(): EquipItem | null {
+        if (!this._inlayItemId || !this._inv) return null;
+        return this._inv.backpack.find(it => it.id === this._inlayItemId)
+            ?? this._inv.warehouse.find(it => it.id === this._inlayItemId)
+            ?? null;
+    }
+
+    private _drawInlayPanel() {
+        const g = this._inlayGfx;
+        g.clear();
+        this._inlayHots.length = 0;
+        for (const l of this._inlayLabels) l.node.active = false;
+        let li = 0;
+        const label = (s: string, x: number, y: number, size = 22, color?: Color) => {
+            const lb = this._inlayLabel(li++);
+            lb.node.active = true; lb.string = s; lb.fontSize = size;
+            if (color) lb.color = color;
+            lb.node.setPosition(x, y, 0);
+        };
+        g.fillColor = new Color(20, 24, 30, 235);
+        g.rect(-this._halfW, -this._halfH, this._halfW * 2, this._halfH * 2);
+        g.fill();
+
+        const item = this._inlayItem();
+        if (!item) {
+            label('装备不存在（可能已穿戴/售出）', 0, 0, 24);
+            this._pushInlayClose();
+            return;
+        }
+        label(`镶嵌  ${QUALITY_LABEL[item.quality]} · ${item.name}`, 0, 600, 28);
+        if (this._inlayMsg) label(this._inlayMsg, 0, 552, 20, new Color(255, 200, 120));
+
+        const counts = socketCounts(item.quality);
+        let y = 470;
+
+        // —— 宝石孔 ——
+        label('宝石孔（点空孔选中→点下方宝石镶入；点已镶取出）', 0, y + 40, 20, new Color(180, 210, 255));
+        for (let i = 0; i < counts.gemSockets; i++) {
+            const gem = item.gemSockets?.[i] ?? null;
+            const sel = this._inlaySelSocket === i;
+            g.fillColor = sel ? new Color(72, 110, 150, 245) : new Color(48, 58, 72, 255);
+            g.roundRect(-300, y - 40, 600, 72, 10); g.fill();
+            const txt = gem
+                ? `孔${i + 1}：${MATERIAL_LABEL[gemMaterialId(gem.type, gem.level)]}（点取出）`
+                : `孔${i + 1}：空${sel ? '（已选中）' : '（点选中）'}`;
+            label(txt, 0, y - 4, 22);
+            const idx = i;
+            this._inlayHots.push({ rect: { x: -300, y: y - 40, w: 600, h: 72 }, act: () => this._onInlaySocketTap(idx) });
+            y -= 84;
+        }
+
+        // —— 铭文位 ——
+        y -= 20;
+        label('铭文位（点"打铭文"消耗卷轴随机抽/覆盖）', 0, y + 40, 20, new Color(200, 180, 255));
+        for (let i = 0; i < counts.inscriptionSlots; i++) {
+            const insc = item.inscriptions?.[i] ?? null;
+            g.fillColor = new Color(48, 58, 72, 255);
+            g.roundRect(-300, y - 40, 440, 72, 10); g.fill();
+            const txt = insc ? `位${i + 1}：${STAT_LABEL[insc.stat]}+${formatStatValue(insc.stat, insc.value)}` : `位${i + 1}：空`;
+            label(txt, -80, y - 4, 22);
+            g.fillColor = new Color(120, 90, 160, 255);
+            g.roundRect(160, y - 40, 140, 72, 10); g.fill();
+            label('打铭文', 230, y - 4, 22);
+            const idx = i;
+            this._inlayHots.push({ rect: { x: 160, y: y - 40, w: 140, h: 72 }, act: () => this._onInlayInscribeTap(idx) });
+            y -= 84;
+        }
+
+        // —— 持有宝石（点击镶入选中孔）——
+        y -= 20;
+        label('持有宝石（先选空孔再点这里镶入）', 0, y + 40, 20, new Color(180, 255, 200));
+        const held: { type: any; level: number; id: string; count: number }[] = [];
+        for (const t of gemTypes()) {
+            for (let lv = 1; lv <= gemMaxLevel(t); lv++) {
+                const id = gemMaterialId(t, lv);
+                const c = this._materials[id] ?? 0;
+                if (c > 0) held.push({ type: t, level: lv, id, count: c });
+            }
+        }
+        if (held.length === 0) label('（暂无宝石，去开宝箱）', 0, y - 4, 20, new Color(160, 168, 184));
+        held.slice(0, 6).forEach((h, k) => {
+            const bx = -300 + (k % 3) * 205;
+            const byy = y - Math.floor(k / 3) * 70;
+            g.fillColor = new Color(40, 70, 55, 255);
+            g.roundRect(bx, byy - 30, 195, 60, 8); g.fill();
+            label(`${MATERIAL_LABEL[h.id]}×${h.count}`, bx + 97, byy, 18);
+            this._inlayHots.push({ rect: { x: bx, y: byy - 30, w: 195, h: 60 }, act: () => this._onInlayGemTap(h.type, h.level) });
+        });
+
+        this._pushInlayClose();
+    }
+
+    private _pushInlayClose() {
+        const g = this._inlayGfx;
+        g.fillColor = new Color(120, 60, 60, 255);
+        g.roundRect(-90, -600, 180, 70, 12); g.fill();
+        const lb = this._inlayLabel(this._inlayLabels.filter(l => l.node.active).length);
+        lb.node.active = true; lb.string = '关闭'; lb.fontSize = 26; lb.node.setPosition(0, -565, 0);
+        this._inlayHots.push({ rect: { x: -90, y: -600, w: 180, h: 70 }, act: () => this._hideInlayPanel() });
+    }
+
+    private _onInlayTap(e: EventTouch) {
+        const ui = e.getUILocation();
+        const p = this._inlayRoot.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
+        for (const h of this._inlayHots) {
+            if (p.x >= h.rect.x && p.x <= h.rect.x + h.rect.w && p.y >= h.rect.y && p.y <= h.rect.y + h.rect.h) {
+                h.act();
+                return;
+            }
+        }
+    }
+
+    private _onInlaySocketTap(i: number) {
+        const item = this._inlayItem();
+        if (!item) return;
+        const gem = item.gemSockets?.[i] ?? null;
+        if (gem) {
+            const r = unsocketGem(item, i, this._materials);
+            this._inlayMsg = r.ok ? '已取出宝石' : (r.reason ?? '取出失败');
+            if (r.ok) { void this._persistInlay(); return; }
+        } else {
+            this._inlaySelSocket = i;
+            this._inlayMsg = `已选中孔${i + 1}，点下方宝石镶入`;
+        }
+        this._drawInlayPanel();
+    }
+
+    private _onInlayGemTap(type: any, level: number) {
+        const item = this._inlayItem();
+        if (!item) return;
+        if (this._inlaySelSocket === null) { this._inlayMsg = '先点上方一个空孔'; this._drawInlayPanel(); return; }
+        const r = socketGem(item, this._inlaySelSocket, type, level, this._materials);
+        this._inlayMsg = r.ok ? '已镶入宝石' : (r.reason ?? '镶入失败');
+        if (r.ok) { this._inlaySelSocket = null; void this._persistInlay(); }
+        else this._drawInlayPanel();
+    }
+
+    private _onInlayInscribeTap(i: number) {
+        const item = this._inlayItem();
+        if (!item) return;
+        const r = applyInscription(item, i, this._materials, Math.random);
+        this._inlayMsg = r.ok ? '已打入铭文' : (r.reason ?? '打铭文失败');
+        if (r.ok) void this._persistInlay();
+        else this._drawInlayPanel();
+    }
+
+    // 镶嵌操作改了 item(在 _inv 内) + this._materials → 落库并刷新
+    private async _persistInlay(): Promise<void> {
+        const data = await loadPlayerData();
+        data.materials = { ...this._materials };
+        data.inventory = this._inv.serialize();
+        await savePlayerData();
+        this._invView.refresh();
+        this._drawInlayPanel();
     }
 
     private _createCraftView() {
