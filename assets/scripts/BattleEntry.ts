@@ -1292,7 +1292,7 @@ export class BattleEntry extends Component {
     }
 
     private _materialsHoldingText(): string {
-        const ids: MaterialId[] = ['forge_stone', 'gem_shard', 'rune_dust'];
+        const ids: MaterialId[] = ['forge_stone', 'rune_scroll'];
         return ids.map(id => `${MATERIAL_LABEL[id]} ${this._materials[id] ?? 0}`).join('  ·  ');
     }
 
@@ -1369,7 +1369,7 @@ export class BattleEntry extends Component {
             lbl(x + w / 2, topY - h / 2, '暂无可用合成档位', 17, new Color(170, 178, 194));
             return;
         }
-        const materialIds: MaterialId[] = ['forge_stone', 'gem_shard', 'rune_dust'];
+        const materialIds: MaterialId[] = ['forge_stone'];
         const costText = materialIds
             .filter(id => (tier.cost[id] ?? 0) > 0)
             .map(id => {

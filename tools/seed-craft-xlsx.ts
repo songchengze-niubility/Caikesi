@@ -7,12 +7,12 @@ import { dirname, resolve } from 'node:path';
 
 const OUT = resolve(__dirname, 'config-xlsx/craft.xlsx');
 
-// 3 档，材料需求对齐现有材料稀有度：打造石处处产、宝石碎片需 boss 箱、铭文粉尘需章节箱。
-const TIERS_HEADER = ['tierId', 'label', 'levelMin', 'levelMax', 'costForgeStone', 'costGemShard', 'costRuneDust'];
+// 3 档，合成只消耗打造石（宝石/铭文走镶嵌/铭文系统，不在合成流程消耗）。
+const TIERS_HEADER = ['tierId', 'label', 'levelMin', 'levelMax', 'costForgeStone'];
 const TIERS_ROWS: (string | number)[][] = [
-    ['tier_1', '初阶', 1, 10, 10, 0, 0],
-    ['tier_2', '中阶', 11, 20, 20, 3, 0],
-    ['tier_3', '高阶', 21, 30, 30, 6, 2],
+    ['tier_1', '初阶', 1, 10, 10],
+    ['tier_2', '中阶', 11, 20, 25],
+    ['tier_3', '高阶', 21, 30, 50],
 ];
 
 // 档位越高，权重越往史诗/传说偏。

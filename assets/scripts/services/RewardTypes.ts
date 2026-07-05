@@ -3,11 +3,10 @@ import type { ChestItem } from '../chest/ChestModel';
 
 export type RewardSource = 'Monster' | 'StageClear' | 'Boss' | 'Offline';
 
-// 宝石按"类型_等级"拆细（替换旧 gem_shard）；卷轴替换旧 rune_dust；打造石保留。
+// 宝石按"类型_等级"拆细；铭文卷轴用于铭文系统；打造石保留。
 // ⚠️ 等级范围 1~4 与 inlay.xlsx/Gems.maxLevel 耦合（见 plan Global Constraints）。
-// gem_shard/rune_dust 暂留，Task 7 迁完所有引用后删除。
 export type GemMaterialId = `gem_${GemType}_${1 | 2 | 3 | 4}`;
-export type MaterialId = 'forge_stone' | 'rune_scroll' | GemMaterialId | 'gem_shard' | 'rune_dust';
+export type MaterialId = 'forge_stone' | 'rune_scroll' | GemMaterialId;
 
 export interface MaterialItem {
     id: MaterialId;
@@ -25,8 +24,6 @@ function buildMaterialLabels(): Record<MaterialId, string> {
     const out: Record<string, string> = {
         forge_stone: '打造石',
         rune_scroll: '铭文卷轴',
-        gem_shard: '宝石碎片',   // 旧键，Task 7 删
-        rune_dust: '铭文粉尘',   // 旧键，Task 7 删
     };
     const types: GemType[] = ['atk', 'hp', 'def', 'crit', 'dmg'];
     for (const t of types) {

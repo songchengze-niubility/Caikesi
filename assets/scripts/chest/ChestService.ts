@@ -1,7 +1,8 @@
 import { BattleConfig } from '../config/BattleConfig';
 import { DropConfig, rollDropItems } from '../config/DropConfig';
 import { hashSeed, createSeededRng } from '../core/Random';
-import { emptyRewardBundle, type MaterialId, type RewardBundle } from '../services/RewardTypes';
+import { emptyRewardBundle, gemMaterialId, type MaterialId, type RewardBundle } from '../services/RewardTypes';
+import { gemTypes, gemMaxLevel } from '../inlay/InlayConfig';
 import type { ChestItem, ChestType } from './ChestModel';
 
 export interface OpenChestResult {
@@ -14,6 +15,8 @@ export interface OpenChestResult {
 interface ChestRewardProfile {
     equipmentRolls: number;
     materials: MaterialRoll[];
+    gemRolls?: { count: number; levelMin: number; levelMax: number };
+    scrollRolls?: { min: number; max: number };
 }
 
 interface MaterialRoll {
@@ -26,21 +29,19 @@ const CHEST_REWARD_PROFILE: Record<ChestType, ChestRewardProfile> = {
     normal: {
         equipmentRolls: 1,
         materials: [{ id: 'forge_stone', min: 2, max: 4 }],
+        gemRolls: { count: 1, levelMin: 1, levelMax: 1 },
     },
     boss: {
         equipmentRolls: 2,
-        materials: [
-            { id: 'forge_stone', min: 4, max: 8 },
-            { id: 'gem_shard', min: 1, max: 3 },
-        ],
+        materials: [{ id: 'forge_stone', min: 4, max: 8 }],
+        gemRolls: { count: 1, levelMin: 1, levelMax: 2 },
+        scrollRolls: { min: 1, max: 1 },
     },
     chapter: {
         equipmentRolls: 3,
-        materials: [
-            { id: 'forge_stone', min: 8, max: 12 },
-            { id: 'gem_shard', min: 3, max: 5 },
-            { id: 'rune_dust', min: 1, max: 2 },
-        ],
+        materials: [{ id: 'forge_stone', min: 8, max: 12 }],
+        gemRolls: { count: 2, levelMin: 2, levelMax: 3 },
+        scrollRolls: { min: 1, max: 2 },
     },
 };
 
@@ -93,6 +94,22 @@ export function openChest(chest: ChestItem): OpenChestResult {
     for (const roll of profile.materials) {
         const rng = createSeededRng(`${chest.seed}|material|${chest.type}|${roll.id}|${levelIndex}`);
         addMaterial(reward, roll.id, rollInt(roll.min, roll.max, rng) + materialLevelBonus);
+    }
+    // 宝石：随机类型 + 档位缩放等级
+    if (profile.gemRolls) {
+        const types = gemTypes();
+        for (let i = 0; i < profile.gemRolls.count; i++) {
+            const rng = createSeededRng(`${chest.seed}|gem|${chest.type}|${i}`);
+            const type = types[Math.min(types.length - 1, Math.floor(rng() * types.length))];
+            const lvRaw = rollInt(profile.gemRolls.levelMin, profile.gemRolls.levelMax, rng);
+            const level = Math.max(1, Math.min(gemMaxLevel(type), lvRaw));
+            addMaterial(reward, gemMaterialId(type, level), 1);
+        }
+    }
+    // 卷轴
+    if (profile.scrollRolls) {
+        const rng = createSeededRng(`${chest.seed}|scroll|${chest.type}`);
+        addMaterial(reward, 'rune_scroll', rollInt(profile.scrollRolls.min, profile.scrollRolls.max, rng));
     }
 
     return { ok: true, chest: { ...chest }, reward };

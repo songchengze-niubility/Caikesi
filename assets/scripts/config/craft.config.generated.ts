@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/craft.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/craft.xlsx
-// 生成时间：2026-07-04T14:33:27.981Z
+// 生成时间：2026-07-05T09:41:32.670Z
 
 /* eslint-disable */
 // @ts-nocheck
@@ -27,8 +27,7 @@ export const generatedCraftConfig = {
             "levelMin": 11,
             "levelMax": 20,
             "cost": {
-                "forge_stone": 20,
-                "gem_shard": 3
+                "forge_stone": 25
             },
             "qualityWeights": {
                 "common": 20,
@@ -43,9 +42,7 @@ export const generatedCraftConfig = {
             "levelMin": 21,
             "levelMax": 30,
             "cost": {
-                "forge_stone": 30,
-                "gem_shard": 6,
-                "rune_dust": 2
+                "forge_stone": 50
             },
             "qualityWeights": {
                 "common": 0,

@@ -34,15 +34,15 @@ test('craftEquipment：材料不足时拒绝且不返回 remainingMaterials', ()
     assert.equal(materials.forge_stone, 5);
 });
 
-test('craftEquipment：高档位需要多种材料，缺一种也拒绝', () => {
-    const materials: MaterialSave = { forge_stone: 100, gem_shard: 0 };
+test('craftEquipment：高档位打造石不足时拒绝', () => {
+    const materials: MaterialSave = { forge_stone: 10 };
     const result = craftEquipment(materials, 'tier_2', 'helmet', () => 0.5);
     assert.equal(result.ok, false);
     assert.equal(result.reason, '材料不足');
 });
 
 test('craftEquipment：非法部位/档位返回失败而非抛异常', () => {
-    const materials: MaterialSave = { forge_stone: 999, gem_shard: 999, rune_dust: 999 };
+    const materials: MaterialSave = { forge_stone: 999 };
     const badSlot = craftEquipment(materials, 'tier_1', 'invalid-slot' as any, () => 0.5);
     assert.equal(badSlot.ok, false);
     const badTier = craftEquipment(materials, 'no-such-tier', 'weapon', () => 0.5);
@@ -50,7 +50,7 @@ test('craftEquipment：非法部位/档位返回失败而非抛异常', () => {
 });
 
 test('craftEquipment：高档位平均品质高于低档位（抽样趋势，非精确断言）', () => {
-    const materials: MaterialSave = { forge_stone: 9999, gem_shard: 9999, rune_dust: 9999 };
+    const materials: MaterialSave = { forge_stone: 9999 };
     const qualityRank: Record<string, number> = { common: 0, fine: 1, rare: 2, epic: 3, legend: 4 };
     let sumTier1 = 0;
     let sumTier3 = 0;

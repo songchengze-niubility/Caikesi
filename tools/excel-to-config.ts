@@ -627,15 +627,13 @@ function buildChestConfig(wb: XLSX.WorkBook): { config: unknown; summary: string
 
 // ============ craft 模块解析器 ============
 // 读 craft.xlsx 的 2 sheet → 合成配置。
-// Tiers: tierId, label, levelMin, levelMax, costForgeStone, costGemShard, costRuneDust
+// Tiers: tierId, label, levelMin, levelMax, costForgeStone
 // QualityWeights: tierId, quality, weight
 function buildCraftConfig(wb: XLSX.WorkBook): { config: unknown; summary: string } {
     const VALID_QUALITIES = ['common', 'fine', 'rare', 'epic', 'legend'];
     const validQualitySet = new Set(VALID_QUALITIES);
     const MATERIAL_COLUMNS: [string, string][] = [
         ['forge_stone', 'costForgeStone'],
-        ['gem_shard', 'costGemShard'],
-        ['rune_dust', 'costRuneDust'],
     ];
 
     const { rows: tierRows } = sheetToRows(wb, 'Tiers');
