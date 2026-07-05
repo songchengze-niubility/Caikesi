@@ -79,6 +79,30 @@ test('unitSkillsForClass(dps) 装载配置中的 3 个技能', () => {
     assert.ok(sk.defAt(0));
 });
 
+test('BattleManager 集成：战斗产生 skillCast 事件，enemyKilled 计数不受影响', () => {
+    const mgr = new BattleManager(470, 836, 0, {
+        dps: { ...BattleConfig.stats.dps, hp: 99999, atk: 99999, range: 2000, attackSpeed: 20, critRate: 0, dodgeRate: 0 },
+    });
+    const events: import('../assets/scripts/combat/BattleManager').BattleEvent[] = [];
+    for (let i = 0; i < 4000 && mgr.phase !== 'won'; i++) {
+        mgr.tick(0.05);
+        events.push(...mgr.drainEvents());
+    }
+    events.push(...mgr.drainEvents());
+    assert.equal(mgr.phase, 'won');
+
+    const casts = events.filter(e => e.type === 'skillCast');
+    assert.ok(casts.length > 0, '应至少释放一次技能');
+    for (const c of casts) {
+        assert.ok(c.type === 'skillCast' && c.hits.length > 0, '每次释放至少命中一个目标');
+        if (c.type === 'skillCast') for (const h of c.hits) assert.ok(h.dodged || h.damage > 0);
+    }
+
+    let total = 0;
+    for (const w of BattleConfig.levels[0].waves) for (const s of w.spawns) total += s.count;
+    assert.equal(events.filter(e => e.type === 'enemyKilled').length, total);
+});
+
 let failed = 0;
 for (const t of tests) {
     try {

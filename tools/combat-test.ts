@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { BattleManager } from '../assets/scripts/combat/BattleManager';
+import { BattleManager, type BattleEvent, type EnemyKilledEvent } from '../assets/scripts/combat/BattleManager';
 import { BattleConfig } from '../assets/scripts/config/BattleConfig';
 
 type Test = { name: string; run: () => void };
@@ -27,16 +27,17 @@ test('BattleManager：每个敌人死亡只发一次 enemyKilled', () => {
             dodgeRate: 0,
         },
     });
-    const events = [];
+    const events: BattleEvent[] = [];
     for (let i = 0; i < 4000 && mgr.phase !== 'won'; i++) {
         mgr.tick(0.05);
         events.push(...mgr.drainEvents());
     }
     events.push(...mgr.drainEvents());
 
+    const kills = events.filter((event): event is EnemyKilledEvent => event.type === 'enemyKilled');
     assert.equal(mgr.phase, 'won');
-    assert.equal(events.length, monsterCount(0));
-    assert.equal(new Set(events.map(event => event.killIndex)).size, events.length);
+    assert.equal(kills.length, monsterCount(0));
+    assert.equal(new Set(kills.map(event => event.killIndex)).size, kills.length);
 });
 
 test('BattleManager：最后一波最后一只怪标记为关底击杀', () => {
@@ -51,16 +52,17 @@ test('BattleManager：最后一波最后一只怪标记为关底击杀', () => {
             dodgeRate: 0,
         },
     });
-    const events = [];
+    const events: BattleEvent[] = [];
     for (let i = 0; i < 4000 && mgr.phase !== 'won'; i++) {
         mgr.tick(0.05);
         events.push(...mgr.drainEvents());
     }
     events.push(...mgr.drainEvents());
 
-    const finals = events.filter(event => event.isStageFinalKill);
+    const kills = events.filter((event): event is EnemyKilledEvent => event.type === 'enemyKilled');
+    const finals = kills.filter(event => event.isStageFinalKill);
     assert.equal(finals.length, 1);
-    assert.equal(finals[0], events[events.length - 1]);
+    assert.equal(finals[0], kills[kills.length - 1]);
     assert.equal(finals[0].waveIndex, BattleConfig.levels[0].waves.length - 1);
 });
 

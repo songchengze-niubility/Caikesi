@@ -6,6 +6,7 @@
 import { BattleConfig, SoldierClass, AttackType, CombatStats } from '../config/BattleConfig';
 import { calcDamage, DamageResult } from './CombatFormula';
 import type { EffectiveStatsMap } from './EffectiveStats';
+import { UnitSkills, unitSkillsForClass } from './SkillRuntime';
 
 export type UnitAction = 'idle' | 'run' | 'attack' | 'death';
 
@@ -32,6 +33,7 @@ export interface Soldier {
     action: UnitAction;   // 渲染层按它切换 idle/run/attack/death 等动作
     actionTime: number;   // 当前动作已持续时间（死亡淡出/调试用）
     actionLock: number;   // 短动作锁，避免攻击刚触发就被 idle/run 覆盖
+    skills: UnitSkills;   // 该单位的自动技能运行态（挂实例上，Boss 技能后续可复用）
 }
 
 // 一只敌人（属性/移动/外观来自其怪物类型 EnemyType）
@@ -72,7 +74,7 @@ export interface FloatText {
     ttl: number;
     maxTtl: number;
     text: string;
-    kind: 'normal' | 'crit' | 'block' | 'dodge';
+    kind: 'normal' | 'crit' | 'block' | 'dodge' | 'skill';
 }
 
 // 治疗光束（仅供界面画反馈，逻辑不依赖）
@@ -83,7 +85,7 @@ export interface HealBeam {
 
 export type BattlePhase = 'spawning' | 'gap' | 'won' | 'lost';
 
-export interface BattleEvent {
+export interface EnemyKilledEvent {
     type: 'enemyKilled';
     levelIndex: number;
     waveIndex: number;
@@ -91,6 +93,16 @@ export interface BattleEvent {
     killIndex: number;
     isStageFinalKill: boolean;
 }
+
+export interface SkillCastEvent {
+    type: 'skillCast';
+    skillId: string;
+    skillName: string;
+    casterCls: SoldierClass;
+    hits: { damage: number; crit: boolean; dodged: boolean }[];
+}
+
+export type BattleEvent = EnemyKilledEvent | SkillCastEvent;
 
 export class BattleManager {
     private halfW = 0;
@@ -163,6 +175,7 @@ export class BattleManager {
                 action: 'idle',
                 actionTime: 0,
                 actionLock: 0,
+                skills: unitSkillsForClass(cls),
             });
         });
     }
@@ -193,6 +206,7 @@ export class BattleManager {
         this._updateSpawning(dt);
         this._updateMovement(dt);
         this._updateFiring(dt);
+        this._updateSkills(dt);
         this._updateBullets(dt);
         this._updateEnemies(dt);
         this._updateHealing(dt);
@@ -388,6 +402,7 @@ export class BattleManager {
             s.cd -= dt;
             if (s.cd > 0) continue;
             s.cd = s.fireInterval / Math.max(0.01, s.stats.attackSpeed);  // 攻速缩短间隔
+            s.skills.onBasicAttack();   // 普攻挥出计数（不管命中与否）
 
             if (s.attackType === 'melee') {
                 this._setAction(s, 'attack', ATTACK_ACTION_HOLD);
@@ -397,6 +412,42 @@ export class BattleManager {
                 this._fireBullet(s, target);    // 远程：发子弹（命中再结算）
             }
         }
+    }
+
+    // —— 自动技能：计时/计数就绪且有目标即释放；伤害走唯一公式 × 技能倍率 ——
+    private _updateSkills(dt: number) {
+        for (const s of this.soldiers) {
+            if (!s.alive) continue;
+            s.skills.tick(dt);
+            const currentTarget = s.attackType === 'melee'
+                ? this._frontmostEnemy()
+                : this._nearestEnemy(s.x, s.y);
+            const casts = s.skills.collectCasts(s.x, s.y, this.enemies, currentTarget);
+            for (const cast of casts) {
+                const hits: SkillCastEvent['hits'] = [];
+                for (const target of cast.targets) {
+                    if (!target.alive) continue;
+                    hits.push(this._applySkillDamage(s.stats, target, cast.def.dmgMult));
+                }
+                this._setAction(s, 'attack', ATTACK_ACTION_HOLD);
+                this.events.push({
+                    type: 'skillCast',
+                    skillId: cast.def.id,
+                    skillName: cast.def.name,
+                    casterCls: s.cls,
+                    hits,
+                });
+            }
+        }
+    }
+
+    private _applySkillDamage(att: CombatStats, defender: Enemy, mult: number): { damage: number; crit: boolean; dodged: boolean } {
+        const r = calcDamage(att, defender.stats);
+        const damage = r.dodged ? 0 : Math.max(1, Math.round(r.damage * mult));
+        defender.hp -= damage;
+        this._spawnFloat(defender.x, defender.y, { ...r, damage }, 'skill');
+        if (defender.hp <= 0) this._markDead(defender);
+        return { damage, crit: r.crit, dodged: r.dodged };
     }
 
     private _nearestEnemy(x: number, y: number): Enemy | null {
@@ -512,13 +563,13 @@ export class BattleManager {
     }
 
     // 生成一条战斗飘字
-    private _spawnFloat(x: number, y: number, r: DamageResult) {
+    private _spawnFloat(x: number, y: number, r: DamageResult, kindOverride?: FloatText['kind']) {
         let text: string;
         let kind: FloatText['kind'];
         if (r.dodged) { text = '闪避'; kind = 'dodge'; }
         else {
             text = String(r.damage);
-            kind = r.crit ? 'crit' : (r.blocked ? 'block' : 'normal');
+            kind = kindOverride ?? (r.crit ? 'crit' : (r.blocked ? 'block' : 'normal'));
         }
         // 限制数量，防刷屏
         if (this.floatTexts.length > 60) this.floatTexts.shift();
