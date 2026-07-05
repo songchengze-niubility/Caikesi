@@ -5,6 +5,7 @@ import { BattleConfig, CombatStats, SoldierClass } from '../config/BattleConfig'
 import { CHARACTERS, EquipItem, SLOTS } from '../inventory/EquipDefs';
 import type { CharEquipped } from '../inventory/InventoryModel';
 import { charLevelCoef } from '../growth/CharGrowthConfig';
+import { itemInlayStats } from '../inlay/InlayStats';
 
 export type EffectiveStatsMap = Partial<Record<SoldierClass, CombatStats>>;
 
@@ -33,11 +34,11 @@ function normalizeStats(st: CombatStats): CombatStats {
 export function calcEffectiveStats(base: CombatStats, items: (EquipItem | null | undefined)[]): CombatStats {
     const out: CombatStats = { ...base };
     for (const item of items) {
-        if (!item?.stats) continue;
+        if (!item) continue;
+        const inlay = itemInlayStats(item);
         for (const k of STAT_KEYS) {
-            const bonus = item.stats[k];
-            if (!bonus) continue;
-            out[k] += bonus;
+            const bonus = (item.stats?.[k] ?? 0) + (inlay[k] ?? 0);
+            if (bonus) out[k] += bonus;
         }
     }
     return normalizeStats(out);

@@ -4,6 +4,7 @@ import { BattleConfig, CombatStats } from '../assets/scripts/config/BattleConfig
 import { calcEquipItemStats } from '../assets/scripts/config/EquipConfig';
 import { calcEffectiveStats, buildEffectiveStatsMap } from '../assets/scripts/combat/EffectiveStats';
 import { EquipItem, randomItem } from '../assets/scripts/inventory/EquipDefs';
+import { itemInlayStats } from '../assets/scripts/inlay/InlayStats';
 import { InventoryModel } from '../assets/scripts/inventory/InventoryModel';
 
 let pass = 0, fail = 0;
@@ -112,6 +113,34 @@ test('buildEffectiveStatsMap：不传 levels 时与不传该参数时行为一�
     const withUndefined = buildEffectiveStatsMap(undefined);
     const withEmptyLevels = buildEffectiveStatsMap(undefined, {});
     assert.deepEqual(withUndefined, withEmptyLevels);
+});
+
+test('itemInlayStats：汇总宝石(gemStatValue)+铭文({stat,value})加成', () => {
+    const item = {
+        id: 'g', slot: 'weapon', name: '剑', quality: 'legend',
+        gemSockets: [{ type: 'atk', level: 2 }, { type: 'hp', level: 1 }, null],
+        inscriptions: [{ stat: 'atk', value: 15 }, null],
+    };
+    const s = itemInlayStats(item as any);
+    assert.equal(s.atk, 30 * 2 + 15);   // 宝石 atk Lv.2=60 + 铭文 atk 15
+    assert.equal(s.hp, 120 * 1);         // 宝石 hp Lv.1=120
+});
+
+test('itemInlayStats：无镶嵌装备返回空加成', () => {
+    const s = itemInlayStats({ id: 'p', slot: 'shoes', name: '鞋', quality: 'common' } as any);
+    assert.deepEqual(s, {});
+});
+
+test('calcEffectiveStats：叠加装备词条 + 镶嵌加成', () => {
+    const base = baseStats();
+    const item = {
+        id: 'w', slot: 'weapon', name: '剑', quality: 'legend',
+        stats: { atk: 100 },
+        gemSockets: [{ type: 'atk', level: 1 }, null, null],
+        inscriptions: [null, null],
+    };
+    const out = calcEffectiveStats(base, [item as any]);
+    assert.equal(out.atk, base.atk + 100 + 30);   // 基础10 + 词条100 + 宝石atk Lv.1=30
 });
 
 console.log(`\n有效属性测试：${pass} 通过，${fail} 失败`);
