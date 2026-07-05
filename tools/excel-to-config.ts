@@ -300,6 +300,7 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
         enemyTypes,
         levels,
         startLevel: misc['startLevel'] ?? 0,
+        squadCap: misc['squadCap'] ?? 2,
         combat: misc['combat'] ?? {},
         classes,
         roster,

@@ -6,6 +6,7 @@
   },
   "scripts": {
     "config": "tsx tools/excel-to-config.ts",
+    "seed:battle": "tsx tools/seed-battle-xlsx.ts",
     "test:inventory": "tsx tools/inventory-test.ts",
     "test:effective": "tsx tools/effective-stats-test.ts",
     "test:drop": "tsx tools/drop-config-test.ts",

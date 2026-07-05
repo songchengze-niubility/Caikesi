@@ -65,6 +65,7 @@ export const BattleConfig = generatedBattleConfig as {
     enemyTypes: Record<string, EnemyType>;
     levels: Level[];
     startLevel: number;
+    squadCap: number;
     combat: { minDamageRate: number };
     classes: Record<SoldierClass, {
         attackType: AttackType;

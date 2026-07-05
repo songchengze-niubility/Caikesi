@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/battle.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/battle.xlsx
-// 生成时间：2026-07-05T02:44:36.956Z
+// 生成时间：2026-07-05T04:32:15.713Z
 
 /* eslint-disable */
 // @ts-nocheck
@@ -750,6 +750,7 @@ export const generatedBattleConfig = {
         }
     ],
     "startLevel": 0,
+    "squadCap": 2,
     "combat": {
         "minDamageRate": 0.1
     },

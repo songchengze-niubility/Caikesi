@@ -125,6 +125,7 @@ const LEVELS_ROWS: (string | number)[][] = [
 const MISC_HEADER = ['key', 'value'];
 const MISC_ROWS: (string | number)[][] = [
     ['startLevel', 0],
+    ['squadCap', 2],
     ['roster', 'dps'],
     ['combat.minDamageRate', 0.1],
     ['layout.frontMargin', 360],
