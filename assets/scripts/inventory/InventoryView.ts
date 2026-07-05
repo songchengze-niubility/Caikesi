@@ -580,6 +580,7 @@ export class InventoryView {
         switch (kind) {
             case 'inlay':
                 if (!selected) { this.setToast('先选要镶嵌的装备'); this.render(); return; }
+                if (this.sel?.zone === 'equipped') { this.setToast('先脱下再镶嵌'); this.render(); return; }
                 this.onChanged('inlay', { itemId: selected.id });
                 return;
             case 'close': this.toggle(); return;

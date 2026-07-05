@@ -9,6 +9,9 @@ export interface OpResult { ok: boolean; reason?: string }
 const OK: OpResult = { ok: true };
 function fail(reason: string): OpResult { return { ok: false, reason }; }
 
+// 注意：当 n < arr.length 时会截断——如果后续平衡调低某品质的 gemSockets / inscriptionSlots，
+// 已镶嵌在超出索引的宝石/铭文会被静默丢弃且不退还材料。品质不可变所以正常游戏不会触发，
+// 但 SocketCounts 的 balance pass 需要考虑迁移逻辑。
 function padSlots<T>(arr: (T | null)[] | undefined, n: number): (T | null)[] {
     const out: (T | null)[] = [];
     for (let i = 0; i < n; i++) {
