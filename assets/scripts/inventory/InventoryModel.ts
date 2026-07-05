@@ -3,9 +3,11 @@
 
 import { EquipItem, EquipSlot, SLOTS, CharacterId, CHARACTERS, randomItem, ensureEquipItemStats, Quality, QUALITIES } from './EquipDefs';
 import { InventoryConfig } from './InventoryConfig';
+import { ensureInlaySlots } from '../inlay/InlayModel';
+import { gemMaterialId, MaterialItem } from '../services/RewardTypes';
 
 export interface OpResult { ok: boolean; reason?: string; item?: EquipItem; }
-export interface SellResult extends OpResult { gold?: number; sold?: EquipItem[]; }
+export interface SellResult extends OpResult { gold?: number; sold?: EquipItem[]; returnedGems?: MaterialItem[]; }
 export type InventorySortMode = 'quality' | 'slot' | 'name';
 export type InventoryZone = 'backpack' | 'warehouse';
 const OK: OpResult = { ok: true };
@@ -42,7 +44,8 @@ function emptyEquipped(): CharEquipped {
 
 function cloneItem(it: EquipItem): EquipItem {
     const item = ensureEquipItemStats(it);
-    return { ...item, stats: item.stats ? { ...item.stats } : undefined };
+    const cloned = { ...item, stats: item.stats ? { ...item.stats } : undefined };
+    return ensureInlaySlots(cloned);   // 补齐/深拷贝 gemSockets/inscriptions
 }
 
 function qualityRank(q: Quality): number {
@@ -59,6 +62,19 @@ function sortItems(list: EquipItem[], mode: InventorySortMode): void {
 
 export function sellPriceOf(item: EquipItem): number {
     return SELL_PRICE[item.quality] ?? 0;
+}
+
+// 把一批卖出装备身上已镶的宝石汇总成 MaterialItem[]（同 id 合并数量）。
+function collectReturnedGems(items: EquipItem[]): MaterialItem[] {
+    const counts: Record<string, number> = {};
+    for (const it of items) {
+        for (const gem of it.gemSockets ?? []) {
+            if (!gem) continue;
+            const id = gemMaterialId(gem.type, gem.level);
+            counts[id] = (counts[id] ?? 0) + 1;
+        }
+    }
+    return Object.keys(counts).map(id => ({ id: id as MaterialItem['id'], count: counts[id] }));
 }
 
 export class InventoryModel {
@@ -138,7 +154,7 @@ export class InventoryModel {
             const item = list[i];
             if (item.locked) return { ok: false, reason: '锁定装备不能出售' };
             list.splice(i, 1);
-            return { ok: true, item, sold: [item], gold: sellPriceOf(item) };
+            return { ok: true, item, sold: [item], gold: sellPriceOf(item), returnedGems: collectReturnedGems([item]) };
         }
         return { ok: false, reason: '装备不存在' };
     }
@@ -160,7 +176,7 @@ export class InventoryModel {
             }
         }
         if (sold.length === 0) return { ok: false, reason: '没有可出售装备', sold, gold: 0 };
-        return { ok: true, sold, gold };
+        return { ok: true, sold, gold, returnedGems: collectReturnedGems(sold) };
     }
 
     // 调试掉落：随机生成一件 → 背包
