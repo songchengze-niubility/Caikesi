@@ -31,4 +31,16 @@ __pycache__/
 #//////////////////////////
 .superpowers/
 
+#//////////////////////////
+# 3D 中间产物（Tripo/Mixamo 导出的模型与动画，只作渲染输入，不入库）
+#//////////////////////////
+docs/visual/staging/**/*.fbx
+docs/visual/staging/**/*.glb
+docs/visual/staging/**/*.obj
+# 动作视频剪辑（拆帧输入，体积大且可由用户重剪，不入库）
+docs/visual/staging/**/clips/*.mp4
+docs/visual/staging/**/clips/*.mov
+# 3D 判负存档的生成帧（可由 tools/sprite3d 脚本重渲）
+docs/visual/staging/characters/dps-3d/preview/frames*/
+
 /.worktrees/

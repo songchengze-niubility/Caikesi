@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>dps 3D 渲染序列帧 · 对比预览</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #fafafa; margin: 24px; }
+  h1 { font-size: 18px; } h2 { font-size: 15px; margin: 24px 0 8px; }
+  .row { display: flex; gap: 24px; flex-wrap: wrap; }
+  .cell { text-align: center; }
+  .cell .label { font-size: 12px; color: #666; margin-top: 4px; }
+  .stage { width: 200px; height: 160px; display: flex; align-items: flex-end; justify-content: center; border: 1px solid #ddd; }
+  .checker { background: repeating-conic-gradient(#e0e0e0 0% 25%, #ffffff 0% 50%) 0 0 / 16px 16px; }
+  .paper { background: #ece5d3; }
+  .dark { background: #3a3a3a; }
+  .game {
+    background-image: url('../../../../../../assets/resources/art/bg/main.png');
+    /* 角色 120px : 屏高 1920px 的真实比例；取景对准石板路战斗区 */
+    background-size: auto 1920px;
+    background-position: 42% 76%;
+  }
+  .sprite { height: 120px; image-rendering: auto; }
+  .note { font-size: 12px; color: #888; margin-top: 16px; max-width: 720px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<h1>dps 3D 渲染序列帧 · 新（Blender 渲染）vs 旧（视频拆帧临时帧）· 游戏显示高度 120px</h1>
+<div id="root"></div>
+<p class="note">
+新帧：idle 10 帧 / run 8 帧，12fps，240px 高透明底，Mixamo 动画 + Blender Workbench 平光渲染，45° 朝右。<br>
+旧帧：idle 15 帧@10fps / run 18 帧@36fps（超规格临时帧，视频拆帧产物）。<br>
+看点：循环是否顺滑、脚点是否稳定、发丝/边缘是否干净、水墨风格贴合度、120px 下可读性。
+</p>
+<script>
+const NEW_BASE = 'frames';
+const OLD_BASE = '../../../../../../assets/resources/art/char/dps';
+const GROUPS = [
+  { title: 'idle', anims: [
+    { label: '旧 · 临时帧 15帧@10fps', base: OLD_BASE + '/idle', prefix: 'idle', frames: 15, fps: 10 },
+    { label: '3D 原味 10帧@12fps', base: NEW_BASE, prefix: 'idle', frames: 10, fps: 12 },
+    { label: '3D 卡通(平涂+描边) 10帧@12fps', base: 'frames_toon', prefix: 'idle', frames: 10, fps: 12 },
+  ]},
+  { title: 'run', anims: [
+    { label: '旧 · 临时帧 18帧@36fps', base: OLD_BASE + '/run', prefix: 'run', frames: 18, fps: 36 },
+    { label: '3D 原味 8帧@12fps', base: NEW_BASE, prefix: 'run', frames: 8, fps: 12 },
+    { label: '3D 卡通(平涂+描边) 8帧@12fps', base: 'frames_toon', prefix: 'run', frames: 8, fps: 12 },
+  ]},
+];
+const BGS = ['game', 'checker', 'dark'];
+const root = document.getElementById('root');
+for (const g of GROUPS) {
+  const h = document.createElement('h2');
+  h.textContent = g.title;
+  root.appendChild(h);
+  const row = document.createElement('div');
+  row.className = 'row';
+  for (const a of g.anims) {
+    for (const bg of BGS) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      const stage = document.createElement('div');
+      stage.className = 'stage ' + bg;
+      const img = document.createElement('img');
+      img.className = 'sprite';
+      stage.appendChild(img);
+      cell.appendChild(stage);
+      const label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = a.label;
+      cell.appendChild(label);
+      row.appendChild(cell);
+      let i = 0;
+      setInterval(() => {
+        img.src = `${a.base}/${a.prefix}_${i}.png`;
+        i = (i + 1) % a.frames;
+      }, 1000 / a.fps);
+    }
+  }
+  root.appendChild(row);
+}
+</script>
+</body>
+</html>
