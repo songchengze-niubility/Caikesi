@@ -4,6 +4,7 @@
 import { BattleConfig, CombatStats, SoldierClass } from '../config/BattleConfig';
 import { CHARACTERS, EquipItem, SLOTS } from '../inventory/EquipDefs';
 import type { CharEquipped } from '../inventory/InventoryModel';
+import { charLevelCoef } from '../growth/CharGrowthConfig';
 
 export type EffectiveStatsMap = Partial<Record<SoldierClass, CombatStats>>;
 
@@ -42,15 +43,22 @@ export function calcEffectiveStats(base: CombatStats, items: (EquipItem | null |
     return normalizeStats(out);
 }
 
-export function buildEffectiveStatsMap(equipped: CharEquipped | undefined): EffectiveStatsMap {
+// levels 缺省/角色缺项 = 不做等级缩放（向后兼容，pacing-sim 不传即纯装备档位）。
+export function buildEffectiveStatsMap(
+    equipped: CharEquipped | undefined,
+    levels: Partial<Record<SoldierClass, number>> = {},
+): EffectiveStatsMap {
     const map: EffectiveStatsMap = {};
-    if (!equipped) return map;
     for (const c of CHARACTERS) {
         const cls = c as SoldierClass;
         const base = BattleConfig.stats[cls];
-        const slots = equipped[c];
-        if (!base || !slots) continue;
-        map[cls] = calcEffectiveStats(base, SLOTS.map(s => slots[s]));
+        if (!base) continue;
+        const level = levels[cls];
+        const scaledBase: CombatStats = level
+            ? { ...base, hp: base.hp * charLevelCoef(level), atk: base.atk * charLevelCoef(level) }
+            : base;
+        const slots = equipped?.[c];
+        map[cls] = calcEffectiveStats(scaledBase, slots ? SLOTS.map(s => slots[s]) : []);
     }
     return map;
 }
