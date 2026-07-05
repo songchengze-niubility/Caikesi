@@ -699,6 +699,43 @@ function buildCraftConfig(wb: XLSX.WorkBook): { config: unknown; summary: string
     return { config, summary };
 }
 
+// ============ skill 模块解析器 ============
+// 读 skill.xlsx 的 1 sheet → 技能配置（保持行顺序，UI 按顺序对应按钮）。
+// Skills: id, name, cls, trigger, triggerValue, target, radius, maxTargets, dmgMult
+function buildSkillConfig(wb: XLSX.WorkBook): { config: unknown; summary: string } {
+    const VALID_CLASSES = new Set(['tank', 'dps', 'healer']);   // 与 BattleConfig.SoldierClass 手写 union 对齐
+    const VALID_TRIGGERS = new Set(['timer', 'attackCount']);
+    const VALID_TARGETS = new Set(['aoe', 'nearest', 'single']);
+
+    const { rows } = sheetToRows(wb, 'Skills');
+    const skills: unknown[] = [];
+    const seen = new Set<string>();
+    for (const r of rows) {
+        const id = reqStr(r['id'], 'Skills.id');
+        if (seen.has(id)) err(`Skills: id "${id}" 重复定义`);
+        seen.add(id);
+        const cls = reqStr(r['cls'], `Skills[${id}].cls`);
+        if (!VALID_CLASSES.has(cls)) err(`Skills[${id}]: cls "${cls}" 非法（须为 tank/dps/healer）`);
+        const trigger = reqStr(r['trigger'], `Skills[${id}].trigger`);
+        if (!VALID_TRIGGERS.has(trigger)) err(`Skills[${id}]: trigger "${trigger}" 非法（timer/attackCount）`);
+        const target = reqStr(r['target'], `Skills[${id}].target`);
+        if (!VALID_TARGETS.has(target)) err(`Skills[${id}]: target "${target}" 非法（aoe/nearest/single）`);
+        const triggerValue = reqNum(r['triggerValue'], `Skills[${id}].triggerValue`);
+        if (triggerValue <= 0) err(`Skills[${id}].triggerValue 必须 > 0`);
+        const radius = reqNum(r['radius'], `Skills[${id}].radius`);
+        const maxTargets = reqNum(r['maxTargets'], `Skills[${id}].maxTargets`);
+        if (target === 'aoe' && radius <= 0) err(`Skills[${id}]: target=aoe 时 radius 必须 > 0`);
+        if (target === 'nearest' && maxTargets <= 0) err(`Skills[${id}]: target=nearest 时 maxTargets 必须 > 0`);
+        const dmgMult = reqNum(r['dmgMult'], `Skills[${id}].dmgMult`);
+        if (dmgMult <= 0) err(`Skills[${id}].dmgMult 必须 > 0`);
+        skills.push({ id, name: reqStr(r['name'], `Skills[${id}].name`), cls, trigger, triggerValue, target, radius, maxTargets, dmgMult });
+    }
+    if (skills.length === 0) err('Skills: 至少需要 1 个技能');
+    const config = { skills };
+    const summary = `skills=${skills.length}`;
+    return { config, summary };
+}
+
 // ============ 源清单（加模块就在这里加一行）============
 interface ConfigSource {
     name: string;        // 模块名（日志/报错用）
@@ -749,6 +786,13 @@ const SOURCES: ConfigSource[] = [
         outRel: '../assets/scripts/config/craft.config.generated.ts',
         exportVar: 'generatedCraftConfig',
         build: buildCraftConfig,
+    },
+    {
+        name: 'skill',
+        xlsxRel: 'config-xlsx/skill.xlsx',
+        outRel: '../assets/scripts/config/skill.config.generated.ts',
+        exportVar: 'generatedSkillConfig',
+        build: buildSkillConfig,
     },
 ];
 

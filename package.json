@@ -22,6 +22,7 @@
     "seed:chest": "tsx tools/seed-chest-xlsx.ts",
     "seed:offline": "tsx tools/seed-offline-xlsx.ts",
     "seed:craft": "tsx tools/seed-craft-xlsx.ts",
+    "seed:skill": "tsx tools/seed-skill-xlsx.ts",
     "art:placeholder": "tsx tools/make-placeholder-art.ts",
     "ui:slicer": "start tools/ui-slicer/index.html",
     "sprite:keyframes:deps": "py -3 -m pip install -r tools/sprite-keyframe-requirements.txt",
