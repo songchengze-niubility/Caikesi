@@ -29,7 +29,9 @@ import { ProgressModel } from './progression/ProgressModel';
 import type { CompleteLevelResult } from './progression/ProgressModel';
 import { loadProgress, saveProgress } from './progression/ProgressPersistence';
 import { loadPlayerData, savePlayerData } from './core/data/PlayerDataStore';
-import { QUALITY_LABEL, QUALITY_COLOR, SLOT_LABEL, SLOTS, formatEquipStats } from './inventory/EquipDefs';
+import { SquadModel } from './squad/SquadModel';
+import { loadSquad } from './squad/SquadPersistence';
+import { QUALITY_LABEL, QUALITY_COLOR, SLOT_LABEL, SLOTS, formatEquipStats, CHARACTERS } from './inventory/EquipDefs';
 import type { EquipItem, EquipSlot } from './inventory/EquipDefs';
 import { MATERIAL_LABEL } from './services/RewardTypes';
 import type { MaterialId, MaterialItem, MaterialSave } from './services/RewardTypes';
@@ -180,6 +182,7 @@ export class BattleEntry extends Component {
     private _invView: InventoryView = null!;
     private _chests: ChestInventoryModel = null!;
     private _progress: ProgressModel = null!;
+    private _squad: SquadModel = null!;
     private _settleRoot: Node = null!;
     private _settleGfx: Graphics = null!;
     private _settleLabels: Label[] = [];
@@ -364,7 +367,7 @@ export class BattleEntry extends Component {
         this._invView = new InventoryView(this.node, this._halfW, this._halfH, this._inv, (kind, payload) => {
             void this._handleInventoryChanged(kind, payload);
         }, () => this._configuredDebugDrop());
-        const dataReady = loadInventory(this._inv).then(() => loadProgress(this._progress)).then(() => this._claimOfflineRewards()).then(() => loadChests(this._chests)).then(() => this._refreshMaterialsCache()).then(() => {
+        const dataReady = loadInventory(this._inv).then(() => loadProgress(this._progress)).then(() => this._claimOfflineRewards()).then(() => loadChests(this._chests)).then(() => this._refreshMaterialsCache()).then(() => loadSquad()).then((squad) => { this._squad = squad; }).then(() => {
             this._invView.refresh();
         }).catch(() => {
             // 读档失败时仍允许进游戏，掉落会从空背包开始存。
@@ -410,10 +413,12 @@ export class BattleEntry extends Component {
         this._hideCraftPanel();
         const effective = this._inv ? buildEffectiveStatsMap(this._inv.equipped) : {};
         const levelIndex = this._progress ? this._progress.currentLevel : BattleConfig.startLevel;
+        const roster = this._squad ? (this._squad.deployedList() as SoldierClass[]) : BattleConfig.roster;
         this._battleSeed = `${Date.now()}|${Math.random()}|${levelIndex}`;
         this._battleChestDropCount = 0;
         this._shownWaveKey = -1;   // 强制下一帧刷新波次文本
-        this._mgr = new BattleManager(this._halfW, this._halfH, levelIndex, effective);
+        this._syncSoldierVisualsToRoster(roster);
+        this._mgr = new BattleManager(this._halfW, this._halfH, levelIndex, effective, roster);
         this._winRewardText = '';
         this._lastComplete = null;
         this._statusLabel.string = '';
@@ -442,10 +447,9 @@ export class BattleEntry extends Component {
             this._bg.setUsingSprite(true);   // 停掉渐变重画
         }
 
-        // 角色序列帧 Sprite（有帧则建节点，无帧保留色块）
-        for (const cls of BattleConfig.roster) {
-            this._buildSoldierVisual(cls);
-        }
+        // 角色序列帧 Sprite（有帧则建节点，无帧保留色块）：按当前出战列表建
+        const initialRoster = this._squad ? (this._squad.deployedList() as SoldierClass[]) : BattleConfig.roster;
+        this._syncSoldierVisualsToRoster(initialRoster);
 
         this._buildStyledUi();
         this._positionStyledLabels();
@@ -507,6 +511,18 @@ export class BattleEntry extends Component {
             if (clip) return clip;
         }
         return null;
+    }
+
+    // 按出战列表同步士兵视觉：缺的建、未出战的已建视觉隐藏。
+    // 渲染循环只遍历 mgr.soldiers（出战单位），未出战角色若已建节点会滞留原点，故显式隐藏。
+    private _syncSoldierVisualsToRoster(deployed: SoldierClass[]) {
+        for (const cls of deployed) {
+            if (!this._solSprite[cls]) this._buildSoldierVisual(cls);
+        }
+        for (const cls of CHARACTERS as SoldierClass[]) {
+            const v = this._solSprite[cls];
+            if (v && deployed.indexOf(cls) < 0) v.node.active = false;
+        }
     }
 
     private _buildSoldierVisual(cls: SoldierClass) {
