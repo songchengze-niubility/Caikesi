@@ -20,6 +20,7 @@
     "test:growth-config": "tsx tools/char-growth-config-test.ts",
     "test:growth": "tsx tools/char-growth-test.ts",
     "test:inlay-config": "tsx tools/inlay-config-test.ts",
+    "test:reward-types": "tsx tools/reward-types-test.ts",
     "sim:pacing": "tsx tools/pacing-sim.ts",
     "check:art": "tsx tools/check-art.ts",
     "check:ui-alpha": "tsx tools/check-ui-alpha.ts",
