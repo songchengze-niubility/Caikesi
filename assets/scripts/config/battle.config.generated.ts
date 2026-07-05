@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/battle.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/battle.xlsx
-// 生成时间：2026-07-05T04:46:32.809Z
+// 生成时间：2026-07-05T06:10:30.380Z
 
 /* eslint-disable */
 // @ts-nocheck
@@ -61,6 +61,7 @@ export const generatedBattleConfig = {
                 70,
                 70
             ],
+            "exp": 5,
             "stats": {
                 "hp": 120,
                 "atk": 18,
@@ -86,6 +87,7 @@ export const generatedBattleConfig = {
                 150,
                 60
             ],
+            "exp": 4,
             "stats": {
                 "hp": 70,
                 "atk": 14,
@@ -111,6 +113,7 @@ export const generatedBattleConfig = {
                 80,
                 200
             ],
+            "exp": 10,
             "stats": {
                 "hp": 360,
                 "atk": 30,
@@ -136,6 +139,7 @@ export const generatedBattleConfig = {
                 40,
                 40
             ],
+            "exp": 200,
             "stats": {
                 "hp": 15100,
                 "atk": 55,
@@ -752,6 +756,12 @@ export const generatedBattleConfig = {
     ],
     "startLevel": 0,
     "squadCap": 2,
+    "charGrowth": {
+        "expBase": 50,
+        "expGrowthPerLevel": 1.15,
+        "statGrowthPerLevel": 0.05,
+        "maxLevel": 30
+    },
     "combat": {
         "minDamageRate": 0.1
     },

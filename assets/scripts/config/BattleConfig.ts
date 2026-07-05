@@ -37,6 +37,7 @@ export interface EnemyType {
     radius: number;        // 体型 + 命中半径
     attackInterval: number;// 基础贴身攻击间隔（秒）
     color: [number, number, number]; // 占位色块颜色 RGB
+    exp: number;           // 击杀经验：喂给全部上阵角色
 }
 
 // —— 关卡编排 ——
@@ -66,6 +67,12 @@ export const BattleConfig = generatedBattleConfig as {
     levels: Level[];
     startLevel: number;
     squadCap: number;
+    charGrowth: {
+        expBase: number;
+        expGrowthPerLevel: number;
+        statGrowthPerLevel: number;
+        maxLevel: number;
+    };
     combat: { minDamageRate: number };
     classes: Record<SoldierClass, {
         attackType: AttackType;

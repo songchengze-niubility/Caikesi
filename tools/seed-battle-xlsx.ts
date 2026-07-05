@@ -22,13 +22,13 @@ const STATS_ROWS: (string | number)[][] = [
 
 // —— EnemyTypes sheet：怪物图鉴（type 作行 key；color 用 "r,g,b" 字符串；stats 拍平到同表）——
 const ENEMY_HEADER = ['type', 'name', 'speed', 'radius', 'attackInterval', 'color',
-    'hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce'];
+    'hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce', 'exp'];
 const ENEMY_ROWS: (string | number)[][] = [
-    ['zombie', '丧尸',   90,  28, 0.8, '230,70,70',  120, 18, 4,  0, 1.0, 0.05, 0.5, 0.05, 0.0, 0.0, 0.0, 0.0],
-    ['runner', '疾行者', 175, 22, 0.6, '240,150,60', 70,  14, 2,  0, 1.4, 0.05, 0.5, 0.15, 0.0, 0.0, 0.0, 0.0],
-    ['brute',  '重装',   55,  40, 1.2, '170,80,200', 360, 30, 12, 0, 0.8, 0.05, 0.5, 0.0,  0.0, 0.0, 0.0, 0.15],
+    ['zombie', '丧尸',   90,  28, 0.8, '230,70,70',  120, 18, 4,  0, 1.0, 0.05, 0.5, 0.05, 0.0, 0.0, 0.0, 0.0, 5],
+    ['runner', '疾行者', 175, 22, 0.6, '240,150,60', 70,  14, 2,  0, 1.4, 0.05, 0.5, 0.15, 0.0, 0.0, 0.0, 0.0, 4],
+    ['brute',  '重装',   55,  40, 1.2, '170,80,200', 360, 30, 12, 0, 0.8, 0.05, 0.5, 0.0,  0.0, 0.0, 0.0, 0.15, 10],
     // 第一章 Boss：纯数值型大体型（高血高攻高减免），无技能机制；血量经 sim:pacing 校准（t2 卡关 / t3 可过）
-    ['boss_butcher', '屠夫领主', 40, 60, 1.5, '150,40,40', 15100, 55, 20, 0, 0.8, 0.05, 0.5, 0.0, 0.0, 0.0, 0.0, 0.30],
+    ['boss_butcher', '屠夫领主', 40, 60, 1.5, '150,40,40', 15100, 55, 20, 0, 0.8, 0.05, 0.5, 0.0, 0.0, 0.0, 0.0, 0.30, 200],
 ];
 
 // —— Classes sheet：职业行为（class 作行 key；attackType 是字符串枚举）——
@@ -127,6 +127,10 @@ const MISC_ROWS: (string | number)[][] = [
     ['startLevel', 0],
     ['squadCap', 2],
     ['roster', 'tank,dps'],
+    ['charGrowth.expBase', 50],
+    ['charGrowth.expGrowthPerLevel', 1.15],
+    ['charGrowth.statGrowthPerLevel', 0.05],
+    ['charGrowth.maxLevel', 30],
     ['combat.minDamageRate', 0.1],
     ['layout.frontMargin', 360],
     ['layout.spacing', 110],

@@ -161,6 +161,7 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
             radius: reqNum(r['radius'], `EnemyTypes[${type}].radius`),
             attackInterval: reqNum(r['attackInterval'], `EnemyTypes[${type}].attackInterval`),
             color: parseColor(r['color'], `EnemyTypes[${type}].color`),
+            exp: reqNum(r['exp'], `EnemyTypes[${type}].exp`),
             stats: eStats,
         };
     }
@@ -301,6 +302,7 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
         levels,
         startLevel: misc['startLevel'] ?? 0,
         squadCap: misc['squadCap'] ?? 2,
+        charGrowth: misc['charGrowth'] ?? {},
         combat: misc['combat'] ?? {},
         classes,
         roster,
