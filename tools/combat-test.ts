@@ -66,6 +66,17 @@ test('BattleManager：最后一波最后一只怪标记为关底击杀', () => {
     assert.equal(finals[0].waveIndex, BattleConfig.levels[0].waves.length - 1);
 });
 
+test('BattleManager：roster 入参决定出战单位（覆盖配置默认）', () => {
+    const mgr = new BattleManager(470, 836, 0, {}, ['tank', 'dps']);
+    const classes = mgr.soldiers.map(s => s.cls).slice().sort();
+    assert.deepEqual(classes, ['dps', 'tank']);
+});
+
+test('BattleManager：缺省 roster 回退配置默认（至少 1 名士兵）', () => {
+    const mgr = new BattleManager(470, 836, 0, {});
+    assert.ok(mgr.soldiers.length >= 1, '缺省应按配置 roster 布阵');
+});
+
 let failed = 0;
 for (const t of tests) {
     try {

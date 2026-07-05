@@ -125,13 +125,15 @@ export class BattleManager {
     waveIndex = 0;
     private gapTimer = 0;
     private effectiveStats: EffectiveStatsMap;
+    private _roster: SoldierClass[];
     // 当前波每个刷怪组的运行时状态
     private _groups: { type: string; count: number; interval: number; hp?: number; spawned: number; timer: number }[] = [];
 
-    constructor(halfW: number, halfH: number, levelIndex = BattleConfig.startLevel, effectiveStats: EffectiveStatsMap = {}) {
+    constructor(halfW: number, halfH: number, levelIndex = BattleConfig.startLevel, effectiveStats: EffectiveStatsMap = {}, roster: SoldierClass[] = BattleConfig.roster) {
         this.halfW = halfW;
         this.halfH = halfH;
         this.effectiveStats = effectiveStats;
+        this._roster = roster;
         this.levelIndex = Math.max(0, Math.min(levelIndex, BattleConfig.levels.length - 1));
         this._setupSquad();
         this._startWave(0);
@@ -152,7 +154,7 @@ export class BattleManager {
     private _setupSquad() {
         const L = BattleConfig.layout;
         const frontX = -this.halfW + L.frontMargin;
-        BattleConfig.roster.forEach((cls, i) => {
+        this._roster.forEach((cls, i) => {
             const cdef = BattleConfig.classes[cls];   // 职业行为配置
             const st = this.effectiveStats[cls] ?? BattleConfig.stats[cls]; // 职业战斗属性（统一表）
             const hx = frontX - i * L.spacing;   // 越靠后（i 越大）越靠左
