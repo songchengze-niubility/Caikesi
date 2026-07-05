@@ -16,6 +16,7 @@
     "test:art": "tsx tools/art-test.ts",
     "test:craft": "tsx tools/craft-test.ts",
     "test:skill": "tsx tools/skill-test.ts",
+    "test:squad": "tsx tools/squad-test.ts",
     "sim:pacing": "tsx tools/pacing-sim.ts",
     "check:art": "tsx tools/check-art.ts",
     "check:ui-alpha": "tsx tools/check-ui-alpha.ts",
