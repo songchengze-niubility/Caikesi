@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/battle.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/battle.xlsx
-// 生成时间：2026-07-04T14:33:27.973Z
+// 生成时间：2026-07-05T02:44:36.956Z
 
 /* eslint-disable */
 // @ts-nocheck
@@ -137,7 +137,7 @@ export const generatedBattleConfig = {
                 40
             ],
             "stats": {
-                "hp": 10800,
+                "hp": 15100,
                 "atk": 55,
                 "def": 20,
                 "range": 0,
@@ -484,7 +484,7 @@ export const generatedBattleConfig = {
                             "type": "zombie",
                             "count": 12,
                             "interval": 0.4,
-                            "hp": 480
+                            "hp": 670
                         }
                     ]
                 },
@@ -494,7 +494,7 @@ export const generatedBattleConfig = {
                             "type": "brute",
                             "count": 4,
                             "interval": 1.2,
-                            "hp": 1345
+                            "hp": 1885
                         }
                     ]
                 },
@@ -504,7 +504,7 @@ export const generatedBattleConfig = {
                             "type": "runner",
                             "count": 12,
                             "interval": 0.4,
-                            "hp": 265
+                            "hp": 370
                         }
                     ]
                 },
@@ -514,13 +514,13 @@ export const generatedBattleConfig = {
                             "type": "brute",
                             "count": 4,
                             "interval": 1.2,
-                            "hp": 1345
+                            "hp": 1885
                         },
                         {
                             "type": "zombie",
                             "count": 10,
                             "interval": 0.4,
-                            "hp": 480
+                            "hp": 670
                         }
                     ]
                 },
@@ -530,13 +530,13 @@ export const generatedBattleConfig = {
                             "type": "brute",
                             "count": 2,
                             "interval": 1.4,
-                            "hp": 1345
+                            "hp": 1885
                         },
                         {
                             "type": "runner",
                             "count": 6,
                             "interval": 0.6,
-                            "hp": 265
+                            "hp": 370
                         }
                     ]
                 }
@@ -691,7 +691,7 @@ export const generatedBattleConfig = {
                             "type": "zombie",
                             "count": 14,
                             "interval": 0.35,
-                            "hp": 575
+                            "hp": 805
                         }
                     ]
                 },
@@ -701,7 +701,7 @@ export const generatedBattleConfig = {
                             "type": "runner",
                             "count": 12,
                             "interval": 0.4,
-                            "hp": 290
+                            "hp": 405
                         }
                     ]
                 },
@@ -711,7 +711,7 @@ export const generatedBattleConfig = {
                             "type": "brute",
                             "count": 4,
                             "interval": 1.2,
-                            "hp": 1440
+                            "hp": 2015
                         }
                     ]
                 },
@@ -721,13 +721,13 @@ export const generatedBattleConfig = {
                             "type": "zombie",
                             "count": 12,
                             "interval": 0.4,
-                            "hp": 575
+                            "hp": 805
                         },
                         {
                             "type": "runner",
                             "count": 8,
                             "interval": 0.5,
-                            "hp": 290
+                            "hp": 405
                         }
                     ]
                 },
@@ -742,7 +742,7 @@ export const generatedBattleConfig = {
                             "type": "runner",
                             "count": 6,
                             "interval": 0.8,
-                            "hp": 290
+                            "hp": 405
                         }
                     ]
                 }
