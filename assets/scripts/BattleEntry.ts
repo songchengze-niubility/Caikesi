@@ -30,8 +30,8 @@ import type { CompleteLevelResult } from './progression/ProgressModel';
 import { loadProgress, saveProgress } from './progression/ProgressPersistence';
 import { loadPlayerData, savePlayerData } from './core/data/PlayerDataStore';
 import { SquadModel } from './squad/SquadModel';
-import { loadSquad } from './squad/SquadPersistence';
-import { QUALITY_LABEL, QUALITY_COLOR, SLOT_LABEL, SLOTS, formatEquipStats, CHARACTERS } from './inventory/EquipDefs';
+import { loadSquad, saveSquad } from './squad/SquadPersistence';
+import { QUALITY_LABEL, QUALITY_COLOR, SLOT_LABEL, SLOTS, formatEquipStats, CHARACTERS, CHARACTER_LABEL } from './inventory/EquipDefs';
 import type { EquipItem, EquipSlot } from './inventory/EquipDefs';
 import { MATERIAL_LABEL } from './services/RewardTypes';
 import type { MaterialId, MaterialItem, MaterialSave } from './services/RewardTypes';
@@ -375,6 +375,7 @@ export class BattleEntry extends Component {
         this._createSettlementView();
         this._createChestView();
         this._createCraftView();
+        this._createSquadView();
 
         // 底部导航热区：视觉由切片提供，触摸区域保持透明。
         const noop = () => {};
@@ -382,7 +383,7 @@ export class BattleEntry extends Component {
         this._makeUiHotZone('Skill02Hot', UI_RECTS.skill2, noop, 'Skill02');
         this._makeUiHotZone('Skill03Hot', UI_RECTS.skill3, noop, 'Skill03');
         this._makeUiHotZone('NavHomeHot', UI_RECTS.navHome, noop, 'BottomNav');
-        this._makeUiHotZone('NavHeroesHot', UI_RECTS.navHeroes, noop, 'BottomNav');
+        this._makeUiHotZone('NavHeroesHot', UI_RECTS.navHeroes, () => this._toggleSquadPanel(), 'BottomNav');
         this._makeUiHotZone('NavBattleHot', UI_RECTS.navBattle, noop, 'BottomNav');
         this._makeUiHotZone('NavEquipmentHot', UI_RECTS.navEquipment, () => this._invView.toggle(), 'BottomNav');
         this._makeUiHotZone('NavBagHot', UI_RECTS.navBag, () => this._invView.toggle(), 'BottomNav');
@@ -1025,6 +1026,141 @@ export class BattleEntry extends Component {
     private async _refreshMaterialsCache(): Promise<void> {
         const data = await loadPlayerData();
         this._materials = { ...(data.materials ?? {}) };
+    }
+
+    // ===== 上阵面板（SquadView，占位）：选人 / 调前后序 / 存盘刷新，镜像 CraftView =====
+    private _squadRoot: Node = null!;
+    private _squadGfx: Graphics = null!;
+    private _squadLabels: Label[] = [];
+    private _squadHots: { rect: { x: number; y: number; w: number; h: number }; act: () => void }[] = [];
+
+    private _createSquadView() {
+        this._squadRoot = new Node('SquadView');
+        this._squadRoot.layer = this.node.layer;
+        this._squadRoot.addComponent(UITransform).setContentSize(this._halfW * 2, this._halfH * 2);
+        const gfxNode = new Node('SquadGfx');
+        gfxNode.layer = this.node.layer;
+        gfxNode.addComponent(UITransform);
+        this._squadGfx = gfxNode.addComponent(Graphics);
+        this._squadRoot.addChild(gfxNode);
+        this.node.addChild(this._squadRoot);
+        this._squadRoot.active = false;
+        this._squadRoot.on(Node.EventType.TOUCH_END, this._onSquadTap, this);
+    }
+
+    private _squadOpen(): boolean { return !!this._squadRoot && this._squadRoot.active; }
+
+    private _toggleSquadPanel() {
+        if (this._squadOpen()) this._hideSquadPanel();
+        else this._showSquadPanel();
+    }
+
+    private _showSquadPanel() {
+        if (!this._squadRoot || !this._squad) return;
+        this._hideSettlement();
+        this._hideChestPanel();
+        this._hideCraftPanel();
+        this._squadRoot.active = true;
+        this._squadRoot.setSiblingIndex(this.node.children.length - 1);
+        this._drawSquadPanel();
+    }
+
+    private _hideSquadPanel() {
+        if (this._squadRoot) this._squadRoot.active = false;
+    }
+
+    // 面板本地 Label 工厂：必须挂到 _squadRoot（不能用 _makeLabel——那个挂 _battleRoot，
+    // 面板隐藏后标签会残留在战斗层）。镜像现有 _craftLabel。
+    private _squadLabel(i: number): Label {
+        while (i >= this._squadLabels.length) {
+            const n = new Node('SquadLbl');
+            n.layer = this._squadRoot.layer;
+            n.addComponent(UITransform);
+            const lb = n.addComponent(Label);
+            this._squadRoot.addChild(n);
+            this._squadLabels.push(lb);
+        }
+        return this._squadLabels[i];
+    }
+
+    private _drawSquadPanel() {
+        const g = this._squadGfx;
+        g.clear();
+        this._squadHots.length = 0;
+        for (const l of this._squadLabels) l.node.active = false;
+        let li = 0;
+        const label = (s: string, x: number, y: number, size = 24) => {
+            const lb = this._squadLabel(li++);
+            lb.node.active = true; lb.string = s; lb.fontSize = size;
+            lb.node.setPosition(x, y, 0);
+        };
+
+        // 半透明底板
+        g.fillColor = new Color(20, 24, 30, 230);
+        g.rect(-this._halfW, -this._halfH, this._halfW * 2, this._halfH * 2);
+        g.fill();
+
+        const deployed = this._squad.deployedList();
+        label(`出战阵容  ${deployed.length}/${this._squad.squadCap}（点板凳上阵 / 点出战下阵 / ↑调前后）`, 0, 560, 26);
+
+        const rowH = 96, top = 420, x0 = -300, rowW = 600;
+        const pushRow = (name: string, y: number, tag: string, onRow: () => void, upBtn?: () => void) => {
+            g.fillColor = new Color(48, 58, 72, 255);
+            g.roundRect(x0, y - rowH / 2, rowW, rowH - 12, 10); g.fill();
+            label(`${tag}  ${name}`, x0 + 20, y, 24);
+            this._squadHots.push({ rect: { x: x0, y: y - rowH / 2, w: rowW - 96, h: rowH - 12 }, act: onRow });
+            if (upBtn) {
+                g.fillColor = new Color(80, 120, 160, 255);
+                g.roundRect(x0 + rowW - 84, y - rowH / 2, 72, rowH - 12, 10); g.fill();
+                label('↑', x0 + rowW - 56, y, 30);
+                this._squadHots.push({ rect: { x: x0 + rowW - 84, y: y - rowH / 2, w: 72, h: rowH - 12 }, act: upBtn });
+            }
+        };
+
+        let y = top;
+        deployed.forEach((cls, i) => {
+            pushRow(CHARACTER_LABEL[cls], y, `出战${i + 1}`,
+                () => this._squadUndeploy(cls),
+                i > 0 ? () => this._squadMove(cls, i - 1) : undefined);
+            y -= rowH;
+        });
+        y -= 24;
+        for (const cls of this._squad.benchList()) {
+            pushRow(CHARACTER_LABEL[cls], y, '板凳', () => this._squadDeploy(cls));
+            y -= rowH;
+        }
+
+        // 关闭按钮
+        g.fillColor = new Color(120, 60, 60, 255);
+        g.roundRect(-90, -560, 180, 70, 12); g.fill();
+        label('关闭', 0, -525, 26);
+        this._squadHots.push({ rect: { x: -90, y: -560, w: 180, h: 70 }, act: () => this._hideSquadPanel() });
+    }
+
+    private _onSquadTap(e: EventTouch) {
+        const ui = e.getUILocation();
+        const p = this._squadRoot.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
+        for (const h of this._squadHots) {
+            if (p.x >= h.rect.x && p.x <= h.rect.x + h.rect.w && p.y >= h.rect.y && p.y <= h.rect.y + h.rect.h) {
+                h.act();
+                return;
+            }
+        }
+    }
+
+    private _squadDeploy(cls: SoldierClass) {
+        if (this._squad.deploy(cls)) this._afterSquadChange();
+    }
+    private _squadUndeploy(cls: SoldierClass) {
+        if (this._squad.undeploy(cls)) this._afterSquadChange();
+    }
+    private _squadMove(cls: SoldierClass, toIndex: number) {
+        if (this._squad.move(cls, toIndex)) this._afterSquadChange();
+    }
+    private _afterSquadChange() {
+        void saveSquad(this._squad);
+        this._drawSquadPanel();
+        if (this._gameStarted && !this._settlementOpen()) this._startBattle();
     }
 
     private _createCraftView() {
