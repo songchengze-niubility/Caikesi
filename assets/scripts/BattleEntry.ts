@@ -4,7 +4,7 @@
 
 import { _decorator, Component, Node, Graphics, Color, UITransform, Mask, Label, view, ResolutionPolicy, Sprite, SpriteFrame, EventTouch, Vec3 } from 'cc';
 import { BattleManager } from './combat/BattleManager';
-import type { UnitAction } from './combat/BattleManager';
+import type { UnitAction, SkillCastEvent } from './combat/BattleManager';
 import { Background } from './combat/Background';
 import { BattleConfig, SoldierClass } from './config/BattleConfig';
 import { mountConfigPanel } from './debug/ConfigPanel';
@@ -258,6 +258,8 @@ export class BattleEntry extends Component {
     private _cEnemyAtkRing = new Color(245, 228, 196, 160);
     private _cSolShadow = new Color(28, 26, 22, 55);
     private _tmpColor = new Color();   // 每帧动态色复用，避免热路径 new Color
+    private _skillGfx: Graphics | null = null;      // 技能按钮状态层（进度遮罩 + 释放闪光）
+    private _skillFlash: number[] = [0, 0, 0];       // 每个按钮的释放闪光剩余秒数
 
     onLoad() {
         // 强制竖屏：设计分辨率 = 美术稿基准 941×1672（9:16），SHOW_ALL 等比 letterbox。
@@ -334,6 +336,14 @@ export class BattleEntry extends Component {
         this._uiRoot.addComponent(UITransform).setContentSize(this._stageW, this._stageH);
         this._battleRoot.addChild(this._uiRoot);
         this._uiRoot.setPosition(0, 0, 0);
+
+        // 技能按钮状态层：盖在 UI 切片上方，画进度遮罩/释放闪光
+        const skillGfxNode = new Node('SkillStatusGfx');
+        skillGfxNode.layer = this.node.layer;
+        skillGfxNode.addComponent(UITransform);
+        this._skillGfx = skillGfxNode.addComponent(Graphics);
+        this._battleRoot.addChild(skillGfxNode);
+        skillGfxNode.setPosition(0, 0, 0);
 
         // 文字
         this._waveLabel = this._makeLabel('', 0, this._halfH - 80, 40);
@@ -1835,6 +1845,7 @@ export class BattleEntry extends Component {
         this._updateSoldierVisualActions();
         this._render();
         this._renderFloats();
+        this._renderSkillStatus(Math.min(dt, 0.05));
         this._updateSoldierAnimations(Math.min(dt, 0.05));
         this._updateLabels();
         this._invView.update(dt);
@@ -1880,6 +1891,7 @@ export class BattleEntry extends Component {
             switch (ft.kind) {
                 case 'crit':  lb.fontSize = 42; lb.color = this._tmpColor.set(255, 180, 40, a); break;
                 case 'block': lb.fontSize = 28; lb.color = this._tmpColor.set(120, 200, 255, a); break;
+                case 'skill': lb.fontSize = 36; lb.color = this._tmpColor.set(120, 235, 255, a); break;
                 case 'dodge': lb.fontSize = 28; lb.color = this._tmpColor.set(210, 210, 210, a); break;
                 default:      lb.fontSize = 30; lb.color = this._tmpColor.set(255, 255, 255, a); break;
             }
@@ -2040,6 +2052,46 @@ export class BattleEntry extends Component {
         this._showSettlement(result.received, result.failed, complete);
     }
 
+    // 技能 UI 的数据源：第一个有技能的存活士兵（当前=单人 dps）
+    private _skillSource() {
+        if (!this._mgr) return null;
+        const s = this._mgr.soldiers.find(u => u.alive && u.skills.count > 0);
+        return s ? s.skills : null;
+    }
+
+    private _onSkillCast(event: SkillCastEvent) {
+        const sk = this._skillSource();
+        if (!sk) return;
+        for (let i = 0; i < Math.min(3, sk.count); i++) {
+            if (sk.defAt(i)?.id === event.skillId) { this._skillFlash[i] = 0.3; break; }
+        }
+    }
+
+    // 技能按钮状态：未就绪部分盖半透明遮罩（进度从下往上点亮），释放瞬间白光一闪
+    private _renderSkillStatus(dt: number) {
+        const g = this._skillGfx;
+        if (!g) return;
+        g.clear();
+        const sk = this._skillSource();
+        if (!sk) return;
+        const rects = [UI_RECTS.skill1, UI_RECTS.skill2, UI_RECTS.skill3];
+        for (let i = 0; i < Math.min(3, sk.count); i++) {
+            const box = this._sourceRect(rects[i]);
+            const p = sk.progress(i);
+            if (p < 1) {
+                g.fillColor = this._tmpColor.set(0, 0, 0, 140);
+                g.rect(box.x - box.w / 2, box.y - box.h / 2 + box.h * p, box.w, box.h * (1 - p));
+                g.fill();
+            }
+            if (this._skillFlash[i] > 0) {
+                this._skillFlash[i] = Math.max(0, this._skillFlash[i] - dt);
+                g.fillColor = this._tmpColor.set(255, 255, 255, Math.round(160 * (this._skillFlash[i] / 0.3)));
+                g.rect(box.x - box.w / 2, box.y - box.h / 2, box.w, box.h);
+                g.fill();
+            }
+        }
+    }
+
     private _processBattleEvents() {
         if (!this._mgr || !this._chests) return;
         if (this._mgr.eventCount <= 0) return;
@@ -2048,6 +2100,10 @@ export class BattleEntry extends Component {
         const createdAt = Date.now();
         let gained = 0;
         for (const event of events) {
+            if (event.type === 'skillCast') {
+                this._onSkillCast(event);
+                continue;
+            }
             const level = BattleConfig.levels[event.levelIndex];
             if (!level) continue;
             const mobReward = rollChestDrop({

@@ -429,6 +429,8 @@ export class BattleManager {
                     if (!target.alive) continue;
                     hits.push(this._applySkillDamage(s.stats, target, cast.def.dmgMult));
                 }
+                // 同帧前序技能清场导致目标全灭：本次落空不发事件（触发已重置，属可接受损耗）
+                if (hits.length === 0) continue;
                 this._setAction(s, 'attack', ATTACK_ACTION_HOLD);
                 this.events.push({
                     type: 'skillCast',
