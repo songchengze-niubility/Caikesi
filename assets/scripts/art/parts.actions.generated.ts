@@ -219,9 +219,9 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                         1
                     ],
                     values: [
-                        -14,
-                        6,
-                        -14
+                        12,
+                        -5,
+                        12
                     ],
                     ease: "sine"
                 }
@@ -395,8 +395,8 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                     ],
                     values: [
                         0,
-                        -55,
-                        70,
+                        -80,
+                        25,
                         5,
                         0
                     ],
@@ -414,8 +414,8 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                     ],
                     values: [
                         0,
-                        -30,
-                        45,
+                        -25,
+                        14,
                         3,
                         0
                     ],
@@ -433,8 +433,8 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                     ],
                     values: [
                         0,
-                        -18,
-                        28,
+                        -15,
+                        16,
                         2,
                         0
                     ],
