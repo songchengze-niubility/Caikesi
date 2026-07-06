@@ -1,19 +1,28 @@
 // PartsRig 部件缓动 · 参数数据表（纯数据，不依赖 cc）。
-// 标准部件规范 v1（2026-07-05 设计规范，用户定）：所有角色统一 8 件、同锚点语义、同父子链，
-// 因此动作参数全角色共享，个别角色可整组覆盖。设计见 docs/superpowers/specs/2026-07-05-partsrig-design.md。
+// 标准部件规范 v2（2026-07-06 设计规范，用户定）：所有角色统一 12 件（肘关节 ×2 + 袍摆前后片）、
+// 同锚点语义、同父子链，动作参数全角色共享，个别角色可整组覆盖。
+// 设计见 docs/superpowers/specs/2026-07-06-partsrig-v2-12parts-design.md（v1 8 件见 2026-07-05-partsrig-design.md）。
 
 export type RigPartId =
-    | 'hairBack'   // 后发/马尾（扎发点）
-    | 'head'       // 头+前发（脖颈）
-    | 'torso'      // 躯干+衣袍（领口）
-    | 'armFront'   // 持械臂（肩）
-    | 'armBack'    // 后臂（肩）
-    | 'legFront'   // 前腿（袍摆/裤脚口）
-    | 'legBack'    // 后腿（袍摆/裤脚口）
-    | 'weapon';    // 武器（握把）
+    | 'hairBack'      // 马尾（扎发点）
+    | 'head'          // 头+前发（脖颈）
+    | 'torso'         // 上身衣袍：领口/双肩口/腰带，腰带以下收口（髋部为旋转锚）
+    | 'robeFront'     // 袍摆前片（腰带前缘）
+    | 'robeBack'      // 袍摆后片（腰带后缘）
+    | 'armFrontUpper' // 持械大臂+宽袖（肩口）
+    | 'armFrontLower' // 持械小臂+拳（肘，袖口内）
+    | 'armBackUpper'  // 后大臂+宽袖（肩口）
+    | 'armBackLower'  // 后小臂+手（肘，袖口内）
+    | 'legFront'      // 前小腿+鞋（裤脚口）
+    | 'legBack'       // 后小腿+鞋（裤脚口）
+    | 'weapon';       // 武器（握把）
 export type RigActionId = 'idle' | 'run' | 'attack' | 'death';
 
-export const RIG_PART_IDS: RigPartId[] = ['hairBack', 'head', 'torso', 'armFront', 'armBack', 'legFront', 'legBack', 'weapon'];
+export const RIG_PART_IDS: RigPartId[] = [
+    'hairBack', 'head', 'torso', 'robeFront', 'robeBack',
+    'armFrontUpper', 'armFrontLower', 'armBackUpper', 'armBackLower',
+    'legFront', 'legBack', 'weapon',
+];
 export const RIG_ACTION_IDS: RigActionId[] = ['idle', 'run', 'attack', 'death'];
 
 /** 关键帧轨道：times 为 0..1 归一化时刻，values 与之等长；ease 为相邻两帧间的缓动 */
@@ -62,23 +71,32 @@ export const RIG_PARENTS: Record<RigPartId, RigPartId | 'root'> = {
     torso: 'root',
     head: 'torso',
     hairBack: 'head',
-    armFront: 'torso',
-    armBack: 'torso',
+    robeFront: 'torso',
+    robeBack: 'torso',
+    armFrontUpper: 'torso',
+    armFrontLower: 'armFrontUpper',
+    armBackUpper: 'torso',
+    armBackLower: 'armBackUpper',
     legFront: 'root',   // 腿挂 root：脚踩地，不随上身前倾/呼吸弹跳漂移
     legBack: 'root',
-    weapon: 'armFront',
+    weapon: 'armFrontLower',
 };
 
 // 色块 demo 布局（真图的绑定由组装 meta 换算，此表只服务无图调试）
+// 层级(z 后→前)：hairBack armBackUpper armBackLower robeBack legBack legFront robeFront torso head armFrontUpper armFrontLower weapon
 export const PartsRigBind: Record<RigPartId, RigBindDef> = {
-    hairBack: { x: -18, y: 102, z: 1, rot: 22, draw: 'down', w: 14, h: 50, color: '#33363c' },
-    armBack:  { x: -5,  y: 65,  z: 2, draw: 'down',   w: 9,  h: 26, color: '#d8d2c0' },
-    legBack:  { x: -8,  y: 22,  z: 3, draw: 'down',   w: 10, h: 22, color: '#8f9c7f' },
-    legFront: { x: 10,  y: 22,  z: 4, draw: 'down',   w: 10, h: 22, color: '#9dab8b' },
-    torso:    { x: 0,   y: 44,  z: 5, draw: 'up',     w: 30, h: 30, color: '#96a58c' },
-    head:     { x: 3,   y: 66,  z: 6, draw: 'circle', w: 40, h: 40, color: '#e8d9c3' },
-    armFront: { x: 11,  y: 65,  z: 7, draw: 'down',   w: 9,  h: 26, color: '#e2dcc8' },
-    weapon:   { x: 17,  y: 40,  z: 8, draw: 'fwd',    w: 46, h: 6,  color: '#7f958f' },
+    hairBack:      { x: -18, y: 102, z: 1,  rot: 22, draw: 'down', w: 14, h: 50, color: '#33363c' },
+    armBackUpper:  { x: -5,  y: 65,  z: 2,  draw: 'down',   w: 9,  h: 14, color: '#d8d2c0' },
+    armBackLower:  { x: -5,  y: 51,  z: 3,  draw: 'down',   w: 8,  h: 13, color: '#cfc9b6' },
+    robeBack:      { x: -6,  y: 46,  z: 4,  draw: 'down',   w: 16, h: 26, color: '#8a9a7c' },
+    legBack:       { x: -8,  y: 22,  z: 5,  draw: 'down',   w: 10, h: 22, color: '#8f9c7f' },
+    legFront:      { x: 10,  y: 22,  z: 6,  draw: 'down',   w: 10, h: 22, color: '#9dab8b' },
+    robeFront:     { x: 6,   y: 46,  z: 7,  draw: 'down',   w: 16, h: 26, color: '#a3b191' },
+    torso:         { x: 0,   y: 44,  z: 8,  draw: 'up',     w: 30, h: 30, color: '#96a58c' },
+    head:          { x: 3,   y: 66,  z: 9,  draw: 'circle', w: 40, h: 40, color: '#e8d9c3' },
+    armFrontUpper: { x: 11,  y: 65,  z: 10, draw: 'down',   w: 9,  h: 14, color: '#e2dcc8' },
+    armFrontLower: { x: 12,  y: 51,  z: 11, draw: 'down',   w: 8,  h: 13, color: '#d9d3bf' },
+    weapon:        { x: 17,  y: 40,  z: 12, draw: 'fwd',    w: 46, h: 6,  color: '#7f958f' },
 };
 
 // 动作参数在 parts.actions.generated.ts（真源=动作编辑器，npm run rig:editor / rig:import）
