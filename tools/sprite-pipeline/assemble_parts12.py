@@ -50,11 +50,13 @@ def main():
         im = im.resize((w, h), Image.LANCZOS)
         px, py = pivot_x * c['scale'], c['pivot_local'][1] * c['scale']
         if c['rot']:
-            big = Image.new('RGBA', (w * 3, h * 3), (0, 0, 0, 0))
-            big.alpha_composite(im, (w, h))
-            big = big.rotate(-c['rot'], center=(w + px, h + py), resample=Image.BICUBIC)
+            # 余量按长边给：长条件大角度旋转（如竖剑转横）时 w*3 不够会裁掉端头
+            m = max(w, h)
+            big = Image.new('RGBA', (w + 2 * m, h + 2 * m), (0, 0, 0, 0))
+            big.alpha_composite(im, (m, m))
+            big = big.rotate(-c['rot'], center=(m + px, m + py), resample=Image.BICUBIC)
             im = big
-            px, py = w + px, h + py
+            px, py = m + px, m + py
         bbox = im.getbbox()
         trimmed = im.crop(bbox)
         trimmed.save(OUT / f'{part}.png')

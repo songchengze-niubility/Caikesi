@@ -21,8 +21,8 @@ for (const action of RIG_ACTION_IDS) {
 // 坐标换算：原图坐标 → rig 坐标（脚底原点、y 向上、角色 120px 高）
 interface PartMeta { bbox: number[]; pivot: number[] }
 let realParts: Record<string, { img: string; dx: number; dy: number; w: number; h: number; bind: { x: number; y: number } }> | null = null;
-// 用八件标准版（parts8_final，_foot 记录脚底基准）
-const partsDirName = 'parts8_final';
+// 用十二件标准版（parts12_final，_foot 记录脚底基准）
+const partsDirName = 'parts12_final';
 const metaFile = path.resolve(__dirname, '..', 'temp', 'partsrig-demo', partsDirName, 'parts_meta.json');
 if (fs.existsSync(metaFile)) {
     const metaAll: Record<string, PartMeta> = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
