@@ -1,4 +1,5 @@
 # PartsRig → DragonBones 工程导出：自动绑骨（骨骼/插槽/贴图集）+ 现有动作转关键帧草稿。
+# v2：12 件骨架（spec 2026-07-06），actions.json 由 npm run rig:dump 产出；旧 8 骨工程留档 dragonbones-v1-8bones/。
 # 用法：py -3 tools/sprite-pipeline/export_dragonbones.py
 # 产出 temp/partsrig-demo/dragonbones/{dps_ske.json, dps_tex.json, dps_tex.png}
 # DragonBones Pro：文件 → 导入 → 选 dps_ske.json（贴图自动同目录找）。
@@ -10,11 +11,12 @@ from pathlib import Path
 from PIL import Image
 
 BASE = Path(r'F:\Cgame\temp\partsrig-demo')
-PARTS = BASE / 'parts8_final'
+PARTS = BASE / 'parts12_final'
 OUT = BASE / 'dragonbones'
 NAME = 'dps'
 FRAME_RATE = 30
-Z_ORDER = ['hairBack', 'armBack', 'legBack', 'legFront', 'torso', 'head', 'armFront', 'weapon']
+Z_ORDER = ['hairBack', 'armBackUpper', 'armBackLower', 'robeBack', 'legBack',
+           'legFront', 'robeFront', 'torso', 'head', 'armFrontUpper', 'armFrontLower', 'weapon']
 
 meta_all = json.loads((PARTS / 'parts_meta.json').read_text(encoding='utf-8'))
 foot = meta_all['_foot']['pivot']

@@ -17,6 +17,7 @@
     "test:partsrig": "tsx tools/parts-rig-test.ts",
     "rig:editor": "tsx tools/parts-rig-editor.ts",
     "rig:import": "tsx tools/parts-rig-import.ts",
+    "rig:dump": "tsx tools/parts-rig-dump.ts",
     "rig:preview": "tsx tools/parts-rig-preview.ts",
     "test:craft": "tsx tools/craft-test.ts",
     "test:skill": "tsx tools/skill-test.ts",
