@@ -18,7 +18,8 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                         1,
                         1.018,
                         1
-                    ]
+                    ],
+                    ease: "sine"
                 }
             },
             head: {
@@ -32,7 +33,8 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                         0,
                         2,
                         0
-                    ]
+                    ],
+                    ease: "sine"
                 }
             },
             hairBack: {
@@ -46,10 +48,11 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                         -2,
                         2.5,
                         -2
-                    ]
+                    ],
+                    ease: "sine"
                 }
             },
-            armFront: {
+            robeFront: {
                 rot: {
                     times: [
                         0,
@@ -58,12 +61,28 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                     ],
                     values: [
                         0,
-                        -2,
+                        1.5,
                         0
-                    ]
+                    ],
+                    ease: "sine"
                 }
             },
-            armBack: {
+            robeBack: {
+                rot: {
+                    times: [
+                        0,
+                        0.6,
+                        1
+                    ],
+                    values: [
+                        0,
+                        -2,
+                        0
+                    ],
+                    ease: "sine"
+                }
+            },
+            armFrontUpper: {
                 rot: {
                     times: [
                         0,
@@ -74,7 +93,53 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                         0,
                         2,
                         0
-                    ]
+                    ],
+                    ease: "sine"
+                }
+            },
+            armFrontLower: {
+                rot: {
+                    times: [
+                        0,
+                        0.55,
+                        1
+                    ],
+                    values: [
+                        0,
+                        1.5,
+                        0
+                    ],
+                    ease: "sine"
+                }
+            },
+            armBackUpper: {
+                rot: {
+                    times: [
+                        0,
+                        0.5,
+                        1
+                    ],
+                    values: [
+                        0,
+                        -2,
+                        0
+                    ],
+                    ease: "sine"
+                }
+            },
+            armBackLower: {
+                rot: {
+                    times: [
+                        0,
+                        0.55,
+                        1
+                    ],
+                    values: [
+                        0,
+                        -1.5,
+                        0
+                    ],
+                    ease: "sine"
                 }
             },
             weapon: {
@@ -88,17 +153,28 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                         0,
                         -1.5,
                         0
-                    ]
+                    ],
+                    ease: "sine"
                 }
             }
         }
     },
     run: {
-        duration: 0.55,
+        duration: 0.5,
         loop: true,
         parts: {
             torso: {
                 rot: {
+                    times: [
+                        0,
+                        1
+                    ],
+                    values: [
+                        8,
+                        8
+                    ]
+                },
+                y: {
                     times: [
                         0,
                         0.25,
@@ -107,63 +183,29 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                         1
                     ],
                     values: [
-                        9,
-                        7.5,
-                        9,
-                        7.5,
-                        9
-                    ]
-                },
-                y: {
-                    times: [
                         0,
-                        0.125,
-                        0.375,
-                        0.5,
-                        0.625,
-                        0.875,
-                        1
-                    ],
-                    values: [
+                        4,
                         0,
-                        -3,
-                        5,
-                        0,
-                        -3,
-                        5,
+                        4,
                         0
                     ],
                     ease: "sine"
                 }
             },
             head: {
-                rot: {
-                    times: [
-                        0,
-                        1
-                    ],
-                    values: [
-                        -3.5,
-                        -3.5
-                    ]
-                },
                 y: {
                     times: [
                         0,
-                        0.2,
-                        0.45,
+                        0.25,
                         0.5,
-                        0.7,
-                        0.95,
+                        0.75,
                         1
                     ],
                     values: [
                         0,
-                        -1.5,
-                        2.5,
-                        0.5,
-                        -1.5,
-                        2.5,
+                        -2,
+                        0,
+                        -2,
                         0
                     ],
                     ease: "sine"
@@ -173,19 +215,13 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                 rot: {
                     times: [
                         0,
-                        0.2,
-                        0.45,
-                        0.7,
-                        0.95,
+                        0.5,
                         1
                     ],
                     values: [
-                        -4,
-                        -12,
-                        -6,
-                        -12,
-                        -4.6,
-                        -4
+                        -14,
+                        6,
+                        -14
                     ],
                     ease: "sine"
                 }
@@ -200,11 +236,11 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                         1
                     ],
                     values: [
-                        -26,
-                        6,
-                        28,
-                        4,
-                        -26
+                        22,
+                        0,
+                        -22,
+                        0,
+                        22
                     ],
                     ease: "sine"
                 }
@@ -219,16 +255,16 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                         1
                     ],
                     values: [
-                        28,
-                        4,
-                        -26,
-                        6,
-                        28
+                        -22,
+                        0,
+                        22,
+                        0,
+                        -22
                     ],
                     ease: "sine"
                 }
             },
-            armBack: {
+            robeFront: {
                 rot: {
                     times: [
                         0,
@@ -238,16 +274,73 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                         1
                     ],
                     values: [
-                        -20,
-                        -2,
-                        16,
-                        -2,
-                        -20
+                        9,
+                        0,
+                        -9,
+                        0,
+                        9
                     ],
                     ease: "sine"
                 }
             },
-            armFront: {
+            robeBack: {
+                rot: {
+                    times: [
+                        0,
+                        0.25,
+                        0.5,
+                        0.75,
+                        1
+                    ],
+                    values: [
+                        -9,
+                        0,
+                        9,
+                        0,
+                        -9
+                    ],
+                    ease: "sine"
+                }
+            },
+            armFrontUpper: {
+                rot: {
+                    times: [
+                        0,
+                        0.25,
+                        0.5,
+                        0.75,
+                        1
+                    ],
+                    values: [
+                        -16,
+                        0,
+                        16,
+                        0,
+                        -16
+                    ],
+                    ease: "sine"
+                }
+            },
+            armFrontLower: {
+                rot: {
+                    times: [
+                        0,
+                        0.25,
+                        0.5,
+                        0.75,
+                        1
+                    ],
+                    values: [
+                        -8,
+                        0,
+                        8,
+                        0,
+                        -8
+                    ],
+                    ease: "sine"
+                }
+            },
+            armBackUpper: {
                 rot: {
                     times: [
                         0,
@@ -258,15 +351,15 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                     ],
                     values: [
                         16,
-                        20,
-                        16,
-                        20,
+                        0,
+                        -16,
+                        0,
                         16
                     ],
                     ease: "sine"
                 }
             },
-            weapon: {
+            armBackLower: {
                 rot: {
                     times: [
                         0,
@@ -276,11 +369,11 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                         1
                     ],
                     values: [
-                        78,
-                        81,
-                        78,
-                        81,
-                        78
+                        8,
+                        0,
+                        -8,
+                        0,
+                        8
                     ],
                     ease: "sine"
                 }
@@ -291,24 +384,39 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
         duration: 0.35,
         loop: false,
         parts: {
-            armFront: {
+            armFrontUpper: {
                 rot: {
                     times: [
                         0,
-                        0.16,
-                        0.3,
-                        0.44,
-                        0.58,
-                        0.8,
+                        0.35,
+                        0.6,
+                        0.85,
                         1
                     ],
                     values: [
                         0,
-                        -45,
-                        -80,
-                        -25,
-                        50,
-                        15,
+                        -55,
+                        70,
+                        5,
+                        0
+                    ],
+                    ease: "quadOut"
+                }
+            },
+            armFrontLower: {
+                rot: {
+                    times: [
+                        0,
+                        0.4,
+                        0.65,
+                        0.9,
+                        1
+                    ],
+                    values: [
+                        0,
+                        -30,
+                        45,
+                        3,
                         0
                     ],
                     ease: "quadOut"
@@ -318,20 +426,16 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                 rot: {
                     times: [
                         0,
-                        0.16,
-                        0.3,
-                        0.44,
-                        0.58,
-                        0.8,
+                        0.42,
+                        0.66,
+                        0.9,
                         1
                     ],
                     values: [
                         0,
                         -18,
-                        -32,
-                        -8,
-                        22,
-                        7,
+                        28,
+                        2,
                         0
                     ],
                     ease: "quadOut"
@@ -341,83 +445,100 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
                 x: {
                     times: [
                         0,
-                        0.3,
-                        0.52,
-                        0.78,
-                        1
-                    ],
-                    values: [
-                        0,
-                        -3,
-                        12,
-                        4,
-                        0
-                    ],
-                    ease: "quadOut"
-                }
-            },
-            head: {
-                rot: {
-                    times: [
-                        0,
-                        0.3,
-                        0.55,
+                        0.35,
+                        0.6,
                         1
                     ],
                     values: [
                         0,
                         -4,
-                        3.5,
+                        12,
                         0
-                    ]
+                    ],
+                    ease: "quadOut"
+                },
+                rot: {
+                    times: [
+                        0,
+                        0.35,
+                        0.6,
+                        1
+                    ],
+                    values: [
+                        0,
+                        -3,
+                        6,
+                        0
+                    ],
+                    ease: "quadOut"
+                }
+            },
+            robeFront: {
+                rot: {
+                    times: [
+                        0,
+                        0.45,
+                        0.7,
+                        1
+                    ],
+                    values: [
+                        0,
+                        5,
+                        -7,
+                        0
+                    ],
+                    ease: "sine"
+                }
+            },
+            robeBack: {
+                rot: {
+                    times: [
+                        0,
+                        0.45,
+                        0.7,
+                        1
+                    ],
+                    values: [
+                        0,
+                        -6,
+                        8,
+                        0
+                    ],
+                    ease: "sine"
                 }
             },
             hairBack: {
                 rot: {
                     times: [
                         0,
+                        0.4,
+                        0.7,
+                        1
+                    ],
+                    values: [
+                        0,
+                        8,
+                        -10,
+                        0
+                    ],
+                    ease: "sine"
+                }
+            },
+            head: {
+                rot: {
+                    times: [
+                        0,
                         0.35,
-                        0.62,
+                        0.6,
                         1
                     ],
                     values: [
                         0,
-                        6,
-                        -9,
+                        -2,
+                        3,
                         0
-                    ]
-                }
-            },
-            legFront: {
-                rot: {
-                    times: [
-                        0,
-                        0.3,
-                        0.55,
-                        1
                     ],
-                    values: [
-                        0,
-                        -6,
-                        9,
-                        0
-                    ]
-                }
-            },
-            armBack: {
-                rot: {
-                    times: [
-                        0,
-                        0.3,
-                        0.55,
-                        1
-                    ],
-                    values: [
-                        0,
-                        10,
-                        -12,
-                        0
-                    ]
+                    ease: "sine"
                 }
             }
         }
@@ -425,99 +546,34 @@ export const PartsRigActions: Record<RigActionId, RigActionDef> = {
     death: {
         duration: 0.6,
         loop: false,
+        parts: {},
         root: {
             rot: {
                 times: [
                     0,
-                    0.7,
-                    0.88,
+                    0.5,
+                    0.8,
                     1
                 ],
                 values: [
                     0,
-                    78,
-                    87,
+                    70,
+                    88,
                     85
                 ],
-                ease: "quadIn"
+                ease: "quadOut"
             },
             opacity: {
                 times: [
                     0,
-                    0.5,
+                    0.6,
                     1
                 ],
                 values: [
                     1,
-                    0.92,
-                    0.55
+                    1,
+                    0.4
                 ]
-            },
-            y: {
-                times: [
-                    0,
-                    0.85,
-                    1
-                ],
-                values: [
-                    0,
-                    2,
-                    0
-                ],
-                ease: "quadOut"
-            }
-        },
-        parts: {
-            hairBack: {
-                rot: {
-                    times: [
-                        0,
-                        1
-                    ],
-                    values: [
-                        0,
-                        12
-                    ]
-                }
-            },
-            armFront: {
-                rot: {
-                    times: [
-                        0,
-                        1
-                    ],
-                    values: [
-                        0,
-                        10
-                    ]
-                }
-            },
-            armBack: {
-                rot: {
-                    times: [
-                        0,
-                        1
-                    ],
-                    values: [
-                        0,
-                        -8
-                    ]
-                }
-            },
-            weapon: {
-                rot: {
-                    times: [
-                        0,
-                        0.8,
-                        1
-                    ],
-                    values: [
-                        0,
-                        20,
-                        22
-                    ],
-                    ease: "quadOut"
-                }
             }
         }
     }
