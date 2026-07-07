@@ -652,6 +652,26 @@ def foot_anchor_point(
     return anchor_x, float(bottom)
 
 
+def sideview_anchor_point(
+    image: Image.Image,
+    bbox: tuple[int, int, int, int],
+    alpha_threshold: int,
+) -> tuple[float, float]:
+    """侧视锚点：x=身体主干中心（列密度最高簇，甩动的马尾/手臂密度低被排除），
+    y=地线（最低实心行）。与 sideview_alignment 同口径——输出位置校准用它时是加固而非打架。"""
+    _, _, _, bottom = bbox
+    mask = np.asarray(image.convert("RGBA"))[:, :, 3] > alpha_threshold
+    col_density = mask.sum(axis=0)
+    peak = col_density.max()
+    if peak <= 0:
+        return (bbox[0] + bbox[2]) / 2.0, float(bottom)
+    cols = np.where(col_density >= peak * 0.55)[0]
+    min_pixels = max(3, int(mask.shape[1] * 0.02))
+    rows = np.where(mask.sum(axis=1) >= min_pixels)[0]
+    ground_y = float(rows[-1]) if len(rows) else float(bottom)
+    return float(cols.mean()), ground_y
+
+
 def action_anchor_point(
     image: Image.Image,
     bbox: tuple[int, int, int, int],
@@ -660,6 +680,8 @@ def action_anchor_point(
 ) -> tuple[float, float]:
     if anchor_mode == "body":
         return body_anchor_point(image, bbox, alpha_threshold)
+    if anchor_mode == "sideview":
+        return sideview_anchor_point(image, bbox, alpha_threshold)
     return foot_anchor_point(image, bbox, alpha_threshold)
 
 
@@ -909,26 +931,30 @@ def sideview_alignment(
         ground_ys.append(int(rows[-1]) if len(rows) else 0)
     target_y = int(np.median(np.asarray(ground_ys)))
 
-    def torso_band(mask: np.ndarray, bbox: tuple[int, int, int, int]) -> np.ndarray:
-        left, top, right, bottom = bbox
-        band = np.zeros_like(mask)
-        band_bottom = top + max(1, int((bottom - top) * 0.6))
-        band[top:band_bottom, left:right] = mask[top:band_bottom, left:right]
-        return band
+    def body_core_x(mask: np.ndarray) -> float | None:
+        """身体主干中心 x = 列密度最高的那簇列的均值。
+        主干（头+躯干+腿竖向贯穿）列像素数远高于甩动的马尾/伸出的手臂（宽而薄/细），
+        密度阈值 55% 天然把它们排除——比躯干带互相关稳（互相关会被大马尾整片甩动带跑），
+        且是绝对量，没有搜索半径限制（整段走位多大都锁得回来）。"""
+        col_density = mask.sum(axis=0)
+        peak = col_density.max()
+        if peak <= 0:
+            return None
+        cols = np.where(col_density >= peak * 0.55)[0]
+        return float(cols.mean())
 
     ref_index = next((i for i, bbox in enumerate(bboxes) if bbox is not None), None)
     if ref_index is None:
         return None
-    ref_band = torso_band(masks[ref_index], bboxes[ref_index])
+    core_xs = [body_core_x(mask) if bboxes[i] is not None else None for i, mask in enumerate(masks)]
+    valid_cores = [c for c in core_xs if c is not None]
+    target_x = float(np.median(np.asarray(valid_cores))) if valid_cores else 0.0
     offsets: list[tuple[float, float]] = []
-    for index, mask in enumerate(masks):
-        if bboxes[index] is None:
+    for index in range(len(masks)):
+        if bboxes[index] is None or core_xs[index] is None:
             offsets.append((0.0, 0.0))
             continue
-        band = torso_band(mask, bboxes[index])
-        # estimate_mask_translation 的 dx 语义：current 平移 dx 后与 target 最重合 → 即“移回参考系”的平移
-        best_dx, _, _ = estimate_mask_translation(band, ref_band, search_radius, 0)
-        offsets.append((float(best_dx), float(target_y - ground_ys[index])))
+        offsets.append((target_x - core_xs[index], float(target_y - ground_ys[index])))
 
     ref_bbox = bboxes[ref_index]
     return {
