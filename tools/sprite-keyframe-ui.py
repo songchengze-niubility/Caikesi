@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import mimetypes
 import os
@@ -380,6 +381,76 @@ def patch_existing_cocos_metas(files: list[Path]) -> int:
     return patched
 
 
+def load_tool_module():
+    """importlib 加载 sprite-keyframe-tool.py（有 __main__ 守卫，可安全 import 复用其函数）。"""
+    spec = importlib.util.spec_from_file_location("sprite_keyframe_tool", TOOL)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def load_frame_select_module():
+    path = ROOT / "tools" / "sprite-pipeline" / "frame_select.py"
+    spec = importlib.util.spec_from_file_location("frame_select", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def finalize_job(out_dir: Path, preview_columns: int, game_target_height: int) -> tuple[dict, dict]:
+    """读 manifest → 生成 game_keyframes/strip/预览 → 组装 files_payload。
+    /api/process 与 /api/assemble-selection 共用（勿各自复制一份）。"""
+    manifest_path = out_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
+    keyframes = sorted((out_dir / "keyframes").glob("*.png"))
+    game_keyframes: list[Path] = []
+    if keyframes:
+        game_keyframes, game_crop, game_scale = build_game_preview_frames(
+            keyframes, out_dir / "game_keyframes", preview_columns, game_target_height
+        )
+        manifest["game_import"] = {
+            "cropMode": "shared-alpha-bbox",
+            "crop": game_crop,
+            "targetHeight": game_scale["targetHeight"],
+            "scale": game_scale["scale"],
+            "outputSize": game_scale["outputSize"],
+            "framesDir": str(out_dir / "game_keyframes"),
+            "note": "These frames match the PNGs copied by /api/import-art when available.",
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+    files_payload = {
+        "manifest": job_file_url(manifest_path) if manifest_path.exists() else None,
+        "characterTransparent": job_file_url(out_dir / "character_transparent.png")
+        if (out_dir / "character_transparent.png").exists()
+        else None,
+        "characterFrame": job_file_url(out_dir / "character_frame.png")
+        if (out_dir / "character_frame.png").exists()
+        else None,
+        "strip": job_file_url(out_dir / "keyframes_strip.png") if (out_dir / "keyframes_strip.png").exists() else None,
+        "preview": job_file_url(out_dir / "keyframes_preview.png")
+        if (out_dir / "keyframes_preview.png").exists()
+        else None,
+        "rawPreview": job_file_url(out_dir / "raw_frames_preview.png")
+        if (out_dir / "raw_frames_preview.png").exists()
+        else None,
+        "darkPreview": job_file_url(out_dir / "keyframes_preview_dark.png")
+        if (out_dir / "keyframes_preview_dark.png").exists()
+        else None,
+        "gameStrip": job_file_url(out_dir / "game_keyframes_strip.png")
+        if (out_dir / "game_keyframes_strip.png").exists()
+        else None,
+        "gamePreview": job_file_url(out_dir / "game_keyframes_preview.png")
+        if (out_dir / "game_keyframes_preview.png").exists()
+        else None,
+        "gameDarkPreview": job_file_url(out_dir / "game_keyframes_preview_dark.png")
+        if (out_dir / "game_keyframes_preview_dark.png").exists()
+        else None,
+        "keyframes": [job_file_url(path) for path in keyframes],
+        "gameKeyframes": [job_file_url(path) for path in game_keyframes],
+    }
+    return manifest, files_payload
+
+
 def existing_art_dirs() -> list[dict[str, str]]:
     root = RESOURCES_ROOT / "art" / "char"
     if not root.exists():
@@ -476,6 +547,12 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/process":
             self.handle_process()
+            return
+        if parsed.path == "/api/extract-all":
+            self.handle_extract_all()
+            return
+        if parsed.path == "/api/assemble-selection":
+            self.handle_assemble_selection()
             return
         if parsed.path == "/api/open-output":
             self.handle_open_output()
@@ -621,63 +698,15 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
                 )
                 return
 
-            manifest_path = out_dir / "manifest.json"
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
-            keyframes = sorted((out_dir / "keyframes").glob("*.png"))
-            game_keyframes: list[Path] = []
-            game_crop: dict[str, int] | None = None
-            if keyframes:
-                try:
-                    preview_columns = int(form_value(fields, "preview_columns", "6"))
-                except ValueError:
-                    preview_columns = 6
-                try:
-                    game_target_height = max(0, int(form_value(fields, "game_target_height", "240")))
-                except ValueError:
-                    game_target_height = 240
-                game_keyframes, game_crop, game_scale = build_game_preview_frames(
-                    keyframes, out_dir / "game_keyframes", preview_columns, game_target_height
-                )
-                manifest["game_import"] = {
-                    "cropMode": "shared-alpha-bbox",
-                    "crop": game_crop,
-                    "targetHeight": game_scale["targetHeight"],
-                    "scale": game_scale["scale"],
-                    "outputSize": game_scale["outputSize"],
-                    "framesDir": str(out_dir / "game_keyframes"),
-                    "note": "These frames match the PNGs copied by /api/import-art when available.",
-                }
-                manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
-            files_payload = {
-                "manifest": job_file_url(manifest_path) if manifest_path.exists() else None,
-                "characterTransparent": job_file_url(out_dir / "character_transparent.png")
-                if (out_dir / "character_transparent.png").exists()
-                else None,
-                "characterFrame": job_file_url(out_dir / "character_frame.png")
-                if (out_dir / "character_frame.png").exists()
-                else None,
-                "strip": job_file_url(out_dir / "keyframes_strip.png") if (out_dir / "keyframes_strip.png").exists() else None,
-                "preview": job_file_url(out_dir / "keyframes_preview.png")
-                if (out_dir / "keyframes_preview.png").exists()
-                else None,
-                "rawPreview": job_file_url(out_dir / "raw_frames_preview.png")
-                if (out_dir / "raw_frames_preview.png").exists()
-                else None,
-                "darkPreview": job_file_url(out_dir / "keyframes_preview_dark.png")
-                if (out_dir / "keyframes_preview_dark.png").exists()
-                else None,
-                "gameStrip": job_file_url(out_dir / "game_keyframes_strip.png")
-                if (out_dir / "game_keyframes_strip.png").exists()
-                else None,
-                "gamePreview": job_file_url(out_dir / "game_keyframes_preview.png")
-                if (out_dir / "game_keyframes_preview.png").exists()
-                else None,
-                "gameDarkPreview": job_file_url(out_dir / "game_keyframes_preview_dark.png")
-                if (out_dir / "game_keyframes_preview_dark.png").exists()
-                else None,
-                "keyframes": [job_file_url(path) for path in keyframes],
-                "gameKeyframes": [job_file_url(path) for path in game_keyframes],
-            }
+            try:
+                preview_columns = int(form_value(fields, "preview_columns", "6"))
+            except ValueError:
+                preview_columns = 6
+            try:
+                game_target_height = max(0, int(form_value(fields, "game_target_height", "240")))
+            except ValueError:
+                game_target_height = 240
+            manifest, files_payload = finalize_job(out_dir, preview_columns, game_target_height)
 
             self.send_json(
                 200,
@@ -693,6 +722,112 @@ class SpriteUiHandler(BaseHTTPRequestHandler):
                     "stderr": result.stderr,
                 },
             )
+        except Exception as exc:  # noqa: BLE001
+            self.send_json(500, {"ok": False, "error": str(exc)})
+
+    def handle_extract_all(self) -> None:
+        """手动挑帧第一步：视频按原生 fps 抽全帧 + 清晰度/循环点/弧长推荐分析 + 缩略图。"""
+        try:
+            fields, files = self.parse_multipart()
+            PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            job_id = f"{timestamp}-pick-{secrets.token_hex(3)}"
+            out_dir = PREVIEW_ROOT / job_id
+            upload_dir = out_dir / "_input"
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            video = self.save_upload(files, "video", upload_dir)
+            if video is None:
+                self.send_json(400, {"ok": False, "error": "需要上传一个动作视频。"})
+                return
+            sample_fps = float(form_value(fields, "sample_fps", "0"))
+            recommend_count = max(2, min(10, int(form_value(fields, "recommend_count", "8"))))
+
+            tool_mod = load_tool_module()
+            fs = load_frame_select_module()
+            raw_dir = out_dir / "raw_frames"
+            frames = tool_mod.extract_video_frames(video, raw_dir, sample_fps, 0.0, None)
+            thumb_dir = out_dir / "thumbs"
+            thumb_dir.mkdir(parents=True, exist_ok=True)
+            for index, frame in enumerate(frames):
+                with Image.open(frame) as im:
+                    im.thumbnail((160, 160))
+                    im.save(thumb_dir / f"thumb_{index:05d}.png")
+            scores = fs.sharpness_scores(frames)
+            flags = fs.blur_flags(scores)
+            feats = fs.feature_vectors(frames)
+            span = fs.detect_loop_span(feats)
+            recommended = set(fs.arclength_pick(feats, span, recommend_count, sharpness=scores))
+            payload_frames = [
+                {
+                    "index": index,
+                    "url": job_file_url(frames[index]),
+                    "thumbUrl": job_file_url(thumb_dir / f"thumb_{index:05d}.png"),
+                    "sharpness": round(scores[index], 2),
+                    "isBlur": bool(flags[index]),
+                    "recommended": index in recommended,
+                }
+                for index in range(len(frames))
+            ]
+            self.send_json(200, {
+                "ok": True,
+                "jobId": job_id,
+                "videoUrl": job_file_url(video),
+                "frameCount": len(frames),
+                "loopSpan": list(span),
+                "frames": payload_frames,
+            })
+        except SystemExit as exc:
+            # 工具模块 fail() 走 sys.exit——进程内调用时翻译成 HTTP 错误，别杀请求线程
+            self.send_json(400, {"ok": False, "error": f"抽帧失败（工具中止）: {exc}"})
+        except Exception as exc:  # noqa: BLE001
+            self.send_json(500, {"ok": False, "error": str(exc)})
+
+    def handle_assemble_selection(self) -> None:
+        """手动挑帧第二步：按用户选中的帧号跑 抠图加固+侧视双锚+组合。"""
+        try:
+            payload = json.loads(self.read_body().decode("utf-8"))
+            job_id = safe_job_id(str(payload.get("jobId", "")))
+            indices = payload.get("indices", [])
+            if not job_id or not isinstance(indices, list) or not indices:
+                self.send_json(400, {"ok": False, "error": "缺少 jobId 或 indices。"})
+                return
+            job_dir_path = job_dir(job_id)
+            if job_dir_path is None or not (job_dir_path / "raw_frames").is_dir():
+                self.send_json(404, {"ok": False, "error": "找不到该任务的原始帧。"})
+                return
+            indices = sorted({int(item) for item in indices})
+            command = [
+                sys.executable, str(TOOL),
+                "--frames-dir", str(job_dir_path / "raw_frames"),
+                "--select-indices", ",".join(str(item) for item in indices),
+                "--out", str(job_dir_path),
+                "--anchor-mode", str(payload.get("anchor_mode", "sideview")),
+            ]
+            if bool(payload.get("largest_component", True)):
+                command.append("--largest-component-only")
+            result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+            if result.returncode != 0:
+                self.send_json(500, {"ok": False, "error": "处理失败。",
+                                     "stdout": result.stdout, "stderr": result.stderr})
+                return
+            try:
+                preview_columns = int(payload.get("preview_columns", 6))
+            except (TypeError, ValueError):
+                preview_columns = 6
+            try:
+                game_target_height = max(0, int(payload.get("game_target_height", 240)))
+            except (TypeError, ValueError):
+                game_target_height = 240
+            manifest, files_payload = finalize_job(job_dir_path, preview_columns, game_target_height)
+            self.send_json(200, {
+                "ok": True,
+                "jobId": job_id,
+                "previewDir": str(job_dir_path),
+                "manifest": manifest,
+                "files": files_payload,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            })
         except Exception as exc:  # noqa: BLE001
             self.send_json(500, {"ok": False, "error": str(exc)})
 
