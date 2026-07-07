@@ -2,7 +2,7 @@
 // 作用：建战场、驱动 BattleManager、用 Graphics 把所有单位画成色块（占位）、显示文字、处理重开。
 // 第一版没有美术：士兵=蓝色方块，敌人=红色圆，子弹=黄色点。验证战斗循环用。
 
-import { _decorator, Component, Node, Graphics, Color, UITransform, Mask, Label, view, ResolutionPolicy, Sprite, SpriteFrame, EventTouch, Vec3 } from 'cc';
+import { _decorator, Component, Node, Graphics, Color, UITransform, Mask, Label, view, ResolutionPolicy, Sprite, SpriteFrame, EventTouch, Vec3, EditBox } from 'cc';
 import { BattleManager } from './combat/BattleManager';
 import type { UnitAction, SkillCastEvent } from './combat/BattleManager';
 import { Background } from './combat/Background';
@@ -28,7 +28,9 @@ import { chestTypeLabel, openChest } from './chest/ChestService';
 import { ProgressModel } from './progression/ProgressModel';
 import type { CompleteLevelResult } from './progression/ProgressModel';
 import { loadProgress, saveProgress } from './progression/ProgressPersistence';
-import { loadPlayerData, savePlayerData } from './core/data/PlayerDataStore';
+import { loadPlayerData, savePlayerData, resetPlayerDataCache } from './core/data/PlayerDataStore';
+import { Accounts } from './core/data/DataService';
+import { normalizeAccountId } from './core/data/AccountService';
 import { SquadModel } from './squad/SquadModel';
 import { loadSquad, saveSquad } from './squad/SquadPersistence';
 import { CharacterGrowthModel } from './growth/CharacterGrowthModel';
@@ -213,6 +215,16 @@ export class BattleEntry extends Component {
     private _styledUiNodes: Record<string, Node> = {};
     private _pressBaseScale = new Map<Node, Vec3>();
     private _bootPressed = false;
+    private _bootAccountLabel: Label = null!;
+    private _bootAccountRect: { x: number; y: number; w: number; h: number } | null = null;
+    // ===== 账号面板（占位）：EditBox 输入 + 本机账号列表 + 确认切换，镜像 SquadView =====
+    private _accountRoot: Node | null = null;
+    private _accountGfx: Graphics = null!;
+    private _accountLabels: Label[] = [];
+    private _accountHots: { rect: { x: number; y: number; w: number; h: number }; act: () => void }[] = [];
+    private _accountEdit: EditBox | null = null;
+    private _accountHint = '';
+    private _accountSwitching = false;
     private _pressedSettleKind: SettleHot['kind'] | null = null;
     private _settleRewards: RewardEntry[] = [];
     private _settleFailed = 0;
@@ -373,11 +385,7 @@ export class BattleEntry extends Component {
         this._invView = new InventoryView(this.node, this._halfW, this._halfH, this._inv, (kind, payload) => {
             void this._handleInventoryChanged(kind, payload);
         }, () => this._configuredDebugDrop());
-        const dataReady = loadInventory(this._inv).then(() => loadProgress(this._progress)).then(() => this._claimOfflineRewards()).then(() => loadChests(this._chests)).then(() => this._refreshMaterialsCache()).then(() => loadSquad()).then((squad) => { this._squad = squad; }).then(() => loadGrowth()).then((growth) => { this._growth = growth; }).then(() => {
-            this._invView.refresh();
-        }).catch(() => {
-            // 读档失败时仍允许进游戏，掉落会从空背包开始存。
-        });
+        const dataReady = this._loadAllPlayerData();
         this._createSettlementView();
         this._createChestView();
         this._createCraftView();
@@ -412,6 +420,24 @@ export class BattleEntry extends Component {
             this._showStartScreen();
         });
         this._bringBootToTop();
+    }
+
+    // 完整读档链：冷启动与切账号共用。所有 Model 原位重灌（deserialize/重赋值），
+    // 视图持有的引用不失效。
+    private _loadAllPlayerData(): Promise<void> {
+        return loadInventory(this._inv)
+            .then(() => loadProgress(this._progress))
+            .then(() => this._claimOfflineRewards())
+            .then(() => loadChests(this._chests))
+            .then(() => this._refreshMaterialsCache())
+            .then(() => loadSquad())
+            .then((squad) => { this._squad = squad; })
+            .then(() => loadGrowth())
+            .then((growth) => { this._growth = growth; })
+            .then(() => { this._invView.refresh(); })
+            .catch(() => {
+                // 读档失败时仍允许进游戏，掉落会从空背包开始存。
+            });
     }
 
     private _startBattle() {
@@ -622,6 +648,7 @@ export class BattleEntry extends Component {
         this._bootTitle = this._makeBootLabel('BootTitle');
         this._bootHint = this._makeBootLabel('BootHint');
         this._bootButton = this._makeBootLabel('BootButton');
+        this._bootAccountLabel = this._makeBootLabel('BootAccount');
         this._bootRoot.on(Node.EventType.TOUCH_START, this._onBootTouchStart, this);
         this._bootRoot.on(Node.EventType.TOUCH_MOVE, this._onBootTouchMove, this);
         this._bootRoot.on(Node.EventType.TOUCH_END, this._onBootTap, this);
@@ -680,6 +707,8 @@ export class BattleEntry extends Component {
     private _drawBootLoading() {
         this._bootPhase = 'loading';
         this._bootButtonRect = null;
+        this._bootAccountRect = null;
+        if (this._bootAccountLabel) this._bootAccountLabel.node.active = false;
         this._bootPressed = false;
         this._drawBootPanel();
         if (this._bootLoadingArtReady()) {
@@ -723,6 +752,7 @@ export class BattleEntry extends Component {
         this._bootGfx.roundRect(br.x, br.y, br.w, br.h, 8);
         this._bootGfx.stroke();
         this._placeBootLabel(this._bootButton, '开始游戏', 0, buttonY + buttonH / 2, buttonW, buttonH, 28, new Color(248, 244, 226));
+        this._drawBootAccountRow(0, buttonY - 44, new Color(83, 74, 62));
         this._bringBootToTop();
     }
 
@@ -774,6 +804,15 @@ export class BattleEntry extends Component {
 
         const r = this._sourceRect(BOOT_UI_RECTS.startButton);
         this._bootButtonRect = { x: r.x - r.w / 2, y: r.y - r.h / 2, w: r.w, h: r.h };
+        this._drawBootAccountRow(0, r.y - r.h / 2 - 40, new Color(240, 232, 210));
+    }
+
+    // 开始页账号行：显示当前账号，点击打开账号面板。美术/文字两种开始页都调用。
+    private _drawBootAccountRow(x: number, y: number, color: Color) {
+        if (!this._bootAccountLabel) return;
+        this._bootAccountLabel.node.active = true;
+        this._placeBootLabel(this._bootAccountLabel, `账号：${Accounts.currentAccount()}  [切换]`, x, y, 520, 40, 22, color);
+        this._bootAccountRect = { x: x - 260 / 2, y: y - 20, w: 260, h: 40 };
     }
 
     private _addBootSprite(name: string, key: string, rect: UiRect): Node | null {
@@ -860,8 +899,20 @@ export class BattleEntry extends Component {
             this._bootPressed = false;
             this._showStartScreen();
         }
+        if (this._bootPhase === 'ready' && this._bootAccountHit(e)) {
+            this._openAccountPanel();
+            return;
+        }
         if (this._bootPhase !== 'ready' || !hit) return;
         this._enterGame();
+    }
+
+    private _bootAccountHit(e: EventTouch): boolean {
+        if (!this._bootAccountRect) return false;
+        const ui = e.getUILocation();
+        const p = this._bootRoot.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
+        const r = this._bootAccountRect;
+        return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
     }
 
     private _enterGame() {
@@ -1064,6 +1115,183 @@ export class BattleEntry extends Component {
     private _inlayItemId: string | null = null;       // 当前聚焦装备
     private _inlaySelSocket: number | null = null;     // 选中的空宝石孔（待填）
     private _inlayMsg = '';
+
+    // ===== 账号面板：仅开始页（ready 阶段）可开；确认切换后清缓存重跑读档链 =====
+
+    private _accountPanelOpen(): boolean { return !!this._accountRoot && this._accountRoot.active; }
+
+    private _ensureAccountPanel() {
+        if (this._accountRoot) return;
+        const root = new Node('AccountView');
+        root.layer = this.node.layer;
+        root.addComponent(UITransform).setContentSize(this._halfW * 2, this._halfH * 2);
+        const gfxNode = new Node('AccountGfx');
+        gfxNode.layer = this.node.layer;
+        gfxNode.addComponent(UITransform);
+        this._accountGfx = gfxNode.addComponent(Graphics);
+        root.addChild(gfxNode);
+
+        // EditBox：程序化创建，需手工挂 textLabel/placeholderLabel
+        const ebNode = new Node('AccountInput');
+        ebNode.layer = this.node.layer;
+        ebNode.addComponent(UITransform).setContentSize(360, 60);
+        const textNode = new Node('TEXT_LABEL');
+        textNode.layer = this.node.layer;
+        textNode.addComponent(UITransform).setContentSize(340, 52);
+        const textLabel = textNode.addComponent(Label);
+        textLabel.fontSize = 26;
+        textLabel.color = new Color(58, 48, 36);
+        ebNode.addChild(textNode);
+        const phNode = new Node('PLACEHOLDER_LABEL');
+        phNode.layer = this.node.layer;
+        phNode.addComponent(UITransform).setContentSize(340, 52);
+        const phLabel = phNode.addComponent(Label);
+        phLabel.fontSize = 26;
+        phLabel.color = new Color(150, 140, 125);
+        phLabel.string = '输入账号名';
+        ebNode.addChild(phNode);
+        const eb = ebNode.addComponent(EditBox);
+        eb.textLabel = textLabel;
+        eb.placeholderLabel = phLabel;
+        eb.maxLength = 20;
+        root.addChild(ebNode);
+        ebNode.setPosition(0, 340, 0);
+        this._accountEdit = eb;
+
+        this.node.addChild(root);
+        root.active = false;
+        // TOUCH_START 也要接住并吞掉，否则触摸会被下层 BootFlow 认领
+        root.on(Node.EventType.TOUCH_START, (e: EventTouch) => { e.propagationStopped = true; }, this);
+        root.on(Node.EventType.TOUCH_END, this._onAccountTap, this);
+        this._accountRoot = root;
+    }
+
+    private _openAccountPanel() {
+        this._ensureAccountPanel();
+        this._accountHint = '';
+        this._accountSwitching = false;
+        if (this._accountEdit) this._accountEdit.string = Accounts.currentAccount();
+        this._accountRoot!.active = true;
+        this._accountRoot!.setSiblingIndex(this.node.children.length - 1);
+        this._renderAccountPanel();
+    }
+
+    private _closeAccountPanel() {
+        if (this._accountRoot) this._accountRoot.active = false;
+    }
+
+    // 面板本地 Label 工厂：挂 _accountRoot，隐藏面板即整体消失（镜像 _squadLabel）。
+    private _accountLabel(i: number): Label {
+        while (i >= this._accountLabels.length) {
+            const n = new Node('AccountLbl');
+            n.layer = this._accountRoot!.layer;
+            n.addComponent(UITransform);
+            const lb = n.addComponent(Label);
+            this._accountRoot!.addChild(n);
+            this._accountLabels.push(lb);
+        }
+        return this._accountLabels[i];
+    }
+
+    private _renderAccountPanel() {
+        const g = this._accountGfx;
+        g.clear();
+        this._accountHots.length = 0;
+        for (const l of this._accountLabels) l.node.active = false;
+        let li = 0;
+        const label = (s: string, x: number, y: number, size = 24, color?: Color) => {
+            const lb = this._accountLabel(li++);
+            lb.node.active = true; lb.string = s; lb.fontSize = size;
+            lb.color = color ?? new Color(235, 228, 210);
+            lb.node.setPosition(x, y, 0);
+        };
+
+        // 半透明底板
+        g.fillColor = new Color(20, 24, 30, 230);
+        g.rect(-this._halfW, -this._halfH, this._halfW * 2, this._halfH * 2);
+        g.fill();
+
+        label('切换账号', 0, 470, 30);
+        label('账号将用于记录你的存档（将来接后端同步）', 0, 425, 20, new Color(160, 152, 138));
+
+        // 输入框衬底（EditBox 自身无背景图）
+        g.fillColor = new Color(238, 230, 210, 255);
+        g.roundRect(-180, 310, 360, 60, 8);
+        g.fill();
+
+        // 提示行：红=错误，灰=切换中
+        if (this._accountHint) {
+            label(this._accountHint, 0, 262, 20, this._accountSwitching ? new Color(180, 176, 165) : new Color(220, 90, 80));
+        }
+
+        // 本机已有账号列表（最多列 6 个，点选填入输入框）
+        const list = Accounts.listAccounts().slice(0, 6);
+        label('本机账号（点选填入）', 0, 210, 22, new Color(160, 152, 138));
+        const rowH = 72, x0 = -240, rowW = 480;
+        let y = 150;
+        for (const id of list) {
+            const cur = id === Accounts.currentAccount();
+            g.fillColor = cur ? new Color(64, 84, 66, 255) : new Color(48, 58, 72, 255);
+            g.roundRect(x0, y - rowH / 2, rowW, rowH - 10, 10);
+            g.fill();
+            label(cur ? `${id}（当前）` : id, 0, y, 24);
+            const rid = id;
+            this._accountHots.push({
+                rect: { x: x0, y: y - rowH / 2, w: rowW, h: rowH - 10 },
+                act: () => { if (this._accountEdit) this._accountEdit.string = rid; },
+            });
+            y -= rowH;
+        }
+
+        // 确认 / 取消
+        g.fillColor = new Color(74, 96, 76, 255);
+        g.roundRect(-220, -560, 200, 70, 12); g.fill();
+        label('确认', -120, -525, 26);
+        this._accountHots.push({ rect: { x: -220, y: -560, w: 200, h: 70 }, act: () => { void this._onAccountConfirm(); } });
+        g.fillColor = new Color(120, 60, 60, 255);
+        g.roundRect(20, -560, 200, 70, 12); g.fill();
+        label('取消', 120, -525, 26);
+        this._accountHots.push({ rect: { x: 20, y: -560, w: 200, h: 70 }, act: () => this._closeAccountPanel() });
+    }
+
+    private _onAccountTap(e: EventTouch) {
+        e.propagationStopped = true;
+        if (this._accountSwitching) return;   // 切换中屏蔽所有操作
+        const ui = e.getUILocation();
+        const p = this._accountRoot!.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
+        for (const h of this._accountHots) {
+            if (p.x >= h.rect.x && p.x <= h.rect.x + h.rect.w && p.y >= h.rect.y && p.y <= h.rect.y + h.rect.h) {
+                h.act();
+                return;
+            }
+        }
+    }
+
+    private async _onAccountConfirm() {
+        const raw = this._accountEdit ? this._accountEdit.string : '';
+        const id = normalizeAccountId(raw);
+        if (!id) {
+            this._accountHint = '账号名需 1~20 字：中英文/数字/下划线';
+            this._renderAccountPanel();
+            return;
+        }
+        if (id === Accounts.currentAccount()) {
+            this._closeAccountPanel();
+            return;
+        }
+        // 先落盘当前账号指针（防半切换状态），再清缓存重跑读档链
+        this._accountSwitching = true;
+        this._accountHint = '读取存档中...';
+        this._renderAccountPanel();
+        Accounts.setCurrentAccount(id);
+        resetPlayerDataCache();
+        this._offlineNoticeText = '';
+        this._offlineNoticeTtl = 0;
+        await this._loadAllPlayerData();
+        this._accountSwitching = false;
+        this._closeAccountPanel();
+        this._showStartScreen();   // 刷新账号行 + 新账号的离线收益提示
+    }
 
     private _createSquadView() {
         this._squadRoot = new Node('SquadView');
