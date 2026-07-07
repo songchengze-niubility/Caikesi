@@ -27,6 +27,7 @@
     "test:inlay-config": "tsx tools/inlay-config-test.ts",
     "test:reward-types": "tsx tools/reward-types-test.ts",
     "test:inlay": "tsx tools/inlay-test.ts",
+    "test:account": "tsx tools/account-test.ts",
     "sim:pacing": "tsx tools/pacing-sim.ts",
     "check:art": "tsx tools/check-art.ts",
     "check:ui-alpha": "tsx tools/check-ui-alpha.ts",
