@@ -34,6 +34,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--character", type=Path, help="White-background character image to cut out.")
     parser.add_argument("--video", type=Path, help="Reference video to sample and split into keyframes.")
+    parser.add_argument("--frames-dir", type=Path, default=None,
+                        help="直接处理已抽好的帧目录（跳过视频抽帧与自动选帧，配合 --select-indices）")
+    parser.add_argument("--select-indices", default="",
+                        help="逗号分隔的帧下标（针对 frames-dir 排序后的 PNG；配合 --frames-dir）")
+    parser.add_argument("--largest-component-only", action="store_true",
+                        help="抠图后只保留最大连通域（清游离残渣；衣袖/武器与主体断开时勿开）")
     parser.add_argument("--out", type=Path, default=Path("output/sprite-keyframes"), help="Output directory.")
 
     parser.add_argument("--sample-fps", type=float, default=12.0, help="Video sampling FPS before keyframe picking.")
@@ -171,7 +177,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--anchor-mode",
-        choices=("foot", "body"),
+        choices=("foot", "body", "sideview"),
         default="foot",
         help="Anchor used to lock frames after background removal. foot locks body X and floor Y; body preserves center mass.",
     )
@@ -886,6 +892,57 @@ def stable_point_alignment(
     }
 
 
+def sideview_alignment(
+    images: list[tuple[str, Image.Image]],
+    bboxes: list[tuple[int, int, int, int] | None],
+    alpha_threshold: int,
+    search_radius: int = 48,
+) -> dict[str, Any] | None:
+    """纯侧视原地动作双锚：地线 Y 硬锁（最低实心行对齐中位数）+ 躯干带 X 互相关（对首个有效帧）。
+    只输出整体平移（offsets 语义=把本帧移回参考系），scales 恒 1。
+    返回 dict 与 stable_point_alignment 同构（offsets/scales/anchor_x/anchor_y + 诊断字段）。"""
+    masks = [alpha_mask(image, alpha_threshold) for _, image in images]
+    ground_ys: list[int] = []
+    for mask in masks:
+        min_pixels = max(3, int(mask.shape[1] * 0.02))
+        rows = np.where(mask.sum(axis=1) >= min_pixels)[0]
+        ground_ys.append(int(rows[-1]) if len(rows) else 0)
+    target_y = int(np.median(np.asarray(ground_ys)))
+
+    def torso_band(mask: np.ndarray, bbox: tuple[int, int, int, int]) -> np.ndarray:
+        left, top, right, bottom = bbox
+        band = np.zeros_like(mask)
+        band_bottom = top + max(1, int((bottom - top) * 0.6))
+        band[top:band_bottom, left:right] = mask[top:band_bottom, left:right]
+        return band
+
+    ref_index = next((i for i, bbox in enumerate(bboxes) if bbox is not None), None)
+    if ref_index is None:
+        return None
+    ref_band = torso_band(masks[ref_index], bboxes[ref_index])
+    offsets: list[tuple[float, float]] = []
+    for index, mask in enumerate(masks):
+        if bboxes[index] is None:
+            offsets.append((0.0, 0.0))
+            continue
+        band = torso_band(mask, bboxes[index])
+        # estimate_mask_translation 的 dx 语义：current 平移 dx 后与 target 最重合 → 即“移回参考系”的平移
+        best_dx, _, _ = estimate_mask_translation(band, ref_band, search_radius, 0)
+        offsets.append((float(best_dx), float(target_y - ground_ys[index])))
+
+    ref_bbox = bboxes[ref_index]
+    return {
+        "offsets": offsets,
+        "scales": [1.0 for _ in images],
+        "anchor_x": (ref_bbox[0] + ref_bbox[2]) / 2.0,
+        "anchor_y": float(target_y),
+        "method": "sideview",
+        "reference_index": ref_index,
+        "ground_ys": ground_ys,
+        "search_radius": search_radius,
+    }
+
+
 def normalize_images(
     images: list[tuple[str, Image.Image]],
     *,
@@ -901,7 +958,7 @@ def normalize_images(
     foot_contact_lock_enabled: bool = True,
     foot_contact_freeze_rows: int = 4,
 ) -> tuple[list[tuple[str, Image.Image, dict[str, Any]]], dict[str, Any]]:
-    if anchor_mode not in {"foot", "body"}:
+    if anchor_mode not in {"foot", "body", "sideview"}:
         fail(f"Unsupported anchor mode: {anchor_mode}")
     bboxes: list[tuple[int, int, int, int] | None] = [
         alpha_bbox(image, alpha_threshold)
@@ -938,17 +995,22 @@ def normalize_images(
     scale_x = (canvas_w - padding * 2) / max_content_w
     scale_y = (canvas_h - padding * 2) / max_content_h
     if stabilize_anchor:
-        alignment_info = stable_point_alignment(images, bboxes, alpha_threshold, stabilize_search_radius)
+        if anchor_mode == "sideview":
+            alignment_info = sideview_alignment(images, bboxes, alpha_threshold, stabilize_search_radius)
+        else:
+            alignment_info = stable_point_alignment(images, bboxes, alpha_threshold, stabilize_search_radius)
         if alignment_info is not None:
             frame_offsets = [(float(dx), float(dy)) for dx, dy in alignment_info["offsets"]]
             detected_frame_scales = [float(item) for item in alignment_info["scales"]]
             frame_scales = detected_frame_scales if scale_stabilize else [1.0 for _ in images]
             source_anchor_x = float(alignment_info["anchor_x"])
             match_anchor_y = float(alignment_info["anchor_y"])
+            # sideview：双锚 offsets 即最终对齐（地线 Y 硬锁 + 躯干带 X），
+            # 跳过下方按 foot/body 锚点中位数的再校正（会用脚部质心把锁好的对齐重新拉漂）
             action_anchors = [
                 action_anchor_point(image, bbox, alpha_threshold, anchor_mode) if bbox is not None else None
                 for (_, image), bbox in zip(images, bboxes)
-            ]
+            ] if anchor_mode != "sideview" else [None for _ in images]
             transformed_action_anchors: list[tuple[float, float] | None] = [None for _ in images]
             for index, (bbox, action_anchor, offset, frame_scale) in enumerate(
                 zip(bboxes, action_anchors, frame_offsets, frame_scales)
@@ -1311,15 +1373,16 @@ def normalize_images(
         if source_anchor_x is not None and source_anchor_y is not None
         else None,
         "stable_alignment": {
-            "stable_bbox": list(alignment_info["stable_bbox"]),
-            "reference_index": alignment_info["reference_index"],
-            "reference_core_bbox": list(alignment_info["reference_core_bbox"]),
-            "stable_fraction": alignment_info["stable_fraction"],
-            "stable_points": alignment_info["stable_points"],
-            "stable_feature_points": alignment_info["stable_feature_points"],
-            "search_radius": alignment_info["search_radius"],
-            "low_search_radius": alignment_info["low_search_radius"],
-            "mean_score": round(alignment_info["mean_score"], 4),
+            "method": alignment_info.get("method", "stable-points"),
+            "stable_bbox": list(alignment_info["stable_bbox"]) if alignment_info.get("stable_bbox") else None,
+            "reference_index": alignment_info.get("reference_index"),
+            "reference_core_bbox": list(alignment_info["reference_core_bbox"]) if alignment_info.get("reference_core_bbox") else None,
+            "stable_fraction": alignment_info.get("stable_fraction"),
+            "stable_points": alignment_info.get("stable_points"),
+            "stable_feature_points": alignment_info.get("stable_feature_points"),
+            "search_radius": alignment_info.get("search_radius"),
+            "low_search_radius": alignment_info.get("low_search_radius"),
+            "mean_score": round(alignment_info["mean_score"], 4) if alignment_info.get("mean_score") is not None else None,
             "scale_range": [round(min(frame_scales), 4), round(max(frame_scales), 4)],
             "detected_scale_range": [
                 round(min(float(item) for item in alignment_info["scales"]), 4),
@@ -1469,11 +1532,9 @@ def extract_video_frames(
         command += ["-ss", f"{video_start:.4f}"]
     if clip_duration is not None and clip_duration > 0:
         command += ["-t", f"{clip_duration:.4f}"]
-    command += [
-        "-vf",
-        f"fps={sample_fps}",
-        str(frame_pattern),
-    ]
+    if sample_fps > 0:
+        command += ["-vf", f"fps={sample_fps}"]
+    command += [str(frame_pattern)]
     subprocess.run(command, check=True)
     frames = sorted(frames_dir.glob("frame_*.png"))
     if not frames:
@@ -1689,12 +1750,13 @@ def select_keyframes(
             else:
                 selected = evenly_pick(selected, max_keyframes)
 
+    # sample_fps<=0 = 原生 fps 抽帧（无时间基准），时间戳字段置 None
     details = [
         {
             "index": index,
             "source_frame": frames[index].name,
-            "time_sec": round(time_offset_sec + index / sample_fps, 4),
-            "segment_time_sec": round(index / sample_fps, 4),
+            "time_sec": round(time_offset_sec + index / sample_fps, 4) if sample_fps > 0 else None,
+            "segment_time_sec": round(index / sample_fps, 4) if sample_fps > 0 else None,
             "diff_score": round(scores[index], 4),
             "selection_mode": selection_mode,
         }
@@ -1762,45 +1824,48 @@ def process_character(args: argparse.Namespace, manifest: dict[str, Any]) -> Non
     }
 
 
-def process_video(args: argparse.Namespace, manifest: dict[str, Any]) -> None:
-    video = require_file(args.video, "video")
-    if video is None:
-        return
+def keep_largest_component(image: Image.Image, alpha_threshold: int) -> Image.Image:
+    """只保留 alpha 最大连通域（4 邻域 BFS），游离残渣/飞白全清。
+    注意：衣袖/武器与主体在画面上断开的素材勿开（会被当残渣误杀）。"""
+    arr = np.array(image)
+    mask = arr[:, :, 3] > alpha_threshold
+    if not mask.any():
+        return image
+    h, w = mask.shape
+    labels = np.zeros((h, w), dtype=np.int32)
+    current = 0
+    best_label, best_area = 0, 0
+    for sy, sx in zip(*np.where(mask)):
+        if labels[sy, sx]:
+            continue
+        current += 1
+        area = 0
+        queue = deque([(sy, sx)])
+        labels[sy, sx] = current
+        while queue:
+            y, x = queue.popleft()
+            area += 1
+            for ny, nx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)):
+                if 0 <= ny < h and 0 <= nx < w and mask[ny, nx] and not labels[ny, nx]:
+                    labels[ny, nx] = current
+                    queue.append((ny, nx))
+        if area > best_area:
+            best_area, best_label = area, current
+    keep = labels == best_label
+    arr[:, :, 3] = np.where(keep, arr[:, :, 3], 0)
+    return Image.fromarray(arr)
 
-    raw_dir = args.out / "raw_frames"
+
+def matte_and_finalize(
+    frames: list[Path],
+    selected: list[int],
+    selected_details: list[dict[str, Any]],
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """选中帧 → 抠图 → 归一对齐 → keyframes/预览产物。返回写 manifest 的公共字段。
+    video 模式与 frames-dir 手动选帧模式共用。"""
     key_dir = args.out / "keyframes"
     clear_pngs(key_dir)
-    clip_duration = video_clip_duration(args.video_start, args.video_end, args.video_seconds)
-    clip_end = args.video_start + clip_duration if clip_duration is not None else None
-    frames = extract_video_frames(video, raw_dir, args.sample_fps, args.video_start, clip_duration)
-    raw_preview_path = args.out / "raw_frames_preview.png"
-    make_raw_preview(frames, raw_preview_path, args.preview_columns)
-    selected, selected_details = select_keyframes(
-        frames,
-        sample_fps=args.sample_fps,
-        time_offset_sec=args.video_start,
-        diff_threshold=args.diff_threshold,
-        min_gap=args.min_gap,
-        max_keyframes=args.max_keyframes,
-        target_keyframes=args.target_keyframes,
-        selection_mode=args.selection_mode,
-        white_threshold=args.white_threshold,
-        white_softness=args.white_softness,
-        chroma_tolerance=args.chroma_tolerance,
-        background_mode=args.background_mode,
-        edge_tolerance=args.edge_tolerance,
-        edge_softness=args.edge_softness,
-        hole_cleanup=not args.no_hole_cleanup,
-        hole_min_area=args.hole_min_area,
-        hole_max_area=args.hole_max_area,
-        fringe_cleanup=not args.no_fringe_cleanup,
-        fringe_radius=args.fringe_radius,
-        fringe_strength=args.fringe_strength,
-        fringe_brightness=args.fringe_brightness,
-        decontaminate=not args.no_decontaminate,
-        alpha_threshold=args.alpha_threshold,
-    )
-
     cut_images: list[tuple[str, Image.Image]] = []
     for order, frame_index in enumerate(selected):
         with Image.open(frames[frame_index]) as source:
@@ -1823,6 +1888,8 @@ def process_video(args: argparse.Namespace, manifest: dict[str, Any]) -> None:
                 decontaminate=not args.no_decontaminate,
                 edge_contract=args.edge_contract,
             )
+        if args.largest_component_only:
+            cut = keep_largest_component(cut, args.alpha_threshold)
         cut_images.append((f"key_{order:03d}", cut))
 
     normalized, normalization_info = normalize_images(
@@ -1855,6 +1922,80 @@ def process_video(args: argparse.Namespace, manifest: dict[str, Any]) -> None:
     make_strip(key_paths, strip_path)
     make_preview(key_paths, preview_path, args.preview_columns)
     make_color_preview(key_paths, dark_preview_path, args.preview_columns, (42, 48, 50))
+    return {
+        "selected_keyframe_count": len(selected_details),
+        "normalization": normalization_info,
+        "keyframes": selected_details,
+        "strip": str(strip_path),
+        "preview": str(preview_path),
+        "dark_preview": str(dark_preview_path),
+    }
+
+
+def process_frames_dir(args: argparse.Namespace, manifest: dict[str, Any]) -> None:
+    """--frames-dir 模式：直接处理已抽好的帧目录，按 --select-indices 手动选帧（跳过抽帧与自动选帧）。"""
+    frames = sorted(args.frames_dir.glob("*.png"))
+    if not frames:
+        fail(f"frames-dir 里没有 PNG: {args.frames_dir}")
+    if not args.select_indices.strip():
+        fail("--frames-dir 模式必须提供 --select-indices")
+    try:
+        selected = sorted({int(part) for part in args.select_indices.split(",") if part.strip() != ""})
+    except ValueError:
+        fail(f"--select-indices 解析失败: {args.select_indices}")
+    bad = [index for index in selected if index < 0 or index >= len(frames)]
+    if bad:
+        fail(f"帧下标越界 {bad}（共 {len(frames)} 帧）")
+    selected_details: list[dict[str, Any]] = [
+        {"frame_index": index, "source": str(frames[index])} for index in selected
+    ]
+    common = matte_and_finalize(frames, selected, selected_details, args)
+    manifest["frames_dir"] = {
+        "source": str(args.frames_dir),
+        "raw_frame_count": len(frames),
+        "select_indices": selected,
+        **common,
+    }
+
+
+def process_video(args: argparse.Namespace, manifest: dict[str, Any]) -> None:
+    video = require_file(args.video, "video")
+    if video is None:
+        return
+
+    raw_dir = args.out / "raw_frames"
+    clip_duration = video_clip_duration(args.video_start, args.video_end, args.video_seconds)
+    clip_end = args.video_start + clip_duration if clip_duration is not None else None
+    frames = extract_video_frames(video, raw_dir, args.sample_fps, args.video_start, clip_duration)
+    raw_preview_path = args.out / "raw_frames_preview.png"
+    make_raw_preview(frames, raw_preview_path, args.preview_columns)
+    selected, selected_details = select_keyframes(
+        frames,
+        sample_fps=args.sample_fps,
+        time_offset_sec=args.video_start,
+        diff_threshold=args.diff_threshold,
+        min_gap=args.min_gap,
+        max_keyframes=args.max_keyframes,
+        target_keyframes=args.target_keyframes,
+        selection_mode=args.selection_mode,
+        white_threshold=args.white_threshold,
+        white_softness=args.white_softness,
+        chroma_tolerance=args.chroma_tolerance,
+        background_mode=args.background_mode,
+        edge_tolerance=args.edge_tolerance,
+        edge_softness=args.edge_softness,
+        hole_cleanup=not args.no_hole_cleanup,
+        hole_min_area=args.hole_min_area,
+        hole_max_area=args.hole_max_area,
+        fringe_cleanup=not args.no_fringe_cleanup,
+        fringe_radius=args.fringe_radius,
+        fringe_strength=args.fringe_strength,
+        fringe_brightness=args.fringe_brightness,
+        decontaminate=not args.no_decontaminate,
+        alpha_threshold=args.alpha_threshold,
+    )
+
+    common = matte_and_finalize(frames, selected, selected_details, args)
 
     if not args.keep_raw_frames:
         for frame in raw_dir.glob("*.png"):
@@ -1868,24 +2009,19 @@ def process_video(args: argparse.Namespace, manifest: dict[str, Any]) -> None:
         "video_seconds": args.video_seconds,
         "clip_duration": clip_duration,
         "raw_frame_count": len(frames),
-        "selected_keyframe_count": len(selected_details),
         "diff_threshold": args.diff_threshold,
         "min_gap": args.min_gap,
         "selection_mode": args.selection_mode,
-        "normalization": normalization_info,
-        "keyframes": selected_details,
         "raw_preview": str(raw_preview_path),
-        "strip": str(strip_path),
-        "preview": str(preview_path),
-        "dark_preview": str(dark_preview_path),
         "raw_frames_dir": str(raw_dir) if args.keep_raw_frames else None,
+        **common,
     }
 
 
 def main() -> None:
     args = parse_args()
-    if args.character is None and args.video is None:
-        fail("Pass at least --character or --video.")
+    if args.character is None and args.video is None and args.frames_dir is None:
+        fail("Pass at least --character, --video or --frames-dir.")
     if args.video is not None:
         video_clip_duration(args.video_start, args.video_end, args.video_seconds)
 
@@ -1929,7 +2065,12 @@ def main() -> None:
     }
 
     process_character(args, manifest)
-    process_video(args, manifest)
+    if args.frames_dir is not None:
+        # 手动选帧模式优先：frames-dir 与 video 同传时忽略 video
+        args.frames_dir = args.frames_dir.resolve()
+        process_frames_dir(args, manifest)
+    else:
+        process_video(args, manifest)
 
     manifest_path = args.out / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
