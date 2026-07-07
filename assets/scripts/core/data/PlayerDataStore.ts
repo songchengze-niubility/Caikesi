@@ -16,6 +16,11 @@ export async function savePlayerData(touchLastSaveTime = true): Promise<void> {
     await DataService.save(_cache);
 }
 
-export function clearPlayerDataCacheForTest(): void {
+// 切账号/测试时清缓存：下次 loadPlayerData 会按当前账号重新读档。
+export function resetPlayerDataCache(): void {
     _cache = null;
+}
+
+export function clearPlayerDataCacheForTest(): void {
+    resetPlayerDataCache();
 }

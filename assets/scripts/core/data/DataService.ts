@@ -1,11 +1,12 @@
 // 数据服务层（DataService）—— 这就是"预留后端"的接缝
 // 玩法代码只通过 DataService 读写存档，不关心数据存在哪。
 // 现在：用本地存储（LocalDataSource）。
-// 以后接后端：新写一个 RemoteDataSource 实现同一个接口，
+// 以后接后端：新写一个 RemoteDataSource 实现同一个接口（用户身份 = Accounts.currentAccount()），
 //             只把文件最下面那一行换成 new RemoteDataSource()，玩法代码一行不用改。
 // 注意：接口故意设计成"异步"（Promise），因为网络请求天生异步，现在就异步以后才不用返工。
 
 import { sys } from 'cc';
+import { AccountService } from './AccountService';
 import type { InventorySave } from '../../inventory/InventoryModel';
 import type { ProgressSave } from '../../progression/ProgressModel';
 import type { ChestSave } from '../../chest/ChestModel';
@@ -37,12 +38,15 @@ export interface IDataSource {
     save(data: PlayerData): Promise<void>;
 }
 
-// 本地数据源（现在用）。微信小游戏里 sys.localStorage 会自动用微信的本地存储。
-class LocalDataSource implements IDataSource {
-    private static KEY = 'idle_save_v1';
+// 账号服务单例：绑真实 localStorage。accountId 即将来后端的用户标识。
+export const Accounts = new AccountService(sys.localStorage);
 
+// 本地数据源（现在用）。微信小游戏里 sys.localStorage 会自动用微信的本地存储。
+// 存档键按当前账号作用域隔离（save_<accountId>），一档损坏不连累别档。
+class LocalDataSource implements IDataSource {
     async load(): Promise<PlayerData> {
-        const raw = sys.localStorage.getItem(LocalDataSource.KEY);
+        Accounts.migrateLegacy();  // 旧无账号存档首载自动迁入 guest，幂等
+        const raw = sys.localStorage.getItem(Accounts.currentSaveKey());
         if (!raw) return defaultData();
         try {
             // 用默认值兜底，避免以后加了新字段时老存档缺字段报错
@@ -53,7 +57,7 @@ class LocalDataSource implements IDataSource {
     }
 
     async save(data: PlayerData): Promise<void> {
-        sys.localStorage.setItem(LocalDataSource.KEY, JSON.stringify(data));
+        sys.localStorage.setItem(Accounts.currentSaveKey(), JSON.stringify(data));
     }
 }
 
