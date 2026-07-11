@@ -19,7 +19,7 @@ function clamp(v: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, v));
 }
 
-function normalizeStats(st: CombatStats): CombatStats {
+export function normalizeStats(st: CombatStats): CombatStats {
     st.hp = Math.max(1, st.hp);
     st.atk = Math.max(0, st.atk);
     st.def = Math.max(0, st.def);
