@@ -5,6 +5,11 @@
     "version": "3.8.8"
   },
   "scripts": {
+    "typecheck:game": "tsc -p tsconfig.game.json",
+    "typecheck:tools": "tsc -p tsconfig.tools.json",
+    "typecheck": "npm run typecheck:game && npm run typecheck:tools",
+    "test": "npm run test:inventory && npm run test:effective && npm run test:drop && npm run test:combat && npm run test:progression && npm run test:services && npm run test:art && npm run test:partsrig && npm run test:craft && npm run test:skill && npm run test:squad && npm run test:growth-config && npm run test:growth && npm run test:inlay-config && npm run test:reward-types && npm run test:inlay && npm run test:account",
+    "verify": "npm run typecheck && npm test && npm run sim:pacing && npm run check:art && npm run check:ui-alpha",
     "config": "tsx tools/excel-to-config.ts",
     "seed:battle": "tsx tools/seed-battle-xlsx.ts",
     "test:inventory": "tsx tools/inventory-test.ts",
@@ -45,8 +50,9 @@
     "sprite:keyframes:ui": "py -3 tools/sprite-keyframe-ui.py --open"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "tsx": "^4.22.4",
-    "typescript": "^6.0.3",
+    "typescript": "5.8.2",
     "xlsx": "^0.18.5"
   }
 }

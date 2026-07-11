@@ -1,4 +1,5 @@
 import { ArtManifest } from '../art/ArtManifest';
+import { ensureDebugDock } from './DebugDock';
 
 export interface ActionPreviewRequest {
     key: string;
@@ -61,24 +62,26 @@ export function mountActionPreviewPanel(
     const panel = doc.createElement('div');
     panel.id = PANEL_ID;
     panel.style.cssText = [
-        'position:fixed', 'top:8px', 'left:8px', 'width:272px',
+        'position:relative', 'width:auto', 'max-height:35vh', 'overflow-y:auto',
         'background:rgba(16,18,22,0.92)', 'color:#eee', 'font:12px/1.4 system-ui,Arial',
-        'padding:8px', 'border-radius:8px', 'z-index:99999',
+        'padding:8px', 'border-radius:8px',
         'box-shadow:0 4px 16px rgba(0,0,0,0.45)', 'user-select:none',
+        'pointer-events:none',
     ].join(';');
 
     const head = doc.createElement('div');
-    head.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px';
+    head.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px;pointer-events:none';
     const title = doc.createElement('b');
     title.textContent = '动作预览';
     title.style.cssText = 'flex:1;font-size:13px';
     head.appendChild(title);
 
     const body = doc.createElement('div');
-    body.style.display = 'none';
+    body.style.cssText = 'display:none;pointer-events:auto';
     const toggle = button(doc, '+', '#444', () => {
         const collapsed = body.style.display !== 'none';
         body.style.display = collapsed ? 'none' : 'block';
+        panel.style.width = collapsed ? 'auto' : '272px';
         toggle.textContent = collapsed ? '+' : '-';
     });
     head.appendChild(toggle);
@@ -146,7 +149,7 @@ export function mountActionPreviewPanel(
     x.oninput = livePreview;
     floorY.oninput = livePreview;
 
-    doc.body.appendChild(panel);
+    ensureDebugDock(doc).appendChild(panel);
     onHide();
     return () => panel.remove();
 }
@@ -176,7 +179,7 @@ function numberInput(doc: any, value: number, min: number, max: number, step: nu
 function button(doc: any, text: string, bg: string, onClick: () => void): any {
     const btn = doc.createElement('button');
     btn.textContent = text;
-    btn.style.cssText = `background:${bg};color:#fff;border:0;border-radius:5px;padding:4px 8px;cursor:pointer;font-size:11px`;
+    btn.style.cssText = `background:${bg};color:#fff;border:0;border-radius:5px;padding:4px 8px;cursor:pointer;font-size:11px;pointer-events:auto`;
     btn.onclick = onClick;
     return btn;
 }

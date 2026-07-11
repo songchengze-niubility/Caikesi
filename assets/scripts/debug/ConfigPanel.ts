@@ -4,6 +4,8 @@
 // 注意：用的是 HTML DOM，只在网页预览里出现；微信小游戏构建里不会显示（也不该带它上线）。
 
 import { BattleConfig, CombatStats, SoldierClass } from '../config/BattleConfig';
+// 两个网页调试工具共用 DebugDock；修改 Dock 后由该稳定入口触发 Creator 重新打包依赖。
+import { ensureDebugDock } from './DebugDock';
 
 // 一个可调字段的描述
 interface Field {
@@ -110,36 +112,39 @@ export function mountConfigPanel(onRestart: () => void) {
     const panel = doc.createElement('div');
     panel.id = PANEL_ID;
     panel.style.cssText = [
-        'position:fixed', 'top:8px', 'right:8px', 'width:264px', 'max-height:92vh',
+        'position:relative', 'width:auto', 'max-height:60vh',
         'overflow-y:auto', 'background:rgba(20,22,28,0.92)', 'color:#eee',
         'font:12px/1.4 system-ui,Arial', 'padding:8px', 'border-radius:8px',
-        'z-index:99999', 'box-shadow:0 4px 16px rgba(0,0,0,0.5)', 'user-select:none',
+        'box-shadow:0 4px 16px rgba(0,0,0,0.5)', 'user-select:none',
+        'pointer-events:none',
     ].join(';');
 
     // 标题栏
     const head = doc.createElement('div');
-    head.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px';
+    head.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px;pointer-events:none';
     const title = doc.createElement('b');
     title.textContent = '⚙ 战斗调参';
     title.style.cssText = 'flex:1;font-size:13px';
     head.appendChild(title);
 
     const body = doc.createElement('div');
+    body.style.cssText = 'display:none;pointer-events:auto';
 
     const mkBtn = (text: string, bg: string, on: () => void) => {
         const b = doc.createElement('button');
         b.textContent = text;
-        b.style.cssText = `background:${bg};color:#fff;border:0;border-radius:5px;padding:3px 7px;cursor:pointer;font-size:11px`;
+        b.style.cssText = `background:${bg};color:#fff;border:0;border-radius:5px;padding:3px 7px;cursor:pointer;font-size:11px;pointer-events:auto`;
         b.onclick = on;
         return b;
     };
 
     // 折叠
-    let collapsed = false;
-    const toggle = mkBtn('—', '#444', () => {
+    let collapsed = true;
+    const toggle = mkBtn('+', '#444', () => {
         collapsed = !collapsed;
         body.style.display = collapsed ? 'none' : 'block';
-        toggle.textContent = collapsed ? '+' : '—';
+        panel.style.width = collapsed ? 'auto' : '264px';
+        toggle.textContent = collapsed ? '+' : '−';
     });
     head.appendChild(toggle);
     panel.appendChild(head);
@@ -202,7 +207,7 @@ export function mountConfigPanel(onRestart: () => void) {
     hint.style.cssText = 'margin-top:6px;color:#888;font-size:10px';
     body.appendChild(hint);
 
-    doc.body.appendChild(panel);
+    ensureDebugDock(doc).appendChild(panel);
 }
 
 // 导出当前配置为 JSON：复制到剪贴板 + 打印控制台 + 弹出可复制文本框

@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "skipLibCheck": true
+  },
+  "include": [
+    "assets/scripts/**/*.ts"
+  ],
+  "exclude": [
+    "tools",
+    "temp",
+    "library"
+  ]
+}

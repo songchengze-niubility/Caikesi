@@ -4,8 +4,8 @@
 // 生成时间：2026-07-05T06:10:30.380Z
 
 /* eslint-disable */
-// @ts-nocheck
-export const generatedBattleConfig = {
+import type { BattleConfigData } from './BattleConfig';
+export const generatedBattleConfig: BattleConfigData = {
     "stats": {
         "tank": {
             "hp": 360,

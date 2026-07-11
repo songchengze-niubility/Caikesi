@@ -1,7 +1,7 @@
 // 装备背包占位 UI（覆盖层）：顶部 5 装备栏 + 左背包 + 右仓库 + 底部按钮。
 // 色块格子（品质上色）+ Label 名字。点击命中用热区 hit-test。接美术时换 Sprite。
 
-import { Node, Graphics, Label, UITransform, Color, Vec3, EventTouch } from 'cc';
+import { Node, Graphics, Label, UITransform, Color, Vec3, EventTouch, BlockInputEvents } from 'cc';
 import { InventoryModel, sellPriceOf } from './InventoryModel';
 import type { InventorySortMode, OpResult } from './InventoryModel';
 import {
@@ -32,7 +32,10 @@ interface TouchState {
 const CELL = 92, GAP = 8, COLS = 3;
 const ROW = CELL + GAP;
 const DRAG_THRESHOLD = 10;
+const CONTROL_TAP_SLOP = 28;
 const PRESS_SCALE = 0.94;
+const TOP_SAFE_INSET = 72;
+const CHARACTER_ROW_H = 48;
 const BATCH_SELL_MAX_QUALITY: Quality = 'fine';
 const SORT_LABEL: Record<InventorySortMode, string> = { quality: '排品质', slot: '排部位', name: '排名称' };
 
@@ -50,6 +53,7 @@ export class InventoryView {
     private sortMode: InventorySortMode = 'quality';
     private toast = '';
     private toastT = 0;
+    private legacyTopControlsCleaned = false;
 
     constructor(
         private parent: Node,
@@ -62,6 +66,7 @@ export class InventoryView {
         this.root = new Node('InventoryView');
         this.root.layer = parent.layer;
         this.root.addComponent(UITransform).setContentSize(halfW * 2, halfH * 2);
+        this.root.addComponent(BlockInputEvents);
         const g = new Node('InvGfx');
         g.layer = parent.layer;
         g.addComponent(UITransform);
@@ -107,6 +112,7 @@ export class InventoryView {
     }
 
     private render() {
+        this.removeLegacyTopControlNodes();
         const g = this.gfx; g.clear();
         this.hots = [];
         this.scrollAreas = {};
@@ -121,24 +127,24 @@ export class InventoryView {
         g.rect(-this.halfW, -this.halfH, this.halfW * 2, this.halfH * 2); g.fill();
 
         // —— 顶部：角色切换按钮（一行）——
-        const charY = this.halfH - 56;   // 按钮区 [charY, charY+40]
-        lbl(-this.halfW + 90, charY + 20, '角色', 22, new Color(255, 220, 120));
-        let cx = -this.halfW + 150;
-        for (const c of CHARACTERS) {
+        const charY = this.characterRowY();
+        const charH = CHARACTER_ROW_H;
+        lbl(-this.halfW + 90, charY + charH / 2, '角色', 22, new Color(255, 220, 120));
+        for (let i = 0; i < CHARACTERS.length; i++) {
+            const c = CHARACTERS[i];
             const on = c === this.activeChar;
-            const hot = { x: cx, y: charY, w: 96, h: 40, kind: 'char', char: c } as Hot;
-            const r = this.pressRect(cx, charY, 96, 40, this.isPressed(hot));
+            const hot = this.characterHot(c, i);
+            const r = this.pressRect(hot.x, hot.y, hot.w, hot.h, this.isPressed(hot));
             g.fillColor = on ? new Color(90, 120, 160) : new Color(55, 60, 72);
             g.roundRect(r.x, r.y, r.w, r.h, 6); g.fill();
             if (on) { g.strokeColor = new Color(255, 230, 120); g.lineWidth = 3; g.roundRect(r.x, r.y, r.w, r.h, 6); g.stroke(); }
-            lbl(cx + 48, charY + 20, CHARACTER_LABEL[c], 18);
+            lbl(hot.x + hot.w / 2, hot.y + hot.h / 2, CHARACTER_LABEL[c], 18);
             this.hots.push(hot);
-            cx += 104;
         }
 
         // —— 当前角色的 5 装备栏（在角色行下方）——
-        lbl(0, this.halfH - 86, `${CHARACTER_LABEL[this.activeChar]} 的装备栏`, 20, new Color(220, 220, 235));
-        const topY = this.halfH - 100 - CELL;   // 装备格区 [topY, topY+CELL]，整体在标题/角色行之下
+        lbl(0, charY - 30, `${CHARACTER_LABEL[this.activeChar]} 的装备栏`, 20, new Color(220, 220, 235));
+        const topY = charY - 58 - CELL;
         const eq = this.model.equipped[this.activeChar];
         const ew = SLOTS.length * (CELL + GAP) - GAP;
         let ex = -ew / 2;
@@ -170,11 +176,11 @@ export class InventoryView {
         this.drawGrid(g, lbl, 'backpack', leftX, midTop, gridBottom, `背包 ${this.model.backpack.length}/${this.model.maxBackpack}`, this.model.backpack);
         this.drawGrid(g, lbl, 'warehouse', rightX, midTop, gridBottom, `仓库 ${this.model.warehouse.length}/${this.model.maxWarehouse}`, this.model.warehouse);
 
-        const btn = (x: number, s: string, kind: string) => {
-            const hot = { x, y: by, w: 90, h: 44, kind } as Hot;
-            const r = this.pressRect(x, by, 90, 44, this.isPressed(hot));
+        const btn = (x: number, s: string, kind: string, y = by) => {
+            const hot = { x, y, w: 90, h: 44, kind } as Hot;
+            const r = this.pressRect(x, y, 90, 44, this.isPressed(hot));
             g.fillColor = new Color(60, 66, 80); g.roundRect(r.x, r.y, r.w, r.h, 8); g.fill();
-            lbl(x + 45, by + 22, s, 16);
+            lbl(x + 45, y + 22, s, 16);
             this.hots.push(hot);
         };
         const selected = this.selectedItem();
@@ -190,13 +196,38 @@ export class InventoryView {
         btn(xStart + step * 6, SORT_LABEL[this.sortMode], 'sort');
         btn(xStart + step * 7, '批售白绿', 'batchSell');
         btn(xStart + step * 8, '镶嵌', 'inlay');
-        btn(this.halfW - 110, '关闭', 'close');
+        // 关闭固定在右上角，避免与铺满底栏的“镶嵌”按钮重叠。
+        const closeHot = this.closeHot();
+        btn(closeHot.x, '关闭', 'close', closeHot.y);
 
         if (this.toast) lbl(0, by + 198, this.toast, 20, new Color(255, 120, 120));
         this.drawDragPreview(g, lbl);
 
         // 隐藏多余 label
         for (let i = li; i < this.labelPool.length; i++) this.labelPool[i].node.active = false;
+    }
+
+    private characterHot(char: CharacterId, index: number): Hot {
+        return { x: -this.halfW + 150 + index * 104, y: this.characterRowY(), w: 96, h: CHARACTER_ROW_H, kind: 'char', char };
+    }
+
+    private closeHot(): Hot {
+        return { x: this.halfW - 110, y: this.characterRowY() + 2, w: 90, h: 44, kind: 'close' };
+    }
+
+    private characterRowY(): number {
+        return this.halfH - TOP_SAFE_INSET - CHARACTER_ROW_H;
+    }
+
+    private removeLegacyTopControlNodes(): void {
+        if (this.legacyTopControlsCleaned) return;
+        this.legacyTopControlsCleaned = true;
+        for (const child of [...this.root.children]) {
+            if (child.name === 'InventoryCloseHot' || child.name.indexOf('InventoryCharacterHot_') === 0) {
+                child.removeFromParent();
+                child.destroy();
+            }
+        }
     }
 
     private drawGrid(g: Graphics, lbl: (x: number, y: number, s: string, size?: number, c?: Color) => void,
@@ -368,12 +399,19 @@ export class InventoryView {
     }
 
     private hitAt(p: Vec3): Hot | null {
+        // 按钮/角色切换优先于滚动列表；即使未来布局压缩，也不能被列表热区吞掉。
+        const controlHit = this.hots.find(h => h.kind !== 'cell' && this.contains(h, p));
+        if (controlHit) return controlHit;
         const gridHit = this.gridHitAt(p);
         if (gridHit) return gridHit;
         return this.hots.find(h => {
             if (h.kind === 'cell' && (h.zone === 'backpack' || h.zone === 'warehouse')) return false;
-            return p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h;
+            return this.contains(h, p);
         }) ?? null;
+    }
+
+    private contains(hot: Hot, p: Vec3): boolean {
+        return p.x >= hot.x && p.x <= hot.x + hot.w && p.y >= hot.y && p.y <= hot.y + hot.h;
     }
 
     private gridHitAt(p: Vec3): Hot | null {
@@ -418,6 +456,7 @@ export class InventoryView {
 
     private onTouchStart(e: EventTouch) {
         if (!this.root.active) return;
+        e.propagationStopped = true;
         const p = this.localPoint(e);
         const hit = this.hitAt(p);
         this.pressed = hit;
@@ -434,6 +473,7 @@ export class InventoryView {
 
     private onTouchMove(e: EventTouch) {
         if (!this.touch) return;
+        e.propagationStopped = true;
         const p = this.localPoint(e);
         const dx = p.x - this.touch.startX;
         const dy = p.y - this.touch.startY;
@@ -485,6 +525,7 @@ export class InventoryView {
 
     private onTouchEnd(e: EventTouch) {
         if (!this.touch) return;
+        e.propagationStopped = true;
         const p = this.localPoint(e);
         const t = this.touch;
         this.touch = null;
@@ -498,12 +539,24 @@ export class InventoryView {
             this.render();
             return;
         }
-        if (t.moved) { this.render(); return; }
-        this.handleTap(this.hitAt(p));
+        const releaseHit = this.hitAt(p);
+        if (t.moved) {
+            const dx = p.x - t.startX;
+            const dy = p.y - t.startY;
+            const withinControlSlop = dx * dx + dy * dy <= CONTROL_TAP_SLOP * CONTROL_TAP_SLOP;
+            if (t.hit?.kind !== 'cell' && withinControlSlop && this.sameHot(t.hit, releaseHit)) {
+                this.handleTap(releaseHit);
+            } else {
+                this.render();
+            }
+            return;
+        }
+        this.handleTap(releaseHit);
     }
 
-    private onTouchCancel() {
+    private onTouchCancel(e?: EventTouch) {
         if (!this.touch) return;
+        if (e) e.propagationStopped = true;
         this.touch = null;
         this.pressed = null;
         this.render();

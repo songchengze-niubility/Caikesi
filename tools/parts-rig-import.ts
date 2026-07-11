@@ -24,8 +24,10 @@ for (const action of RIG_ACTION_IDS) {
     const def = data[action];
     if (!def) throw new Error(`缺动作 ${action}`);
     if (!(def.duration > 0)) throw new Error(`${action}.duration 非法`);
-    const animSets: [string, Record<string, { times: number[]; values: number[] }>][] =
-        [...Object.entries(def.parts || {}), ...(def.root ? [['root', def.root] as [string, never]] : [])];
+    type TrackMap = Record<string, { times: number[]; values: number[] }>;
+    const partEntries = Object.entries(def.parts || {}) as [string, TrackMap][];
+    const rootEntries: [string, TrackMap][] = def.root ? [['root', def.root as TrackMap]] : [];
+    const animSets: [string, TrackMap][] = [...partEntries, ...rootEntries];
     for (const [pid, anim] of animSets) {
         if (pid !== 'root' && !partSet.has(pid)) throw new Error(`${action} 有未知部件 ${pid}`);
         for (const [ch, tr] of Object.entries(anim || {})) {

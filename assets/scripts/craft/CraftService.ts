@@ -20,7 +20,7 @@ export function craftEquipment(
     slot: EquipSlot,
     rng: () => number = Math.random,
 ): CraftResult {
-    if (!SLOTS.includes(slot)) return { ok: false, reason: '部位非法' };
+    if (SLOTS.indexOf(slot) < 0) return { ok: false, reason: '部位非法' };
 
     let tier;
     try {

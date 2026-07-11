@@ -35,7 +35,7 @@ export class AccountService {
         if (!id) return false;
         this.storage.setItem(KEY_CURRENT, id);
         const list = this.listAccounts();
-        if (!list.includes(id)) {
+        if (list.indexOf(id) < 0) {
             list.push(id);
             this.storage.setItem(KEY_INDEX, JSON.stringify(list));
         }

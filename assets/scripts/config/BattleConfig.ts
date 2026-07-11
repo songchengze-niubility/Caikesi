@@ -61,7 +61,7 @@ export interface Level {
 //   生成器：tools/excel-to-config.ts（读 tools/config-xlsx/battle.xlsx）。
 //   BattleManager 持有该对象内部引用用于实时调参，ConfigPanel 通过 setter 写回——
 //   因此产物的结构必须保持与下方类型定义一致（生成器已保证）。
-export const BattleConfig = generatedBattleConfig as {
+export interface BattleConfigData {
     stats: Record<SoldierClass, CombatStats>;
     enemyTypes: Record<string, EnemyType>;
     levels: Level[];
@@ -96,4 +96,6 @@ export const BattleConfig = generatedBattleConfig as {
         hill: { color: [number, number, number]; speed: number };
         groundScroll: number;
     };
-};
+}
+
+export const BattleConfig: BattleConfigData = generatedBattleConfig;

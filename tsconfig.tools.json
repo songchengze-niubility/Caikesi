@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "types": ["node"],
+    "esModuleInterop": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": [
+    "tools/**/*.ts"
+  ],
+  "exclude": [
+    "temp",
+    "library"
+  ]
+}

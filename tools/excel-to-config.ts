@@ -805,6 +805,7 @@ interface ConfigSource {
     xlsxRel: string;     // 源 xlsx，相对 tools/
     outRel: string;      // 产物 .ts，相对 tools/
     exportVar: string;   // 产物里 export const 的名字（消费端 import 用）
+    typeImport?: { name: string; from: string }; // 可选：声明产物导出类型（import type 不产生运行时环）
     build: (wb: XLSX.WorkBook) => { config: unknown; summary: string };
 }
 const SOURCES: ConfigSource[] = [
@@ -813,6 +814,7 @@ const SOURCES: ConfigSource[] = [
         xlsxRel: 'config-xlsx/battle.xlsx',
         outRel: '../assets/scripts/config/battle.config.generated.ts',
         exportVar: 'generatedBattleConfig',
+        typeImport: { name: 'BattleConfigData', from: './BattleConfig' },
         build: buildBattleConfig,
     },
     {
@@ -869,14 +871,18 @@ const SOURCES: ConfigSource[] = [
 // 产物代码模板
 function genCode(src: ConfigSource, config: unknown): string {
     const now = new Date().toISOString();
+    const typeImport = src.typeImport
+        ? `import type { ${src.typeImport.name} } from '${src.typeImport.from}';\n`
+        : '';
+    const typeAnnotation = src.typeImport ? `: ${src.typeImport.name}` : '';
+    const typecheckDirective = src.typeImport ? '' : '// @ts-nocheck\n';
     return `// ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/${src.xlsxRel}，然后跑：npm run config
 // 源文件：tools/${src.xlsxRel}
 // 生成时间：${now}
 
 /* eslint-disable */
-// @ts-nocheck
-export const ${src.exportVar} = ${JSON.stringify(config, null, 4)};
+${typecheckDirective}${typeImport}export const ${src.exportVar}${typeAnnotation} = ${JSON.stringify(config, null, 4)};
 `;
 }
 
