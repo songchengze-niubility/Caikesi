@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/battle.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/battle.xlsx
-// 生成时间：2026-07-11T06:45:37.636Z
+// 生成时间：2026-07-11T07:25:23.255Z
 
 /* eslint-disable */
 import type { BattleConfigData } from './BattleConfig';
@@ -275,13 +275,13 @@ export const generatedBattleConfig: BattleConfigData = {
                     "spawns": [
                         {
                             "type": "zombie",
-                            "count": 12,
+                            "count": 10,
                             "interval": 0.4,
-                            "hp": 150
+                            "hp": 110
                         },
                         {
                             "type": "runner",
-                            "count": 4,
+                            "count": 3,
                             "interval": 1
                         }
                     ],
@@ -291,12 +291,12 @@ export const generatedBattleConfig: BattleConfigData = {
                     "spawns": [
                         {
                             "type": "brute",
-                            "count": 3,
+                            "count": 1,
                             "interval": 1.5
                         },
                         {
                             "type": "zombie",
-                            "count": 10,
+                            "count": 8,
                             "interval": 0.4
                         },
                         {
@@ -505,7 +505,7 @@ export const generatedBattleConfig: BattleConfigData = {
                             "type": "zombie",
                             "count": 12,
                             "interval": 0.4,
-                            "hp": 770
+                            "hp": 730
                         }
                     ],
                     "distance": 600
@@ -516,7 +516,7 @@ export const generatedBattleConfig: BattleConfigData = {
                             "type": "brute",
                             "count": 4,
                             "interval": 1.2,
-                            "hp": 2168
+                            "hp": 2060
                         }
                     ],
                     "distance": 600
@@ -527,7 +527,7 @@ export const generatedBattleConfig: BattleConfigData = {
                             "type": "runner",
                             "count": 12,
                             "interval": 0.4,
-                            "hp": 426
+                            "hp": 405
                         }
                     ],
                     "distance": 600
@@ -538,13 +538,13 @@ export const generatedBattleConfig: BattleConfigData = {
                             "type": "brute",
                             "count": 4,
                             "interval": 1.2,
-                            "hp": 2168
+                            "hp": 2060
                         },
                         {
                             "type": "zombie",
                             "count": 10,
                             "interval": 0.4,
-                            "hp": 770
+                            "hp": 730
                         }
                     ],
                     "distance": 600
@@ -555,13 +555,13 @@ export const generatedBattleConfig: BattleConfigData = {
                             "type": "brute",
                             "count": 2,
                             "interval": 1.4,
-                            "hp": 2168
+                            "hp": 2060
                         },
                         {
                             "type": "runner",
                             "count": 6,
                             "interval": 0.6,
-                            "hp": 426
+                            "hp": 405
                         }
                     ],
                     "distance": 600
@@ -774,7 +774,7 @@ export const generatedBattleConfig: BattleConfigData = {
                             "type": "boss_butcher",
                             "count": 1,
                             "interval": 1,
-                            "hp": 36000
+                            "hp": 39000
                         },
                         {
                             "type": "runner",
