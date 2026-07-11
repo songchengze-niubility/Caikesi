@@ -84,9 +84,9 @@ function buildFields(): Field[] {
     // —— 关卡：每关波次间隔 + 每波每个刷怪组的数量/间隔 ——
     C.levels.forEach((lv) => {
         const lt = `🗺 ${lv.name}`;
-        fields.push(f(lt, '波次间隔', 0, 6, 0.5, () => lv.waveGap, v => lv.waveGap = v));
         lv.waves.forEach((w, wi) => {
             const g = `${lt}·波${wi + 1}`;
+            fields.push(f(g, '行军距离', 0, 2000, 50, () => w.distance, v => w.distance = v));
             w.spawns.forEach((sp) => {
                 const nm = C.enemyTypes[sp.type]?.name || sp.type;
                 fields.push(f(g, `${nm}·数量`, 0, 40, 1, () => sp.count, v => sp.count = v));

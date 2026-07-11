@@ -58,7 +58,7 @@ export interface HealBeam {
     toX: number; toY: number;
 }
 
-export type BattlePhase = 'spawning' | 'gap' | 'won' | 'lost';
+export type BattlePhase = 'spawning' | 'marching' | 'won' | 'lost';
 
 export interface EnemyKilledEvent {
     type: 'enemyKilled';
@@ -90,8 +90,10 @@ export interface BuffChangedEvent {
 export interface ZoneSpawnedEvent { type: 'zoneSpawned'; x: number; y: number; radius: number; }
 export interface ZoneExpiredEvent { type: 'zoneExpired'; x: number; y: number; }
 export interface KnockbackEvent { type: 'knockback'; targetSide: UnitSide; targetKey: string; distance: number; }
+export interface MarchStartedEvent { type: 'marchStarted'; distance: number; duration: number; }
+export interface MarchEndedEvent { type: 'marchEnded'; }
 
-export type BattleEvent = EnemyKilledEvent | SkillCastEvent | BuffChangedEvent | ZoneSpawnedEvent | ZoneExpiredEvent | KnockbackEvent;
+export type BattleEvent = EnemyKilledEvent | SkillCastEvent | BuffChangedEvent | ZoneSpawnedEvent | ZoneExpiredEvent | KnockbackEvent | MarchStartedEvent | MarchEndedEvent;
 
 // 一片场地效果（毒池/火海）：带时长的区域，周期对域内敌人施加效果列表
 export interface ZoneEffect {
@@ -125,7 +127,9 @@ export class BattleManager {
     phase: BattlePhase = 'spawning';
     levelIndex = 0;
     waveIndex = 0;
-    private gapTimer = 0;
+    // 行军（清波→走到下一个刷怪点）：总时长供渲染层做进度插值，行军外为 0
+    marchDuration = 0;
+    marchRemaining = 0;
     private effectiveStats: EffectiveStatsMap;
     private _roster: SoldierClass[];
 
@@ -257,11 +261,36 @@ export class BattleManager {
         return this._groups.every(g => g.spawned >= g.count);
     }
 
+    // —— 行军：清完一波后全队推进到下一个刷怪点（表现假象，局部坐标不动）——
+    private _startMarch() {
+        const distance = this.level.waves[this.waveIndex].distance;
+        let minSpeed = Infinity;
+        for (const s of this.soldiers) {
+            if (s.alive && s.stats.moveSpeed < minSpeed) minSpeed = s.stats.moveSpeed;
+        }
+        if (!Number.isFinite(minSpeed) || minSpeed <= 0) minSpeed = 1;   // 兜底防除零/全员减速为 0
+        this.marchDuration = distance / minSpeed;
+        this.marchRemaining = this.marchDuration;
+        // 战场残留不随队行军
+        this.projectiles.length = 0;
+        this.zones.length = 0;
+        this.phase = 'marching';
+        this.events.push({ type: 'marchStarted', distance, duration: this.marchDuration });
+    }
+
     // —— 刷怪 ——
     private _updateSpawning(dt: number) {
-        if (this.phase === 'gap') {
-            this.gapTimer -= dt;
-            if (this.gapTimer <= 0) this._startWave(this.waveIndex + 1);
+        if (this.phase === 'marching') {
+            this.marchRemaining -= dt;
+            for (const s of this.soldiers) {
+                if (s.alive && s.actionLock <= 0) this._setAction(s, 'run');
+            }
+            if (this.marchRemaining <= 0) {
+                this.marchDuration = 0;
+                this.marchRemaining = 0;
+                this.events.push({ type: 'marchEnded' });
+                this._startWave(this.waveIndex + 1);
+            }
             return;
         }
         // spawning：各刷怪组各自按间隔出怪
@@ -733,10 +762,9 @@ export class BattleManager {
 
         if (this.waveIndex >= this.level.waves.length - 1) {
             this._idleLivingSoldiers();
-            this.phase = 'won';                  // 通关本关
-        } else if (this.phase !== 'gap') {
-            this.gapTimer = this.level.waveGap;  // 进入波次间隔，结束后开下一波
-            this.phase = 'gap';
+            this.phase = 'won';                  // 通关本关（最后一波清完即胜，不行军）
+        } else if (this.phase !== 'marching') {
+            this._startMarch();                  // 清波：行军到下一个刷怪点
         }
     }
 

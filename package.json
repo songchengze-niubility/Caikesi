@@ -8,7 +8,7 @@
     "typecheck:game": "tsc -p tsconfig.game.json",
     "typecheck:tools": "tsc -p tsconfig.tools.json",
     "typecheck": "npm run typecheck:game && npm run typecheck:tools",
-    "test": "npm run test:inventory && npm run test:effective && npm run test:drop && npm run test:combat && npm run test:progression && npm run test:services && npm run test:art && npm run test:partsrig && npm run test:craft && npm run test:skill && npm run test:squad && npm run test:growth-config && npm run test:growth && npm run test:inlay-config && npm run test:reward-types && npm run test:inlay && npm run test:account && npm run test:effect-types && npm run test:buff && npm run test:effect && npm run test:projectile && npm run test:zone && npm run test:control",
+    "test": "npm run test:inventory && npm run test:effective && npm run test:drop && npm run test:combat && npm run test:progression && npm run test:services && npm run test:art && npm run test:partsrig && npm run test:craft && npm run test:skill && npm run test:squad && npm run test:growth-config && npm run test:growth && npm run test:inlay-config && npm run test:reward-types && npm run test:inlay && npm run test:account && npm run test:effect-types && npm run test:buff && npm run test:effect && npm run test:projectile && npm run test:zone && npm run test:control && npm run test:march",
     "verify": "npm run typecheck && npm test && npm run sim:pacing && npm run check:art && npm run check:ui-alpha",
     "serve:remote": "npx http-server build/wechatgame/remote -p 8123 --cors -c-1",
     "config": "tsx tools/excel-to-config.ts",
@@ -51,11 +51,13 @@
     "test:projectile": "tsx tools/projectile-test.ts",
     "test:zone": "tsx tools/zone-test.ts",
     "test:control": "tsx tools/control-test.ts",
+    "test:march": "tsx tools/march-test.ts",
     "art:placeholder": "tsx tools/make-placeholder-art.ts",
     "ui:slicer": "start tools/ui-slicer/index.html",
     "sprite:keyframes:deps": "py -3 -m pip install -r tools/sprite-keyframe-requirements.txt",
     "sprite:keyframes": "py -3 tools/sprite-keyframe-tool.py",
-    "sprite:keyframes:ui": "py -3 tools/sprite-keyframe-ui.py --open"
+    "sprite:keyframes:ui": "py -3 tools/sprite-keyframe-ui.py --open",
+    "sprite:viewer": "start tools/sprite-viewer/index.html"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

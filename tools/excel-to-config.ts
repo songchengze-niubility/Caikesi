@@ -186,12 +186,13 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
 
     // —— Levels（拍平行 → 嵌套 Level[]）——
     const { rows: lvlRows } = sheetToRows(wb, 'Levels');
-    // 先按 levelIndex 聚合（同时校验同关 waveGap/levelName 一致）
-    const levelMap = new Map<number, { name: string; waveGap: number; dropGroup: string; waves: Map<number, { spawns: unknown[] }> }>();
+    // 先按 levelIndex 聚合（同时校验同关 levelName/dropGroup 一致、同波 distance 一致）
+    const levelMap = new Map<number, { name: string; dropGroup: string; waves: Map<number, { spawns: unknown[]; distance: number }> }>();
     for (const r of lvlRows) {
         const li = reqNum(r['levelIndex'], `Levels.levelIndex`);
         const name = reqStr(r['levelName'], `Levels@level${li}.levelName`);
-        const waveGap = reqNum(r['waveGap'], `Levels@level${li}.waveGap`);
+        const distance = reqNum(r['distance'], `Levels@level${li}.distance`);
+        if (distance < 0) err(`Levels@level${li}.distance = ${distance} 不可为负`);
         const dropGroup = reqStr(r['dropGroup'], `Levels@level${li}.dropGroup`);
         const wi = reqNum(r['waveIndex'], `Levels@level${li} wave${r['waveIndex']}.waveIndex`);
         const type = reqStr(r['type'], `Levels@level${li} wave${wi}.type`);
@@ -204,16 +205,16 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
 
         let lvl = levelMap.get(li);
         if (!lvl) {
-            lvl = { name, waveGap, dropGroup, waves: new Map() };
+            lvl = { name, dropGroup, waves: new Map() };
             levelMap.set(li, lvl);
         } else {
             // 同关一致性
             if (lvl.name !== name) err(`Levels: level${li} 的 levelName 不一致（${lvl.name} vs ${name}）`);
-            if (lvl.waveGap !== waveGap) err(`Levels: level${li} 的 waveGap 不一致（${lvl.waveGap} vs ${waveGap}）`);
             if (lvl.dropGroup !== dropGroup) err(`Levels: level${li} 的 dropGroup 不一致（${lvl.dropGroup} vs ${dropGroup}）`);
         }
         let wv = lvl.waves.get(wi);
-        if (!wv) { wv = { spawns: [] }; lvl.waves.set(wi, wv); }
+        if (!wv) { wv = { spawns: [], distance }; lvl.waves.set(wi, wv); }
+        else if (wv.distance !== distance) err(`Levels@level${li} wave${wi}: distance 不一致（${wv.distance} vs ${distance}）`);
         const group: Record<string, unknown> = { type, count, interval };
         if (hpCell !== null) group.hp = hpCell;   // 空 → 不带 hp 字段
         wv.spawns.push(group);
@@ -231,8 +232,11 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
         wiSorted.forEach((wi, idx) => {
             if (wi !== idx) err(`Levels@level${li}: waveIndex 必须从 0 连续递增（期望 ${idx}，得到 ${wi}）`);
         });
-        const waves = wiSorted.map(wi => ({ spawns: lvl.waves.get(wi)!.spawns }));
-        return { name: lvl.name, waveGap: lvl.waveGap, dropGroup: lvl.dropGroup, waves };
+        const waves = wiSorted.map(wi => {
+            const wv = lvl.waves.get(wi)!;
+            return { spawns: wv.spawns, distance: wv.distance };
+        });
+        return { name: lvl.name, dropGroup: lvl.dropGroup, waves };
     });
     if (levels.length === 0) err('Levels: 没有任何关卡');
 

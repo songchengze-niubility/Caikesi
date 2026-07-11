@@ -49,10 +49,10 @@ export interface SpawnGroup {
 }
 export interface Wave {
     spawns: SpawnGroup[];  // 这一波要刷的怪（可多种混合，同时按各自间隔刷）
+    distance: number;      // 清完本波后行军到下一个刷怪点的距离（像素）；末波该值无效
 }
 export interface Level {
     name: string;
-    waveGap: number;       // 波与波之间的间隔（秒）
     dropGroup: string;     // 胜利奖励掉落组 id；具体权重见 drop.xlsx
     waves: Wave[];
 }

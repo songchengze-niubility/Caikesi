@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/battle.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/battle.xlsx
-// 生成时间：2026-07-11T06:40:57.742Z
+// 生成时间：2026-07-11T06:45:37.636Z
 
 /* eslint-disable */
 import type { BattleConfigData } from './BattleConfig';
@@ -162,7 +162,6 @@ export const generatedBattleConfig: BattleConfigData = {
     "levels": [
         {
             "name": "第1关 · 试炼",
-            "waveGap": 2,
             "dropGroup": "c1_early",
             "waves": [
                 {
@@ -172,7 +171,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "count": 6,
                             "interval": 0.7
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -186,7 +186,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "count": 3,
                             "interval": 1.2
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -200,13 +201,13 @@ export const generatedBattleConfig: BattleConfigData = {
                             "count": 8,
                             "interval": 0.45
                         }
-                    ]
+                    ],
+                    "distance": 600
                 }
             ]
         },
         {
             "name": "第2关 · 前哨",
-            "waveGap": 2,
             "dropGroup": "c1_early",
             "waves": [
                 {
@@ -216,7 +217,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "count": 10,
                             "interval": 0.6
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -230,7 +232,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "count": 4,
                             "interval": 1
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -249,13 +252,13 @@ export const generatedBattleConfig: BattleConfigData = {
                             "count": 3,
                             "interval": 1
                         }
-                    ]
+                    ],
+                    "distance": 600
                 }
             ]
         },
         {
             "name": "第3关 · 溃堤",
-            "waveGap": 1.9,
             "dropGroup": "c1_early",
             "waves": [
                 {
@@ -265,7 +268,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "count": 8,
                             "interval": 0.45
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -280,7 +284,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "count": 4,
                             "interval": 1
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -299,13 +304,13 @@ export const generatedBattleConfig: BattleConfigData = {
                             "count": 4,
                             "interval": 0.8
                         }
-                    ]
+                    ],
+                    "distance": 600
                 }
             ]
         },
         {
             "name": "第4关 · 铁壁",
-            "waveGap": 1.8,
             "dropGroup": "c1_mid",
             "waves": [
                 {
@@ -316,7 +321,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.5,
                             "hp": 330
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -326,7 +332,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 1.3,
                             "hp": 790
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -342,7 +349,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.8,
                             "hp": 155
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -358,13 +366,13 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.4,
                             "hp": 330
                         }
-                    ]
+                    ],
+                    "distance": 600
                 }
             ]
         },
         {
             "name": "第5关 · 缓坡",
-            "waveGap": 1.8,
             "dropGroup": "c1_mid",
             "waves": [
                 {
@@ -375,7 +383,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.45,
                             "hp": 300
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -385,7 +394,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.5,
                             "hp": 180
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -401,7 +411,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.4,
                             "hp": 300
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -417,13 +428,13 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.5,
                             "hp": 180
                         }
-                    ]
+                    ],
+                    "distance": 600
                 }
             ]
         },
         {
             "name": "第6关 · 夹击",
-            "waveGap": 1.8,
             "dropGroup": "c1_mid",
             "waves": [
                 {
@@ -434,7 +445,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.4,
                             "hp": 155
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -444,7 +456,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.4,
                             "hp": 275
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -460,7 +473,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.7,
                             "hp": 155
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -476,13 +490,13 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.4,
                             "hp": 275
                         }
-                    ]
+                    ],
+                    "distance": 600
                 }
             ]
         },
         {
             "name": "第7关 · 壁垒",
-            "waveGap": 1.6,
             "dropGroup": "c1_late",
             "waves": [
                 {
@@ -493,7 +507,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.4,
                             "hp": 770
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -503,7 +518,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 1.2,
                             "hp": 2168
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -513,7 +529,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.4,
                             "hp": 426
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -529,7 +546,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.4,
                             "hp": 770
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -545,13 +563,13 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.6,
                             "hp": 426
                         }
-                    ]
+                    ],
+                    "distance": 600
                 }
             ]
         },
         {
             "name": "第8关 · 风暴",
-            "waveGap": 1.6,
             "dropGroup": "c1_late",
             "waves": [
                 {
@@ -562,7 +580,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.35,
                             "hp": 200
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -572,7 +591,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.35,
                             "hp": 360
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -582,7 +602,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 1.2,
                             "hp": 1010
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -598,7 +619,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.5,
                             "hp": 200
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -614,13 +636,13 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.6,
                             "hp": 200
                         }
-                    ]
+                    ],
+                    "distance": 600
                 }
             ]
         },
         {
             "name": "第9关 · 黑潮",
-            "waveGap": 1.6,
             "dropGroup": "c1_late",
             "waves": [
                 {
@@ -631,7 +653,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.35,
                             "hp": 420
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -641,7 +664,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 1.2,
                             "hp": 1140
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -651,7 +675,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.35,
                             "hp": 230
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -667,7 +692,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.4,
                             "hp": 420
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -683,13 +709,13 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.5,
                             "hp": 230
                         }
-                    ]
+                    ],
+                    "distance": 600
                 }
             ]
         },
         {
             "name": "第10关 · 屠夫领主",
-            "waveGap": 1.8,
             "dropGroup": "c1_boss",
             "waves": [
                 {
@@ -700,7 +726,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.35,
                             "hp": 805
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -710,7 +737,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.4,
                             "hp": 405
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -720,7 +748,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 1.2,
                             "hp": 2015
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -736,7 +765,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.5,
                             "hp": 405
                         }
-                    ]
+                    ],
+                    "distance": 600
                 },
                 {
                     "spawns": [
@@ -752,7 +782,8 @@ export const generatedBattleConfig: BattleConfigData = {
                             "interval": 0.8,
                             "hp": 405
                         }
-                    ]
+                    ],
+                    "distance": 600
                 }
             ]
         }
