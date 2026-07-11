@@ -27,6 +27,7 @@ ai/
 | `skills/开发收尾.md` | 开发告一段落/交接/提交前 | 更新记忆、归档设计日志、刷新交接摘要、提交 |
 | `skills/UI与美术产出管线.md` | 用户发来 GPT 网页生图/提示词、要整理 Figma、总结风格或保存 UI/美术示意图时 | 上游视觉协作：GPT 网页生图 → Figma 整理 → 风格记忆 → `docs/visual/` 归档 → 下一轮提示词回流 |
 | `skills/美术资源管线.md` | 加/换美术、改 ArtManifest、派 Codex 美术任务时 | 目录约定、登记、编辑器导入、校验、缺图回退 |
+| `skills/序列帧角色制作.md` | 用参考图生成/重做/验收角色 idle/run/attack/death 时 | Codex 生图四状态×固定 8 帧：身份一致、键色去底、切帧锚点、审核返工与 Cocos 入库边界 |
 
 > 新增技能时：在 `skills/` 加文件并补 frontmatter（name/description/when），并在本表加一行。技能多了（>15）按领域分子文件夹（combat/ ui/ data/ ...）。
 

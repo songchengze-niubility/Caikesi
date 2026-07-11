@@ -1,0 +1,250 @@
+{
+  "frame_count": 8,
+  "uniform_size": [
+    320,
+    240
+  ],
+  "all_rgba": true,
+  "all_corners_transparent": true,
+  "head_centroid_range_px": [
+    0.568,
+    0.428
+  ],
+  "sideview_core_x_range_px": 0.5,
+  "foot_x_range_px": 1.0,
+  "foot_y_range_px": 0,
+  "frames": [
+    {
+      "frame": 0,
+      "size": [
+        320,
+        240
+      ],
+      "mode": "RGBA",
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "transparent_ratio": 0.818698,
+      "foot_x": 184.0,
+      "foot_y": 235,
+      "sideview_core_x": 166.0,
+      "head_bbox": [
+        125,
+        8,
+        196,
+        88
+      ],
+      "head_centroid": [
+        159.457,
+        42.693
+      ],
+      "greenish_visible_ratio": 0.0
+    },
+    {
+      "frame": 1,
+      "size": [
+        320,
+        240
+      ],
+      "mode": "RGBA",
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "transparent_ratio": 0.823516,
+      "foot_x": 184.0,
+      "foot_y": 235,
+      "sideview_core_x": 166.0,
+      "head_bbox": [
+        125,
+        8,
+        196,
+        88
+      ],
+      "head_centroid": [
+        159.474,
+        42.654
+      ],
+      "greenish_visible_ratio": 0.0
+    },
+    {
+      "frame": 2,
+      "size": [
+        320,
+        240
+      ],
+      "mode": "RGBA",
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "transparent_ratio": 0.828216,
+      "foot_x": 184.0,
+      "foot_y": 235,
+      "sideview_core_x": 166.0,
+      "head_bbox": [
+        125,
+        8,
+        196,
+        88
+      ],
+      "head_centroid": [
+        159.009,
+        42.923
+      ],
+      "greenish_visible_ratio": 0.0
+    },
+    {
+      "frame": 3,
+      "size": [
+        320,
+        240
+      ],
+      "mode": "RGBA",
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "transparent_ratio": 0.823424,
+      "foot_x": 184.0,
+      "foot_y": 235,
+      "sideview_core_x": 165.5,
+      "head_bbox": [
+        125,
+        8,
+        196,
+        88
+      ],
+      "head_centroid": [
+        159.009,
+        43.067
+      ],
+      "greenish_visible_ratio": 0.0
+    },
+    {
+      "frame": 4,
+      "size": [
+        320,
+        240
+      ],
+      "mode": "RGBA",
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "transparent_ratio": 0.818789,
+      "foot_x": 184.0,
+      "foot_y": 235,
+      "sideview_core_x": 166.0,
+      "head_bbox": [
+        125,
+        8,
+        196,
+        88
+      ],
+      "head_centroid": [
+        159.506,
+        42.705
+      ],
+      "greenish_visible_ratio": 8.269e-05
+    },
+    {
+      "frame": 5,
+      "size": [
+        320,
+        240
+      ],
+      "mode": "RGBA",
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "transparent_ratio": 0.821172,
+      "foot_x": 185.0,
+      "foot_y": 235,
+      "sideview_core_x": 166.0,
+      "head_bbox": [
+        125,
+        8,
+        197,
+        88
+      ],
+      "head_centroid": [
+        159.577,
+        42.639
+      ],
+      "greenish_visible_ratio": 0.0
+    },
+    {
+      "frame": 6,
+      "size": [
+        320,
+        240
+      ],
+      "mode": "RGBA",
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "transparent_ratio": 0.821341,
+      "foot_x": 184.0,
+      "foot_y": 235,
+      "sideview_core_x": 166.0,
+      "head_bbox": [
+        125,
+        8,
+        196,
+        88
+      ],
+      "head_centroid": [
+        159.059,
+        42.875
+      ],
+      "greenish_visible_ratio": 8.368e-05
+    },
+    {
+      "frame": 7,
+      "size": [
+        320,
+        240
+      ],
+      "mode": "RGBA",
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "transparent_ratio": 0.822331,
+      "foot_x": 184.0,
+      "foot_y": 235,
+      "sideview_core_x": 166.0,
+      "head_bbox": [
+        125,
+        8,
+        196,
+        88
+      ],
+      "head_centroid": [
+        159.102,
+        42.74
+      ],
+      "greenish_visible_ratio": 0.0
+    }
+  ]
+}

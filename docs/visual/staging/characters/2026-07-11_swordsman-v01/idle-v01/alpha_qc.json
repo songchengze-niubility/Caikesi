@@ -1,0 +1,232 @@
+{
+  "frame_count": 8,
+  "uniform_size": [
+    320,
+    240
+  ],
+  "all_rgba": true,
+  "all_corners_transparent": true,
+  "foot_x_range": [
+    133.0,
+    136.0
+  ],
+  "foot_y_range": [
+    234,
+    235
+  ],
+  "sideview_core_x_range": [
+    117.5,
+    118.5
+  ],
+  "frames": [
+    {
+      "frame": 0,
+      "size": [
+        320,
+        240
+      ],
+      "mode": "RGBA",
+      "transparent_ratio": 0.825091,
+      "partial_alpha_ratio": 0.07901,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "bbox": [
+        15,
+        8,
+        238,
+        236
+      ],
+      "foot_x": 134.0,
+      "foot_y": 235,
+      "sideview_core_x": 117.5,
+      "greenish_visible_ratio": 8.519e-05
+    },
+    {
+      "frame": 1,
+      "size": [
+        320,
+        240
+      ],
+      "mode": "RGBA",
+      "transparent_ratio": 0.827487,
+      "partial_alpha_ratio": 0.077357,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "bbox": [
+        26,
+        6,
+        237,
+        235
+      ],
+      "foot_x": 134.0,
+      "foot_y": 234,
+      "sideview_core_x": 117.5,
+      "greenish_visible_ratio": 0.00017268
+    },
+    {
+      "frame": 2,
+      "size": [
+        320,
+        240
+      ],
+      "mode": "RGBA",
+      "transparent_ratio": 0.823542,
+      "partial_alpha_ratio": 0.079792,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "bbox": [
+        6,
+        5,
+        237,
+        235
+      ],
+      "foot_x": 134.0,
+      "foot_y": 234,
+      "sideview_core_x": 118.0,
+      "greenish_visible_ratio": 0.0
+    },
+    {
+      "frame": 3,
+      "size": [
+        320,
+        240
+      ],
+      "mode": "RGBA",
+      "transparent_ratio": 0.821367,
+      "partial_alpha_ratio": 0.07974,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "bbox": [
+        15,
+        6,
+        239,
+        236
+      ],
+      "foot_x": 135.0,
+      "foot_y": 235,
+      "sideview_core_x": 117.5,
+      "greenish_visible_ratio": 0.0
+    },
+    {
+      "frame": 4,
+      "size": [
+        320,
+        240
+      ],
+      "mode": "RGBA",
+      "transparent_ratio": 0.822448,
+      "partial_alpha_ratio": 0.079974,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "bbox": [
+        14,
+        5,
+        237,
+        235
+      ],
+      "foot_x": 135.0,
+      "foot_y": 234,
+      "sideview_core_x": 117.5,
+      "greenish_visible_ratio": 0.0
+    },
+    {
+      "frame": 5,
+      "size": [
+        320,
+        240
+      ],
+      "mode": "RGBA",
+      "transparent_ratio": 0.819727,
+      "partial_alpha_ratio": 0.08237,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "bbox": [
+        19,
+        7,
+        239,
+        235
+      ],
+      "foot_x": 136.0,
+      "foot_y": 234,
+      "sideview_core_x": 118.5,
+      "greenish_visible_ratio": 0.0
+    },
+    {
+      "frame": 6,
+      "size": [
+        320,
+        240
+      ],
+      "mode": "RGBA",
+      "transparent_ratio": 0.824831,
+      "partial_alpha_ratio": 0.079232,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "bbox": [
+        12,
+        4,
+        238,
+        236
+      ],
+      "foot_x": 133.0,
+      "foot_y": 235,
+      "sideview_core_x": 118.0,
+      "greenish_visible_ratio": 0.0
+    },
+    {
+      "frame": 7,
+      "size": [
+        320,
+        240
+      ],
+      "mode": "RGBA",
+      "transparent_ratio": 0.820521,
+      "partial_alpha_ratio": 0.078854,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "bbox": [
+        12,
+        7,
+        238,
+        236
+      ],
+      "foot_x": 134.0,
+      "foot_y": 235,
+      "sideview_core_x": 117.5,
+      "greenish_visible_ratio": 0.0
+    }
+  ],
+  "head_inner_max_premultiplied_channel_delta": 0
+}

@@ -1,0 +1,451 @@
+{
+  "generated_at": "2026-07-10T16:21:24.957439+00:00",
+  "tool": "tools/sprite-keyframe-tool.py",
+  "settings": {
+    "white_threshold": 245,
+    "white_softness": 28.0,
+    "chroma_tolerance": 24.0,
+    "alpha_threshold": 12,
+    "background_mode": "edge",
+    "edge_tolerance": 45.0,
+    "edge_softness": 32.0,
+    "hole_cleanup": false,
+    "hole_min_area": 120,
+    "hole_max_area": 30000,
+    "fringe_cleanup": true,
+    "fringe_radius": 2,
+    "fringe_strength": 0.85,
+    "fringe_brightness": 155.0,
+    "edge_contract": 1,
+    "selection_mode": "diverse",
+    "video_start": 0.0,
+    "video_end": 0.0,
+    "video_seconds": 1.0,
+    "frame_size": "320x240",
+    "padding": 4,
+    "allow_upscale": false,
+    "anchor_stabilize": true,
+    "anchor_mode": "sideview",
+    "stabilize_search_radius": 48,
+    "scale_stabilize": false,
+    "visual_stabilize": true,
+    "foot_contact_lock": true,
+    "foot_contact_freeze_rows": 4
+  },
+  "frames_dir": {
+    "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\raw_frames_chroma",
+    "raw_frame_count": 8,
+    "select_indices": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "selected_keyframe_count": 8,
+    "normalization": {
+      "frame_size": [
+        320,
+        240
+      ],
+      "padding": 4,
+      "anchor": "stable-points-sideview",
+      "anchor_mode": "sideview",
+      "source_anchor": [
+        273.0,
+        421.0
+      ],
+      "stable_alignment": {
+        "method": "sideview",
+        "stable_bbox": null,
+        "reference_index": 0,
+        "reference_core_bbox": null,
+        "stable_fraction": null,
+        "stable_points": null,
+        "stable_feature_points": null,
+        "search_radius": 48,
+        "low_search_radius": null,
+        "mean_score": null,
+        "scale_range": [
+          1.0,
+          1.0
+        ],
+        "detected_scale_range": [
+          1.0,
+          1.0
+        ],
+        "scale_stabilize": false,
+        "action_anchor_correction_range": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "output_position_calibration": {
+        "reference": [
+          117.5,
+          234.5
+        ],
+        "before_range": [
+          1.0,
+          1.0
+        ],
+        "after_range": [
+          1.0,
+          1.0
+        ],
+        "offset_range": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "visual_stabilization": {
+        "reference_x": 91.7998,
+        "before_range_x": 9.5947,
+        "after_range_x": 0.1477,
+        "offset_range_x": [
+          -6.4427,
+          3.152
+        ]
+      },
+      "foot_contact_lock": null,
+      "shared_scale": 0.5903307888040712,
+      "alpha_threshold": 12,
+      "max_content_size": [
+        393,
+        393
+      ]
+    },
+    "keyframes": [
+      {
+        "frame_index": 0,
+        "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\raw_frames_chroma\\frame_000.png",
+        "output": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\processed-v2\\keyframes\\key_000.png",
+        "stats": {
+          "source_bbox": [
+            84,
+            46,
+            462,
+            436
+          ],
+          "source_anchor": [
+            273.0,
+            421.0
+          ],
+          "stabilize_offset": [
+            -56.5,
+            -15.0
+          ],
+          "anchor_correction": [
+            0.0,
+            0.0
+          ],
+          "anchor_correction_x": 0.0,
+          "anchor_correction_y": 0.0,
+          "stabilize_scale": 1.0,
+          "content_size": [
+            378,
+            390
+          ],
+          "normalized_bbox": [
+            13.8464,
+            6,
+            236.8464,
+            236
+          ],
+          "visual_stabilize_correction_x": -1.1536
+        }
+      },
+      {
+        "frame_index": 1,
+        "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\raw_frames_chroma\\frame_001.png",
+        "output": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\processed-v2\\keyframes\\key_001.png",
+        "stats": {
+          "source_bbox": [
+            35,
+            46,
+            394,
+            436
+          ],
+          "source_anchor": [
+            273.0,
+            421.0
+          ],
+          "stabilize_offset": [
+            11.5,
+            -15.0
+          ],
+          "anchor_correction": [
+            0.0,
+            0.0
+          ],
+          "anchor_correction_x": 0.0,
+          "anchor_correction_y": 0.0,
+          "stabilize_scale": 1.0,
+          "content_size": [
+            359,
+            390
+          ],
+          "normalized_bbox": [
+            22.7782,
+            6,
+            234.7782,
+            236
+          ],
+          "visual_stabilize_correction_x": -3.2218
+        }
+      },
+      {
+        "frame_index": 2,
+        "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\raw_frames_chroma\\frame_002.png",
+        "output": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\processed-v2\\keyframes\\key_002.png",
+        "stats": {
+          "source_bbox": [
+            33,
+            46,
+            426,
+            436
+          ],
+          "source_anchor": [
+            273.0,
+            421.0
+          ],
+          "stabilize_offset": [
+            -21.0,
+            -16.0
+          ],
+          "anchor_correction": [
+            0.0,
+            0.0
+          ],
+          "anchor_correction_x": 0.0,
+          "anchor_correction_y": 0.0,
+          "stabilize_scale": 1.0,
+          "content_size": [
+            393,
+            390
+          ],
+          "normalized_bbox": [
+            7.7219,
+            5,
+            239.7219,
+            235
+          ],
+          "visual_stabilize_correction_x": 1.7219
+        }
+      },
+      {
+        "frame_index": 3,
+        "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\raw_frames_chroma\\frame_003.png",
+        "output": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\processed-v2\\keyframes\\key_003.png",
+        "stats": {
+          "source_bbox": [
+            28,
+            46,
+            408,
+            435
+          ],
+          "source_anchor": [
+            273.0,
+            421.0
+          ],
+          "stabilize_offset": [
+            0.5,
+            -15.0
+          ],
+          "anchor_correction": [
+            0.0,
+            0.0
+          ],
+          "anchor_correction_x": 0.0,
+          "anchor_correction_y": 0.0,
+          "stabilize_scale": 1.0,
+          "content_size": [
+            380,
+            389
+          ],
+          "normalized_bbox": [
+            16.9627,
+            6,
+            240.9627,
+            236
+          ],
+          "visual_stabilize_correction_x": 0.9627
+        }
+      },
+      {
+        "frame_index": 4,
+        "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\raw_frames_chroma\\frame_004.png",
+        "output": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\processed-v2\\keyframes\\key_004.png",
+        "stats": {
+          "source_bbox": [
+            79,
+            15,
+            457,
+            405
+          ],
+          "source_anchor": [
+            273.0,
+            421.0
+          ],
+          "stabilize_offset": [
+            -52.5,
+            15.0
+          ],
+          "anchor_correction": [
+            0.0,
+            0.0
+          ],
+          "anchor_correction_x": 0.0,
+          "anchor_correction_y": 0.0,
+          "stabilize_scale": 1.0,
+          "content_size": [
+            378,
+            390
+          ],
+          "normalized_bbox": [
+            15.4461,
+            5,
+            238.4461,
+            235
+          ],
+          "visual_stabilize_correction_x": 1.4461
+        }
+      },
+      {
+        "frame_index": 5,
+        "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\raw_frames_chroma\\frame_005.png",
+        "output": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\processed-v2\\keyframes\\key_005.png",
+        "stats": {
+          "source_bbox": [
+            9,
+            18,
+            382,
+            405
+          ],
+          "source_anchor": [
+            273.0,
+            421.0
+          ],
+          "stabilize_offset": [
+            24.6,
+            15.0
+          ],
+          "anchor_correction": [
+            0.0,
+            0.0
+          ],
+          "anchor_correction_x": 0.0,
+          "anchor_correction_y": 0.0,
+          "stabilize_scale": 1.0,
+          "content_size": [
+            373,
+            387
+          ],
+          "normalized_bbox": [
+            18.0373,
+            7,
+            238.0373,
+            235
+          ],
+          "visual_stabilize_correction_x": -0.9627
+        }
+      },
+      {
+        "frame_index": 6,
+        "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\raw_frames_chroma\\frame_006.png",
+        "output": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\processed-v2\\keyframes\\key_006.png",
+        "stats": {
+          "source_bbox": [
+            23,
+            13,
+            405,
+            406
+          ],
+          "source_anchor": [
+            273.0,
+            421.0
+          ],
+          "stabilize_offset": [
+            -0.5,
+            15.0
+          ],
+          "anchor_correction": [
+            0.0,
+            0.0
+          ],
+          "anchor_correction_x": 0.0,
+          "anchor_correction_y": 0.0,
+          "stabilize_scale": 1.0,
+          "content_size": [
+            382,
+            393
+          ],
+          "normalized_bbox": [
+            5.5573,
+            4,
+            231.5573,
+            236
+          ],
+          "visual_stabilize_correction_x": -6.4427
+        }
+      },
+      {
+        "frame_index": 7,
+        "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\raw_frames_chroma\\frame_007.png",
+        "output": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\processed-v2\\keyframes\\key_007.png",
+        "stats": {
+          "source_bbox": [
+            20,
+            15,
+            402,
+            405
+          ],
+          "source_anchor": [
+            273.0,
+            421.0
+          ],
+          "stabilize_offset": [
+            3.0,
+            15.0
+          ],
+          "anchor_correction": [
+            0.0,
+            0.0
+          ],
+          "anchor_correction_x": 0.0,
+          "anchor_correction_y": 0.0,
+          "stabilize_scale": 1.0,
+          "content_size": [
+            382,
+            390
+          ],
+          "normalized_bbox": [
+            15.152,
+            5,
+            241.152,
+            235
+          ],
+          "visual_stabilize_correction_x": 3.152
+        }
+      }
+    ],
+    "strip": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\processed-v2\\keyframes_strip.png",
+    "preview": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\processed-v2\\keyframes_preview.png",
+    "dark_preview": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_swordsman-v01\\idle-v01\\processed-v2\\keyframes_preview_dark.png"
+  }
+}

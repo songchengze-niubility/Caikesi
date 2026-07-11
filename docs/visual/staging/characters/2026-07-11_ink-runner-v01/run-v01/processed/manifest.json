@@ -1,0 +1,451 @@
+{
+  "generated_at": "2026-07-11T02:54:42.500601+00:00",
+  "tool": "tools/sprite-keyframe-tool.py",
+  "settings": {
+    "white_threshold": 245,
+    "white_softness": 28.0,
+    "chroma_tolerance": 24.0,
+    "alpha_threshold": 12,
+    "background_mode": "alpha",
+    "edge_tolerance": 65.0,
+    "edge_softness": 42.0,
+    "hole_cleanup": true,
+    "hole_min_area": 120,
+    "hole_max_area": 30000,
+    "fringe_cleanup": true,
+    "fringe_radius": 2,
+    "fringe_strength": 0.85,
+    "fringe_brightness": 155.0,
+    "edge_contract": 1,
+    "selection_mode": "diverse",
+    "video_start": 0.0,
+    "video_end": 0.0,
+    "video_seconds": 1.0,
+    "frame_size": "320x240",
+    "padding": 4,
+    "allow_upscale": false,
+    "anchor_stabilize": true,
+    "anchor_mode": "sideview",
+    "stabilize_search_radius": 48,
+    "scale_stabilize": false,
+    "visual_stabilize": false,
+    "foot_contact_lock": true,
+    "foot_contact_freeze_rows": 4
+  },
+  "frames_dir": {
+    "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\raw_frames",
+    "raw_frame_count": 8,
+    "select_indices": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "selected_keyframe_count": 8,
+    "normalization": {
+      "frame_size": [
+        320,
+        240
+      ],
+      "padding": 4,
+      "anchor": "stable-points-sideview",
+      "anchor_mode": "sideview",
+      "source_anchor": [
+        258.0,
+        421.0
+      ],
+      "stable_alignment": {
+        "method": "sideview",
+        "stable_bbox": null,
+        "reference_index": 0,
+        "reference_core_bbox": null,
+        "stable_fraction": null,
+        "stable_points": null,
+        "stable_feature_points": null,
+        "search_radius": 48,
+        "low_search_radius": null,
+        "mean_score": null,
+        "scale_range": [
+          1.0,
+          1.0
+        ],
+        "detected_scale_range": [
+          1.0,
+          1.0
+        ],
+        "scale_stabilize": false,
+        "action_anchor_correction_range": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      },
+      "output_position_calibration": {
+        "reference": [
+          186.5,
+          226.0
+        ],
+        "before_range": [
+          5.6098,
+          9.0
+        ],
+        "after_range": [
+          0.6098,
+          0.0
+        ],
+        "offset_range": [
+          [
+            0.0,
+            5.0
+          ],
+          [
+            -8.0,
+            1.0
+          ]
+        ]
+      },
+      "visual_stabilization": null,
+      "foot_contact_lock": null,
+      "shared_scale": 0.5721255351900607,
+      "alpha_threshold": 12,
+      "max_content_size": [
+        401,
+        379
+      ]
+    },
+    "keyframes": [
+      {
+        "frame_index": 0,
+        "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\raw_frames\\frame_000.png",
+        "output": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\processed\\keyframes\\key_000.png",
+        "stats": {
+          "source_bbox": [
+            58,
+            50,
+            458,
+            412
+          ],
+          "source_anchor": [
+            258.0,
+            421.0
+          ],
+          "stabilize_offset": [
+            72.6674,
+            -5.0
+          ],
+          "anchor_correction": [
+            0.0,
+            0.0
+          ],
+          "anchor_correction_x": 0.0,
+          "anchor_correction_y": 0.0,
+          "stabilize_scale": 1.0,
+          "content_size": [
+            400,
+            362
+          ],
+          "normalized_bbox": [
+            87,
+            21,
+            316,
+            228
+          ]
+        }
+      },
+      {
+        "frame_index": 1,
+        "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\raw_frames\\frame_001.png",
+        "output": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\processed\\keyframes\\key_001.png",
+        "stats": {
+          "source_bbox": [
+            130,
+            84,
+            522,
+            428
+          ],
+          "source_anchor": [
+            258.0,
+            421.0
+          ],
+          "stabilize_offset": [
+            -18.6458,
+            -22.0
+          ],
+          "anchor_correction": [
+            0.0,
+            0.0
+          ],
+          "anchor_correction_x": 0.0,
+          "anchor_correction_y": 0.0,
+          "stabilize_scale": 1.0,
+          "content_size": [
+            392,
+            344
+          ],
+          "normalized_bbox": [
+            76,
+            31,
+            300,
+            228
+          ]
+        }
+      },
+      {
+        "frame_index": 2,
+        "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\raw_frames\\frame_002.png",
+        "output": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\processed\\keyframes\\key_002.png",
+        "stats": {
+          "source_bbox": [
+            114,
+            50,
+            515,
+            429
+          ],
+          "source_anchor": [
+            258.0,
+            421.0
+          ],
+          "stabilize_offset": [
+            6.0498,
+            -8.0
+          ],
+          "anchor_correction": [
+            0.0,
+            0.0
+          ],
+          "anchor_correction_x": 0.0,
+          "anchor_correction_y": 0.0,
+          "stabilize_scale": 1.0,
+          "content_size": [
+            401,
+            379
+          ],
+          "normalized_bbox": [
+            82,
+            11,
+            311,
+            228
+          ],
+          "output_position_correction": [
+            1,
+            -8
+          ]
+        }
+      },
+      {
+        "frame_index": 3,
+        "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\raw_frames\\frame_003.png",
+        "output": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\processed\\keyframes\\key_003.png",
+        "stats": {
+          "source_bbox": [
+            124,
+            50,
+            525,
+            412
+          ],
+          "source_anchor": [
+            258.0,
+            421.0
+          ],
+          "stabilize_offset": [
+            0.3326,
+            -3.0
+          ],
+          "anchor_correction": [
+            0.0,
+            0.0
+          ],
+          "anchor_correction_x": 0.0,
+          "anchor_correction_y": 0.0,
+          "stabilize_scale": 1.0,
+          "content_size": [
+            401,
+            362
+          ],
+          "normalized_bbox": [
+            84,
+            23,
+            313,
+            230
+          ],
+          "output_position_correction": [
+            0,
+            1
+          ]
+        }
+      },
+      {
+        "frame_index": 4,
+        "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\raw_frames\\frame_004.png",
+        "output": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\processed\\keyframes\\key_004.png",
+        "stats": {
+          "source_bbox": [
+            28,
+            29,
+            420,
+            391
+          ],
+          "source_anchor": [
+            258.0,
+            421.0
+          ],
+          "stabilize_offset": [
+            83.6674,
+            17.0
+          ],
+          "anchor_correction": [
+            0.0,
+            0.0
+          ],
+          "anchor_correction_x": 0.0,
+          "anchor_correction_y": 0.0,
+          "stabilize_scale": 1.0,
+          "content_size": [
+            392,
+            362
+          ],
+          "normalized_bbox": [
+            77,
+            22,
+            301,
+            229
+          ],
+          "output_position_correction": [
+            1,
+            1
+          ]
+        }
+      },
+      {
+        "frame_index": 5,
+        "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\raw_frames\\frame_005.png",
+        "output": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\processed\\keyframes\\key_005.png",
+        "stats": {
+          "source_bbox": [
+            125,
+            58,
+            502,
+            402
+          ],
+          "source_anchor": [
+            258.0,
+            421.0
+          ],
+          "stabilize_offset": [
+            -1.8326,
+            3.0
+          ],
+          "anchor_correction": [
+            0.0,
+            0.0
+          ],
+          "anchor_correction_x": 0.0,
+          "anchor_correction_y": 0.0,
+          "stabilize_scale": 1.0,
+          "content_size": [
+            377,
+            344
+          ],
+          "normalized_bbox": [
+            83,
+            30,
+            299,
+            227
+          ]
+        }
+      },
+      {
+        "frame_index": 6,
+        "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\raw_frames\\frame_006.png",
+        "output": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\processed\\keyframes\\key_006.png",
+        "stats": {
+          "source_bbox": [
+            101,
+            33,
+            497,
+            402
+          ],
+          "source_anchor": [
+            258.0,
+            421.0
+          ],
+          "stabilize_offset": [
+            -0.3326,
+            16.0
+          ],
+          "anchor_correction": [
+            0.0,
+            0.0
+          ],
+          "anchor_correction_x": 0.0,
+          "anchor_correction_y": 0.0,
+          "stabilize_scale": 1.0,
+          "content_size": [
+            396,
+            369
+          ],
+          "normalized_bbox": [
+            75,
+            22,
+            302,
+            233
+          ],
+          "output_position_correction": [
+            5,
+            -1
+          ]
+        }
+      },
+      {
+        "frame_index": 7,
+        "source": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\raw_frames\\frame_007.png",
+        "output": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\processed\\keyframes\\key_007.png",
+        "stats": {
+          "source_bbox": [
+            122,
+            36,
+            523,
+            391
+          ],
+          "source_anchor": [
+            258.0,
+            421.0
+          ],
+          "stabilize_offset": [
+            -0.8326,
+            16.0
+          ],
+          "anchor_correction": [
+            0.0,
+            0.0
+          ],
+          "anchor_correction_x": 0.0,
+          "anchor_correction_y": 0.0,
+          "stabilize_scale": 1.0,
+          "content_size": [
+            401,
+            355
+          ],
+          "normalized_bbox": [
+            82,
+            25,
+            311,
+            228
+          ]
+        }
+      }
+    ],
+    "strip": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\processed\\keyframes_strip.png",
+    "preview": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\processed\\keyframes_preview.png",
+    "dark_preview": "F:\\Cgame\\docs\\visual\\staging\\characters\\2026-07-11_ink-runner-v01\\run-v01\\processed\\keyframes_preview_dark.png"
+  }
+}
