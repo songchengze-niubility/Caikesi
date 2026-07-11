@@ -24,6 +24,7 @@ const BASIC_ATTACK_EFFECTS: Effect[] = [DMG1];
 
 // 护栏：占位阶段达到上限静默跳过生成（铺量前的规模保险，见 ai/skills/性能约束.md）
 const MAX_PROJECTILES = 64;
+const MAX_ZONES = 8;
 
 // 一枚弹道体（原 Bullet 泛化）：携带开火者属性引用 + 命中效果列表；
 // gravity>0 为抛物（y 轴向上、重力向下拉），pierce 为剩余穿透数，hitIds 防穿透二次结算。
@@ -86,7 +87,21 @@ export interface BuffChangedEvent {
     stacks: number;
 }
 
-export type BattleEvent = EnemyKilledEvent | SkillCastEvent | BuffChangedEvent;
+export interface ZoneSpawnedEvent { type: 'zoneSpawned'; x: number; y: number; radius: number; }
+export interface ZoneExpiredEvent { type: 'zoneExpired'; x: number; y: number; }
+
+export type BattleEvent = EnemyKilledEvent | SkillCastEvent | BuffChangedEvent | ZoneSpawnedEvent | ZoneExpiredEvent;
+
+// 一片场地效果（毒池/火海）：带时长的区域，周期对域内敌人施加效果列表
+export interface ZoneEffect {
+    x: number; y: number; radius: number;
+    remaining: number;
+    period: number;
+    accum: number;
+    effects: Effect[];
+    stats: CombatStats;   // 施放者攻击属性快照引用（本身满足 EffectSource，周期结算零分配）
+    alive: boolean;
+}
 
 export class BattleManager {
     private halfW = 0;
@@ -95,6 +110,7 @@ export class BattleManager {
     soldiers: CombatUnit[] = [];
     enemies: CombatUnit[] = [];
     projectiles: Projectile[] = [];
+    zones: ZoneEffect[] = [];
     private _unitSeq = 0;
     // 光束数组做对象池复用：只有前 count 条有效，渲染层按 count 遍历（避免每帧新建数组/对象）
     healBeams: HealBeam[] = [];
@@ -209,6 +225,7 @@ export class BattleManager {
         this._updateFiring(dt);
         this._updateSkills(dt);
         this._updateProjectiles(dt);
+        this._updateZones(dt);
         this._updateEnemies(dt);
         this._updateHealing(dt);
         this._updateFloats(dt);
@@ -493,6 +510,48 @@ export class BattleManager {
             hitIds: [],
             alive: true,
         });
+    }
+
+    // 生成一片场地效果
+    private _spawnZone(x: number, y: number, cfg: { radius: number; duration: number; period: number }, effects: Effect[], stats: CombatStats) {
+        if (this.zones.length >= MAX_ZONES) return;   // 护栏：静默跳过
+        this.zones.push({
+            x, y, radius: cfg.radius,
+            remaining: cfg.duration,
+            period: cfg.period,
+            accum: 0,
+            effects, stats,
+            alive: true,
+        });
+        this.events.push({ type: 'zoneSpawned', x, y, radius: cfg.radius });
+    }
+
+    // —— 场地效果：周期对域内活敌施加效果列表，到期清理 ——
+    private _updateZones(dt: number) {
+        for (const z of this.zones) {
+            if (!z.alive) continue;
+            z.remaining -= dt;
+            z.accum += dt;
+            while (z.accum >= z.period) {
+                z.accum -= z.period;
+                const r2 = z.radius * z.radius;
+                for (const e of this.enemies) {
+                    if (!e.alive) continue;
+                    const dx = e.x - z.x, dy = e.y - z.y;
+                    if (dx * dx + dy * dy > r2) continue;
+                    for (const eff of z.effects) applyEffect(z, e, eff, this._effectHooks);   // zone 自身满足 EffectSource
+                }
+            }
+            if (z.remaining <= 0) {
+                z.alive = false;
+                this.events.push({ type: 'zoneExpired', x: z.x, y: z.y });
+            }
+        }
+        let w = 0;
+        for (let i = 0; i < this.zones.length; i++) {
+            if (this.zones[i].alive) this.zones[w++] = this.zones[i];
+        }
+        this.zones.length = w;
     }
 
     // —— 弹道飞行 + 命中（直线/穿透/抛物统一路径）——

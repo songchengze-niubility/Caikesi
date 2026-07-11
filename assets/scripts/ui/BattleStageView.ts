@@ -418,6 +418,13 @@ export class BattleStageView {
     private renderUnits(manager: BattleManager): void {
         const g = this.gfx;
         g.clear();
+        // 场地效果垫底（半透明圆）
+        for (const zone of manager.zones) {
+            g.fillColor = this.tempColor.set(120, 200, 120, 50);
+            g.circle(zone.x, zone.y, zone.radius);
+            g.fill();
+        }
+
         const bulletRadius = BattleConfig.bullet.radius;
         g.fillColor = this.bulletColor;
         for (const projectile of manager.projectiles) g.circle(projectile.x, projectile.y, bulletRadius);
