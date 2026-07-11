@@ -109,6 +109,7 @@ type ProjectileMotion =
 - 眩晕/嘲讽/沉默 = Buff flags 聚合进 `BehaviorGate`,移动/攻击/技能循环在入口处查门,不散落判断。
 - 击退 = `knockback` Effect 实装:直接改 x,**钳制**——敌人不越过防线锚点语义、我方不被推出屏幕/阵型合法区;与近战前压硬保险共存(击退后按现有移动逻辑自然回位)。
 - 事件:`knockback`、`zoneSpawned`/`zoneExpired`。
+- **实做语义定稿(2026-07-11 第 2 段落地)**:嘲讽为光环式(敌人优先打最近的带 taunt 我方单位,不追施法者);沉默只禁释放不停技能进度;远程/治疗钉站位单位天然免疫击退;技能投递经 `skill.xlsx` 的 `delivery` 列(`DeliveryDef` 编码 `line:速度[:穿透]`/`arc:速度:重力`/`zone:半径:时长:周期`,空=instant),投递技能的 skillCast 事件 hits 为空;护栏 `MAX_PROJECTILES=64`/`MAX_ZONES=8`。
 
 ## 第 3 段 · Boss 机制脚本化
 
