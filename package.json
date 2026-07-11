@@ -10,6 +10,7 @@
     "typecheck": "npm run typecheck:game && npm run typecheck:tools",
     "test": "npm run test:inventory && npm run test:effective && npm run test:drop && npm run test:combat && npm run test:progression && npm run test:services && npm run test:art && npm run test:partsrig && npm run test:craft && npm run test:skill && npm run test:squad && npm run test:growth-config && npm run test:growth && npm run test:inlay-config && npm run test:reward-types && npm run test:inlay && npm run test:account",
     "verify": "npm run typecheck && npm test && npm run sim:pacing && npm run check:art && npm run check:ui-alpha",
+    "serve:remote": "npx http-server build/wechatgame/remote -p 8123 --cors -c-1",
     "config": "tsx tools/excel-to-config.ts",
     "seed:battle": "tsx tools/seed-battle-xlsx.ts",
     "test:inventory": "tsx tools/inventory-test.ts",

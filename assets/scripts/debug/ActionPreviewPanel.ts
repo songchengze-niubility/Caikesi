@@ -1,3 +1,4 @@
+import { sys } from 'cc';
 import { ArtManifest } from '../art/ArtManifest';
 import { ensureDebugDock } from './DebugDock';
 
@@ -49,7 +50,8 @@ export function mountActionPreviewPanel(
     onHide: () => void,
 ): () => void {
     const doc: any = (globalThis as any).document;
-    if (!doc) return () => {};
+    // 微信小游戏适配器会注入不完整的 document 垫片，单判 !doc 不够
+    if (!sys.isBrowser || !doc || typeof doc.querySelector !== 'function') return () => {};
 
     const old = doc.getElementById(PANEL_ID);
     if (old) old.remove();

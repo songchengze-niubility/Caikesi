@@ -3,6 +3,7 @@
 // 定位：只负责临时调整。调好后点「导出 JSON」把数值复制出来，后续由 Excel 统一管理。
 // 注意：用的是 HTML DOM，只在网页预览里出现；微信小游戏构建里不会显示（也不该带它上线）。
 
+import { sys } from 'cc';
 import { BattleConfig, CombatStats, SoldierClass } from '../config/BattleConfig';
 // 两个网页调试工具共用 DebugDock；修改 Dock 后由该稳定入口触发 Creator 重新打包依赖。
 import { ensureDebugDock } from './DebugDock';
@@ -103,7 +104,8 @@ const PANEL_ID = 'battle-config-panel';
 // 挂载面板。onRestart：点「重开战斗」时调用（让血量/站位等开局读取的值重新生效）。
 export function mountConfigPanel(onRestart: () => void) {
     const doc: any = (globalThis as any).document;
-    if (!doc) return; // 非网页环境（如微信小游戏）直接跳过
+    // 微信小游戏适配器会注入不完整的 document 垫片，单判 !doc 不够
+    if (!sys.isBrowser || !doc || typeof doc.querySelector !== 'function') return;
 
     // 避免重复挂载
     const old = doc.getElementById(PANEL_ID);
