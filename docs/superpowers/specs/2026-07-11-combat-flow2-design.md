@@ -90,6 +90,12 @@
 - **Plan B:行军推进**(moveSpeed 属性迁移、marching 状态机、渲染最简表现、march-test)。
 - B 不依赖 A;先 B 后 A 可让 pacing 重校只发生一次(A 的重校在 B 的行军节奏之上做),**推荐先 B 后 A**。
 
+## Plan A 实做偏差回写(2026-07-11)
+
+- onHurt 只在目标**存活**时触发(致死一击只发 onKill 不发 onHurt);onKill 溯源经 Projectile/Zone 的 owner 字段,DoT 击杀不触发。
+- dps 补偿定稿 whirlwind 0.8 / lethal_strike 3.5;pacing 重校发现 dps 移除 timer 型技能后裸装档结构性变弱(50 局诊断 84%),按"L3 减负 + L7 覆盖 -5% + L10 Boss 39000"落地,13 门槛六连跑全绿——这是数值平衡待办的提前小块,理由留档 seed-battle 注释。
+- HUD:第 3 技能按钮保持静态贴图(渲染循环 `min(3,count)` 天然安全),真 UI 阶段再动态化。
+
 ## Plan B 实做偏差回写(2026-07-11)
 
 - dps 实为近战、原移速 300——保留 300(而非设计稿臆写的 220),近战冲锋行为等价;healer 从 0 补 220 仅供行军。
