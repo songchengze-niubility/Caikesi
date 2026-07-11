@@ -29,7 +29,9 @@ function mkProjectile(p: Partial<Projectile>): Projectile {
         x: 0, y: 0, vx: 0, vy: 0,
         stats: mkStats({ atk: 50 }),
         effects: [{ kind: 'damage', mult: 1 }],
-        pierce: 0, gravity: 0, hitIds: [], alive: true,
+        pierce: 0, gravity: 0, hitIds: [],
+        owner: null, isBasicAttack: false,
+        alive: true,
         ...p,
     };
 }

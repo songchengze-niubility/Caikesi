@@ -22,6 +22,16 @@ export interface EffectHooks {
     onBuffChanged(target: CombatUnit, buffId: string, applied: boolean, stacks: number): void;
     // 位移需要战场知识（钳制边界、事件），由 BattleManager 实现
     applyKnockback(target: CombatUnit, distance: number): void;
+    // 被动钩子（可选）：直击伤害命中未闪避 / 直击致死（DoT 不走本入口天然排除）
+    onDamaged?(target: CombatUnit, attacker: CombatUnit | null, damage: number): void;
+    onKilled?(attacker: CombatUnit | null, victim: CombatUnit): void;
+}
+
+// 攻击者溯源（结构探测，避免引入 BattleManager 类型依赖）：
+// CombatUnit 有 side 字段；Projectile/ZoneEffect 带 owner 字段；其余（快照字面量）→ null
+function resolveAttacker(source: EffectSource): CombatUnit | null {
+    if ((source as { side?: unknown }).side !== undefined) return source as CombatUnit;
+    return (source as { owner?: CombatUnit | null }).owner ?? null;
 }
 
 export interface EffectOutcome { damage: number; crit: boolean; dodged: boolean; }
@@ -35,7 +45,13 @@ export function applyEffect(source: EffectSource, target: CombatUnit, effect: Ef
             target.hp -= damage;
             // mult=1 时 damage===r.damage，直接透传 r（普攻热路径零分配）；倍率伤害才拷贝改写
             hooks.spawnFloat(target.x, target.y, damage === r.damage ? r : { ...r, damage }, floatKind);
-            if (target.hp <= 0) hooks.markDead(target);
+            const killed = target.hp <= 0;
+            if (killed) hooks.markDead(target);
+            if (damage > 0) {
+                const attacker = (hooks.onDamaged || hooks.onKilled) ? resolveAttacker(source) : null;
+                if (!killed && hooks.onDamaged) hooks.onDamaged(target, attacker, damage);   // 受击（活着才谈受击被动）
+                if (killed && hooks.onKilled) hooks.onKilled(attacker, target);
+            }
             return { damage, crit: r.crit, dodged: r.dodged };
         }
         case 'heal': {

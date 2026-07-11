@@ -9,6 +9,7 @@
 
 import { BattleConfig, SoldierClass, AttackType, CombatStats } from '../config/BattleConfig';
 import { getBuffDef } from '../config/BuffConfig';
+import { passivesForClass, type PassiveDef } from '../config/SkillConfig';
 import { buffedStats, buffGate, type BehaviorGate, type BuffInstance } from './BuffSystem';
 import { UnitSkills, unitSkillsForClass } from './SkillRuntime';
 
@@ -39,6 +40,7 @@ export interface CombatUnit {
     buffs: BuffInstance[];
     gate: BehaviorGate;
     skills: UnitSkills | null;
+    passives: PassiveDef[];   // 被动技能定义（士兵按职业装载；敌人空，第 3 段 Boss 可挂）
 }
 
 // 士兵工厂：字段映射自原 BattleManager._setupSquad
@@ -66,6 +68,7 @@ export function createSoldierUnit(id: number, cls: SoldierClass, stats: CombatSt
         buffs: [],
         gate: { canMove: true, canAct: true, canCast: true, taunting: false },
         skills: unitSkillsForClass(cls),
+        passives: passivesForClass(cls),
     };
 }
 
@@ -96,6 +99,7 @@ export function createEnemyUnit(id: number, type: string, hpOverride: number | u
         buffs: [],
         gate: { canMove: true, canAct: true, canCast: true, taunting: false },
         skills: null,
+        passives: [],
     };
 }
 

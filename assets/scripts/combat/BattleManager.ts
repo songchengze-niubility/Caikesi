@@ -9,6 +9,7 @@ import type { EffectiveStatsMap } from './EffectiveStats';
 import { CombatUnit, createSoldierUnit, createEnemyUnit, recomputeDerived, UnitAction, UnitSide } from './CombatUnit';
 import { applyEffect, EffectHooks } from './Effects';
 import { tickBuffs, BuffInstance } from './BuffSystem';
+import { firePassives, applyAlwaysPassives, PassiveHook } from './PassiveSystem';
 import { getBuffDef, BuffDef } from '../config/BuffConfig';
 import type { Effect } from '../config/EffectTypes';
 
@@ -38,6 +39,8 @@ export interface Projectile {
     pierce: number;       // 剩余穿透数（0=命中即灭）
     gravity: number;      // 0=直线
     hitIds: number[];     // 已命中单位 id（穿透去重）
+    owner: CombatUnit | null;    // 开火者（onHit/onKill 被动溯源；可能已阵亡）
+    isBasicAttack: boolean;      // 普攻弹道才触发 onHit 被动（技能投递弹道不算普攻）
     alive: boolean;
 }
 
@@ -103,6 +106,7 @@ export interface ZoneEffect {
     accum: number;
     effects: Effect[];
     stats: CombatStats;   // 施放者攻击属性快照引用（本身满足 EffectSource，周期结算零分配）
+    owner: CombatUnit | null;   // 施放者（onKill 被动溯源）
     alive: boolean;
 }
 
@@ -147,7 +151,24 @@ export class BattleManager {
             else target.x = Math.max(-this.halfW + 20, target.x - distance);
             this.events.push({ type: 'knockback', targetSide: target.side, targetKey: target.key, distance });
         },
+        // 被动钩子：受击（onHurt，事件对象=攻击者）、击杀（onKill，事件对象=被杀者）
+        onDamaged: (target, attacker) => this._firePassives(target, 'onHurt', attacker),
+        onKilled: (attacker, victim) => { if (attacker) this._firePassives(attacker, 'onKill', victim); },
     };
+
+    // —— 被动触发：一层防递归（被动 proc 出的效果不再触发被动，防"反击触发反击"死循环）——
+    private _procGuard = false;
+    private _firePassives(owner: CombatUnit, hook: PassiveHook, other: CombatUnit | null) {
+        if (this._procGuard || !owner.alive || owner.passives.length === 0) return;
+        this._procGuard = true;
+        try {
+            const allies = owner.side === 'ally' ? this.soldiers : this.enemies;
+            firePassives(owner.passives, hook, owner, other, allies,
+                (target, eff) => applyEffect(owner, target, eff, this._effectHooks));
+        } finally {
+            this._procGuard = false;
+        }
+    }
 
     // Buff 周期/到期回调的当前单位上下文（避免每单位每帧新建闭包）
     private _buffUnit: CombatUnit | null = null;
@@ -206,6 +227,17 @@ export class BattleManager {
             const hx = frontX - i * L.spacing;   // 越靠后（i 越大）越靠左
             this.soldiers.push(createSoldierUnit(this._unitSeq++, cls, st, hx, 0));
         });
+        // 开战：常驻/光环被动立即生效（永久 Buff 上身；防递归 guard 同样生效）
+        this._procGuard = true;
+        try {
+            for (const s of this.soldiers) {
+                if (s.passives.length === 0) continue;
+                applyAlwaysPassives(s.passives, s, this.soldiers,
+                    (target, eff) => applyEffect(s, target, eff, this._effectHooks));
+            }
+        } finally {
+            this._procGuard = false;
+        }
     }
 
     private _hasAliveSoldier(): boolean {
@@ -463,10 +495,11 @@ export class BattleManager {
             if (s.archetype === 'melee') {
                 this._setAction(s, 'attack', ATTACK_ACTION_HOLD);
                 applyEffect(s, target, DMG1, this._effectHooks);   // 近战：走完整公式
+                this._firePassives(s, 'onHit', target);            // 普攻命中被动
             } else {
                 this._setAction(s, 'attack', ATTACK_ACTION_HOLD);
-                // 远程：发直线弹（命中再结算），行为与旧 Bullet 等价
-                this._spawnProjectile(s.x, s.y, target, BattleConfig.bullet.speed, 0, 0, BASIC_ATTACK_EFFECTS, s.stats);
+                // 远程：发直线弹（命中再结算），行为与旧 Bullet 等价；onHit 被动在命中帧触发
+                this._spawnProjectile(s.x, s.y, target, BattleConfig.bullet.speed, 0, 0, BASIC_ATTACK_EFFECTS, s.stats, s, true);
             }
         }
     }
@@ -487,14 +520,14 @@ export class BattleManager {
                     // 投递技能：发弹道/落场地，伤害命中/周期时后置结算；事件即时发出且 hits 为空
                     const first = cast.targets[0];
                     if (d.kind === 'zone') {
-                        this._spawnZone(first.x, first.y, d, cast.def.effects, s.stats);
+                        this._spawnZone(first.x, first.y, d, cast.def.effects, s.stats, s);
                     } else {
                         for (const t of cast.targets) {
                             if (!t.alive) continue;
                             this._spawnProjectile(s.x, s.y, t, d.speed,
                                 d.kind === 'arc' ? d.gravity : 0,
                                 d.kind === 'line' ? d.pierce : 0,
-                                cast.def.effects, s.stats);
+                                cast.def.effects, s.stats, s, false);
                         }
                     }
                     this._setAction(s, 'attack', ATTACK_ACTION_HOLD);
@@ -505,6 +538,7 @@ export class BattleManager {
                         casterCls: s.key as SoldierClass,
                         hits: [],
                     });
+                    this._firePassives(s, 'onCast', null);   // 释放主动技能被动
                     continue;
                 }
                 const hits: SkillCastEvent['hits'] = [];
@@ -532,6 +566,7 @@ export class BattleManager {
                     casterCls: s.key as SoldierClass,
                     hits,
                 });
+                this._firePassives(s, 'onCast', null);   // 释放主动技能被动
             }
         }
     }
@@ -560,7 +595,7 @@ export class BattleManager {
     }
 
     // 生成一枚弹道体：抛物瞄准公式 t=dist/speed, vy0=dy/t+0.5*g*t（g=0 退化为直线）
-    private _spawnProjectile(fromX: number, fromY: number, target: CombatUnit, speed: number, gravity: number, pierce: number, effects: Effect[], stats: CombatStats) {
+    private _spawnProjectile(fromX: number, fromY: number, target: CombatUnit, speed: number, gravity: number, pierce: number, effects: Effect[], stats: CombatStats, owner: CombatUnit | null = null, isBasicAttack = false) {
         if (this.projectiles.length >= MAX_PROJECTILES) return;   // 护栏：静默跳过
         const dx = target.x - fromX, dy = target.y - fromY;
         const dist = Math.hypot(dx, dy) || 1;
@@ -571,19 +606,20 @@ export class BattleManager {
             vy: dy / t + 0.5 * gravity * t,
             stats, effects, pierce, gravity,
             hitIds: [],
+            owner, isBasicAttack,
             alive: true,
         });
     }
 
     // 生成一片场地效果
-    private _spawnZone(x: number, y: number, cfg: { radius: number; duration: number; period: number }, effects: Effect[], stats: CombatStats) {
+    private _spawnZone(x: number, y: number, cfg: { radius: number; duration: number; period: number }, effects: Effect[], stats: CombatStats, owner: CombatUnit | null = null) {
         if (this.zones.length >= MAX_ZONES) return;   // 护栏：静默跳过
         this.zones.push({
             x, y, radius: cfg.radius,
             remaining: cfg.duration,
             period: cfg.period,
             accum: 0,
-            effects, stats,
+            effects, stats, owner,
             alive: true,
         });
         this.events.push({ type: 'zoneSpawned', x, y, radius: cfg.radius });
@@ -637,6 +673,7 @@ export class BattleManager {
                 const dx = e.x - p.x, dy = e.y - p.y;
                 if (dx * dx + dy * dy <= hit * hit) {
                     for (const eff of p.effects) applyEffect(p, e, eff, this._effectHooks);
+                    if (p.isBasicAttack && p.owner) this._firePassives(p.owner, 'onHit', e);   // 普攻命中被动
                     p.hitIds.push(e.id);
                     if (p.pierce <= 0) { p.alive = false; break; }
                     p.pierce--;
