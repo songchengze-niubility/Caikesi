@@ -18,7 +18,7 @@
 import * as XLSX from 'xlsx';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parseEffectList, parseStatMods } from '../assets/scripts/config/EffectTypes';
+import { parseEffectList, parseStatMods, parseDelivery } from '../assets/scripts/config/EffectTypes';
 
 // ============ 校验错误/警告收集（每个源独立，跑前清空）============
 // err   = 会让产物坏掉的硬错误（缺字段、引用不存在、键不一致）→ 阻断该源导出。
@@ -780,7 +780,8 @@ function buildSkillConfig(wb: XLSX.WorkBook): { config: unknown; summary: string
             }
             if (eff.kind === 'damage' && eff.mult <= 0) err(`Skills[${id}].effects: damage 倍率必须 > 0`);
         }
-        skills.push({ id, name: reqStr(r['name'], `Skills[${id}].name`), cls, trigger, triggerValue, target, radius, maxTargets, effects });
+        const delivery = parseDelivery(String(r['delivery'] ?? ''), m => err(`Skills[${id}].delivery: ${m}`));
+        skills.push({ id, name: reqStr(r['name'], `Skills[${id}].name`), cls, trigger, triggerValue, target, radius, maxTargets, effects, delivery });
     }
     if (skills.length === 0) err('Skills: 至少需要 1 个技能');
     const config = { skills };

@@ -1,6 +1,6 @@
 // Effect 编码解析测试（纯逻辑，tsx 运行）。
 import assert from 'node:assert/strict';
-import { parseEffectList, parseStatMods } from '../assets/scripts/config/EffectTypes';
+import { parseEffectList, parseStatMods, parseDelivery } from '../assets/scripts/config/EffectTypes';
 
 type Test = { name: string; run: () => void };
 const tests: Test[] = [];
@@ -46,6 +46,27 @@ test('parseStatMods：hp 与未知键报错', () => {
     errs = [];
     parseStatMods('mana:+5', m => errs.push(m));
     assert.equal(errs.length, 1);
+});
+
+test('parseDelivery：四种编码与默认值', () => {
+    assert.equal(parseDelivery('', noErr), null);
+    assert.equal(parseDelivery('  ', noErr), null);
+    assert.deepEqual(parseDelivery('line:900', noErr), { kind: 'line', speed: 900, pierce: 0 });
+    assert.deepEqual(parseDelivery('line:900:2', noErr), { kind: 'line', speed: 900, pierce: 2 });
+    assert.deepEqual(parseDelivery('arc:700:1400', noErr), { kind: 'arc', speed: 700, gravity: 1400 });
+    assert.deepEqual(parseDelivery('zone:150:4:1', noErr), { kind: 'zone', radius: 150, duration: 4, period: 1 });
+});
+
+test('parseDelivery：未知种类 / 非法参数报错', () => {
+    let errs: string[] = [];
+    parseDelivery('beam:100', m => errs.push(m));
+    assert.equal(errs.length, 1);
+    errs = [];
+    parseDelivery('zone:0:4:1', m => errs.push(m));   // radius 必须 > 0
+    assert.ok(errs.length >= 1);
+    errs = [];
+    parseDelivery('line:abc', m => errs.push(m));
+    assert.ok(errs.length >= 1);
 });
 
 let failed = 0;

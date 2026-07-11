@@ -103,6 +103,7 @@ test('silence：技能进度照走但禁释放，驱散后恢复释放', () => {
     const def: SkillDef = {
         id: 't', name: '测试', cls: 'dps', trigger: 'timer', triggerValue: 0.1,
         target: 'nearest', radius: 0, maxTargets: 1, effects: [{ kind: 'damage', mult: 1 }],
+        delivery: null,
     };
     s.skills = new UnitSkills([def]);
     applyEffect(s, s, { kind: 'applyBuff', buffId: 'silence_seal', stacks: 1 }, (mgr as any)._effectHooks);

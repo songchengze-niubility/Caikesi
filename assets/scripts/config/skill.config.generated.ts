@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/skill.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/skill.xlsx
-// 生成时间：2026-07-11T04:41:22.497Z
+// 生成时间：2026-07-11T05:53:14.848Z
 
 /* eslint-disable */
 // @ts-nocheck
@@ -21,7 +21,8 @@ export const generatedSkillConfig = {
                     "kind": "damage",
                     "mult": 0.5
                 }
-            ]
+            ],
+            "delivery": null
         },
         {
             "id": "ground_smash",
@@ -37,7 +38,8 @@ export const generatedSkillConfig = {
                     "kind": "damage",
                     "mult": 1.2
                 }
-            ]
+            ],
+            "delivery": null
         },
         {
             "id": "lethal_strike",
@@ -53,7 +55,8 @@ export const generatedSkillConfig = {
                     "kind": "damage",
                     "mult": 2.5
                 }
-            ]
+            ],
+            "delivery": null
         }
     ]
 };

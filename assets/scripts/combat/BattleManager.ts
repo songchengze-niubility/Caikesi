@@ -453,6 +453,31 @@ export class BattleManager {
                 : this._nearestEnemy(s.x, s.y);
             const casts = s.skills.collectCasts(s.x, s.y, this.enemies, currentTarget);
             for (const cast of casts) {
+                const d = cast.def.delivery;
+                if (d) {
+                    // 投递技能：发弹道/落场地，伤害命中/周期时后置结算；事件即时发出且 hits 为空
+                    const first = cast.targets[0];
+                    if (d.kind === 'zone') {
+                        this._spawnZone(first.x, first.y, d, cast.def.effects, s.stats);
+                    } else {
+                        for (const t of cast.targets) {
+                            if (!t.alive) continue;
+                            this._spawnProjectile(s.x, s.y, t, d.speed,
+                                d.kind === 'arc' ? d.gravity : 0,
+                                d.kind === 'line' ? d.pierce : 0,
+                                cast.def.effects, s.stats);
+                        }
+                    }
+                    this._setAction(s, 'attack', ATTACK_ACTION_HOLD);
+                    this.events.push({
+                        type: 'skillCast',
+                        skillId: cast.def.id,
+                        skillName: cast.def.name,
+                        casterCls: s.key as SoldierClass,
+                        hits: [],
+                    });
+                    continue;
+                }
                 const hits: SkillCastEvent['hits'] = [];
                 for (const target of cast.targets) {
                     if (!target.alive) continue;

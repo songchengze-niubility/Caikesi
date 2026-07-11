@@ -20,6 +20,13 @@ export type Effect =
 
 export interface StatMod { key: keyof CombatStats; flat: number; pct: number; }
 
+// 技能投递方式：null=instant（即时对目标结算，现状）；
+// 编码：'line:速度[:穿透=0]' / 'arc:速度:重力' / 'zone:半径:时长:周期'
+export type DeliveryDef =
+    | { kind: 'line'; speed: number; pierce: number }
+    | { kind: 'arc'; speed: number; gravity: number }
+    | { kind: 'zone'; radius: number; duration: number; period: number };
+
 const STAT_KEYS: (keyof CombatStats)[] = [
     'hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg',
     'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce',
@@ -63,6 +70,38 @@ export function parseEffectList(src: string, onError: (msg: string) => void): Ef
         }
     }
     return out;
+}
+
+export function parseDelivery(src: string, onError: (msg: string) => void): DeliveryDef | null {
+    if (!src || !src.trim()) return null;
+    const parts = src.trim().split(':');
+    switch (parts[0]) {
+        case 'line': {
+            const speed = num(parts[1], `delivery[${src}].speed`, onError);
+            const pierce = parts[2] === undefined ? 0 : num(parts[2], `delivery[${src}].pierce`, onError);
+            if (speed <= 0) onError(`delivery[${src}]: speed 必须 > 0`);
+            return { kind: 'line', speed, pierce };
+        }
+        case 'arc': {
+            const speed = num(parts[1], `delivery[${src}].speed`, onError);
+            const gravity = num(parts[2], `delivery[${src}].gravity`, onError);
+            if (speed <= 0) onError(`delivery[${src}]: speed 必须 > 0`);
+            if (gravity <= 0) onError(`delivery[${src}]: gravity 必须 > 0`);
+            return { kind: 'arc', speed, gravity };
+        }
+        case 'zone': {
+            const radius = num(parts[1], `delivery[${src}].radius`, onError);
+            const duration = num(parts[2], `delivery[${src}].duration`, onError);
+            const period = num(parts[3], `delivery[${src}].period`, onError);
+            if (radius <= 0) onError(`delivery[${src}]: radius 必须 > 0`);
+            if (duration <= 0) onError(`delivery[${src}]: duration 必须 > 0`);
+            if (period <= 0) onError(`delivery[${src}]: period 必须 > 0`);
+            return { kind: 'zone', radius, duration, period };
+        }
+        default:
+            onError(`delivery[${src}]: 未知投递方式 ${JSON.stringify(parts[0])}`);
+            return null;
+    }
 }
 
 export function parseStatMods(src: string, onError: (msg: string) => void): StatMod[] {
