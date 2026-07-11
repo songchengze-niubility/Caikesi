@@ -11,32 +11,36 @@ import { dirname, resolve } from 'node:path';
 const OUT = resolve(__dirname, 'config-xlsx/battle.xlsx');
 
 // —— Stats sheet：角色属性表（class 作行 key，12 个数值属性）——
-const STATS_HEADER = ['class', 'hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce'];
+const STATS_HEADER = ['class', 'hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce', 'moveSpeed'];
 const STATS_ROWS: (string | number)[][] = [
-    ['tank',   360, 14, 10, 90,  1.0, 0.05, 0.5, 0.0,  0.30, 0.5, 0.0,  0.10],
+    // moveSpeed 2026-07-11 从 Classes 表迁入统一属性表：tank/dps 沿用原值 300（近战冲锋行为等价）；
+    // healer 原为 0（钉站位），补 220 仅供全队行军取最慢值用，战斗中 heal 原型仍钉站位。
+    ['tank',   360, 14, 10, 90,  1.0, 0.05, 0.5, 0.0,  0.30, 0.5, 0.0,  0.10, 300],
     // dps 基础面板 2026-07-04 ×5.5：旧值(hp90/atk28)裸装连第1关都过不了（1v1 丧尸都是五五开）；
     // 装备 hp/atk 平铺值在 equip.xlsx 同倍放大，保持装备相对价值不变
-    ['dps',    500, 155, 2,  90,  1.3, 0.25, 1.0, 0.05, 0.0,  0.0, 0.10, 0.0],
-    ['healer', 120, 0,  4,  0,   1.0, 0.0,  0.5, 0.10, 0.0,  0.0, 0.0,  0.0],
+    ['dps',    500, 155, 2,  90,  1.3, 0.25, 1.0, 0.05, 0.0,  0.0, 0.10, 0.0,  300],
+    ['healer', 120, 0,  4,  0,   1.0, 0.0,  0.5, 0.10, 0.0,  0.0, 0.0,  0.0,  220],
 ];
 
 // —— EnemyTypes sheet：怪物图鉴（type 作行 key；color 用 "r,g,b" 字符串；stats 拍平到同表）——
-const ENEMY_HEADER = ['type', 'name', 'speed', 'radius', 'attackInterval', 'color',
-    'hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce', 'exp'];
+const ENEMY_HEADER = ['type', 'name', 'radius', 'attackInterval', 'color',
+    'hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce', 'moveSpeed', 'exp'];
 const ENEMY_ROWS: (string | number)[][] = [
-    ['zombie', '丧尸',   90,  28, 0.8, '230,70,70',  120, 18, 4,  0, 1.0, 0.05, 0.5, 0.05, 0.0, 0.0, 0.0, 0.0, 5],
-    ['runner', '疾行者', 175, 22, 0.6, '240,150,60', 70,  14, 2,  0, 1.4, 0.05, 0.5, 0.15, 0.0, 0.0, 0.0, 0.0, 4],
-    ['brute',  '重装',   55,  40, 1.2, '170,80,200', 360, 30, 12, 0, 0.8, 0.05, 0.5, 0.0,  0.0, 0.0, 0.0, 0.15, 10],
+    // moveSpeed（原顶层 speed 列）2026-07-11 迁入 stats 组，数值原样搬运
+    ['zombie', '丧尸',   28, 0.8, '230,70,70',  120, 18, 4,  0, 1.0, 0.05, 0.5, 0.05, 0.0, 0.0, 0.0, 0.0,  90,  5],
+    ['runner', '疾行者', 22, 0.6, '240,150,60', 70,  14, 2,  0, 1.4, 0.05, 0.5, 0.15, 0.0, 0.0, 0.0, 0.0,  175, 4],
+    ['brute',  '重装',   40, 1.2, '170,80,200', 360, 30, 12, 0, 0.8, 0.05, 0.5, 0.0,  0.0, 0.0, 0.0, 0.15, 55,  10],
     // 第一章 Boss：纯数值型大体型（高血高攻高减免），无技能机制；血量经 sim:pacing 校准（t2 卡关 / t3 可过）
-    ['boss_butcher', '屠夫领主', 40, 60, 1.5, '150,40,40', 15100, 55, 20, 0, 0.8, 0.05, 0.5, 0.0, 0.0, 0.0, 0.0, 0.30, 200],
+    ['boss_butcher', '屠夫领主', 60, 1.5, '150,40,40', 15100, 55, 20, 0, 0.8, 0.05, 0.5, 0.0, 0.0, 0.0, 0.0, 0.30, 40, 200],
 ];
 
 // —— Classes sheet：职业行为（class 作行 key；attackType 是字符串枚举）——
-const CLASSES_HEADER = ['class', 'attackType', 'fireInterval', 'moveSpeed', 'advanceLimit', 'healPerSec', 'size'];
+const CLASSES_HEADER = ['class', 'attackType', 'fireInterval', 'advanceLimit', 'healPerSec', 'size'];
 const CLASSES_ROWS: (string | number)[][] = [
-    ['tank',   'melee',  0.5,  300, 80, 0,  74],
-    ['dps',    'melee',  0.33, 300, 80, 0,  52],
-    ['healer', 'heal',   0,    0,   0,  16, 52],
+    // moveSpeed 2026-07-11 迁入 Stats 统一属性表
+    ['tank',   'melee',  0.5,  80, 0,  74],
+    ['dps',    'melee',  0.33, 80, 0,  52],
+    ['healer', 'heal',   0,    0,  16, 52],
 ];
 
 // —— Levels sheet：关卡，拍平到 spawn-group 粒度 ——

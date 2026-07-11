@@ -27,6 +27,7 @@ function baseStats(): CombatStats {
         blockRatio: 0,
         dmgBonus: 0,
         dmgReduce: 0,
+        moveSpeed: 200,
     };
 }
 

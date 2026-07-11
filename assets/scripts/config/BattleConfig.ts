@@ -27,13 +27,13 @@ export interface CombatStats {
     blockRatio: number;  // 格挡减伤比例
     dmgBonus: number;    // 伤害加成（攻击方，最终伤害 ×(1+dmgBonus)）
     dmgReduce: number;   // 伤害减免（防御方，最终伤害 ×(1-dmgReduce)）
+    moveSpeed: number;   // 移动速度（像素/秒）：近战冲锋/怪物推进/全队行军共用，可被装备/Buff 加减速
 }
 
 // —— 一种怪物类型（图鉴）：自己的属性 + 移动/体型/外观 ——
 export interface EnemyType {
     name: string;          // 名字（飘字/调试用）
-    stats: CombatStats;    // 战斗属性
-    speed: number;         // 向左推进速度（像素/秒）
+    stats: CombatStats;    // 战斗属性（含 moveSpeed 推进速度）
     radius: number;        // 体型 + 命中半径
     attackInterval: number;// 基础贴身攻击间隔（秒）
     color: [number, number, number]; // 占位色块颜色 RGB
@@ -77,7 +77,6 @@ export interface BattleConfigData {
     classes: Record<SoldierClass, {
         attackType: AttackType;
         fireInterval: number;
-        moveSpeed: number;
         advanceLimit: number;
         healPerSec: number;
         size: number;

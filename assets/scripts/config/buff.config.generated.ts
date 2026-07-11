@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/buff.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/buff.xlsx
-// 生成时间：2026-07-11T05:50:01.162Z
+// 生成时间：2026-07-11T06:40:57.752Z
 
 /* eslint-disable */
 // @ts-nocheck
@@ -109,6 +109,24 @@ export const generatedBuffConfig = {
             "flags": [
                 "silence"
             ],
+            "dispelTag": "debuff"
+        },
+        {
+            "id": "frost",
+            "name": "冰缓",
+            "duration": 3,
+            "maxStacks": 1,
+            "stackRule": "refresh",
+            "period": 0,
+            "periodicEffect": null,
+            "statMods": [
+                {
+                    "key": "moveSpeed",
+                    "flat": 0,
+                    "pct": -0.3
+                }
+            ],
+            "flags": [],
             "dispelTag": "debuff"
         }
     ]

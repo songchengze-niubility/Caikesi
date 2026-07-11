@@ -111,9 +111,8 @@ function detStats(p: Partial<CombatStats>): CombatStats {
     return { ...BattleConfig.stats.dps, critRate: 0, dodgeRate: 0, blockRate: 0, dmgBonus: 0, dmgReduce: 0, ...p };
 }
 function pinDeterministic(e: import('../assets/scripts/combat/CombatUnit').CombatUnit): void {
-    e.baseStats = { ...e.baseStats, dodgeRate: 0, blockRate: 0 };
+    e.baseStats = { ...e.baseStats, dodgeRate: 0, blockRate: 0, moveSpeed: 0 };
     e.stats = e.baseStats;
-    e.moveSpeed = 0;
 }
 
 test('BattleManager 集成：效果列表技能——毒箭一击挂上中毒并周期跳伤', () => {

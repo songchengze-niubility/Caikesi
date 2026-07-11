@@ -29,7 +29,7 @@ export type DeliveryDef =
 
 const STAT_KEYS: (keyof CombatStats)[] = [
     'hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg',
-    'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce',
+    'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce', 'moveSpeed',
 ];
 
 function num(raw: string | undefined, where: string, onError: (msg: string) => void): number {

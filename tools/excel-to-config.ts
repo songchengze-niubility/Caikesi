@@ -48,7 +48,7 @@ function checkStatRanges(st: Record<string, number>, where: string) {
         const v = st[k];
         if (v < 0 || v > 1) warn(`${where}.${k} = ${v} 超出 [0,1]（概率/比例应在 0~1）`);
     }
-    const nonNeg = ['hp', 'atk', 'def', 'range', 'attackSpeed', 'critDmg', 'dmgBonus'];
+    const nonNeg = ['hp', 'atk', 'def', 'range', 'attackSpeed', 'critDmg', 'dmgBonus', 'moveSpeed'];
     for (const k of nonNeg) {
         if (st[k] < 0) warn(`${where}.${k} = ${st[k]} 为负`);
     }
@@ -57,7 +57,7 @@ function checkStatRanges(st: Record<string, number>, where: string) {
 
 // ============ 通用小工具（任意模块解析器复用）============
 type Cell = unknown;
-const STAT_KEYS = ['hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce'];
+const STAT_KEYS = ['hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce', 'moveSpeed'];
 const STAT_KEY_SET = new Set(STAT_KEYS);
 
 // 把单元格转成数字；空/非法 → null
@@ -158,7 +158,6 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
         checkStatRanges(eStats, `EnemyTypes[${type}].stats`);
         enemyTypes[type] = {
             name: reqStr(r['name'], `EnemyTypes[${type}].name`),
-            speed: reqNum(r['speed'], `EnemyTypes[${type}].speed`),
             radius: reqNum(r['radius'], `EnemyTypes[${type}].radius`),
             attackInterval: reqNum(r['attackInterval'], `EnemyTypes[${type}].attackInterval`),
             color: parseColor(r['color'], `EnemyTypes[${type}].color`),
@@ -179,7 +178,6 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
         classes[cls] = {
             attackType: at,
             fireInterval: reqNum(r['fireInterval'], `Classes[${cls}].fireInterval`),
-            moveSpeed: reqNum(r['moveSpeed'], `Classes[${cls}].moveSpeed`),
             advanceLimit: reqNum(r['advanceLimit'], `Classes[${cls}].advanceLimit`),
             healPerSec: reqNum(r['healPerSec'], `Classes[${cls}].healPerSec`),
             size: reqNum(r['size'], `Classes[${cls}].size`),

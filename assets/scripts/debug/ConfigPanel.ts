@@ -33,6 +33,7 @@ const STAT_META: { key: keyof CombatStats; label: string; min: number; max: numb
     { key: 'blockRatio', label: '格挡减伤', min: 0,   max: 1,    step: 0.05 },
     { key: 'dmgBonus',   label: '伤害加成', min: 0,   max: 2,    step: 0.05 },
     { key: 'dmgReduce',  label: '伤害减免', min: 0,   max: 0.9,  step: 0.05 },
+    { key: 'moveSpeed',  label: '移速',     min: 0,   max: 600,  step: 10 },
 ];
 
 // 职业 → 分组标题
@@ -59,7 +60,6 @@ function buildFields(): Field[] {
         } else {
             fields.push(f(title, '攻击间隔', 0.05, 2, 0.02, () => b.fireInterval, v => b.fireInterval = v));
             if (cls === 'tank') {
-                fields.push(f(title, '移速', 0, 600, 20, () => b.moveSpeed, v => b.moveSpeed = v));
                 fields.push(f(title, '前压上限', 0, 400, 10, () => b.advanceLimit, v => b.advanceLimit = v));
             }
         }
@@ -72,7 +72,6 @@ function buildFields(): Field[] {
         for (const m of STAT_META) {
             fields.push(f(title, m.label, m.min, m.max, m.step, () => t.stats[m.key], v => { t.stats[m.key] = v; }));
         }
-        fields.push(f(title, '移速', 20, 320, 10, () => t.speed, v => t.speed = v));
         fields.push(f(title, '体型', 10, 60, 2, () => t.radius, v => t.radius = v));
         fields.push(f(title, '攻击间隔', 0.2, 3, 0.1, () => t.attackInterval, v => t.attackInterval = v));
     });

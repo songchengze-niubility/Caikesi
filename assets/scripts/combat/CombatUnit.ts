@@ -26,8 +26,7 @@ export interface CombatUnit {
     baseStats: CombatStats;
     stats: CombatStats;
     hp: number; maxHp: number;
-    moveSpeed: number;
-    attackInterval: number;    // 基础攻击间隔（治疗为 0）
+    attackInterval: number;    // 基础攻击间隔（治疗为 0）；移动速度在 stats.moveSpeed（Buff 可减速）
     advanceLimit: number;      // 近战离原站位最多前压多远；敌人为 0（推进逻辑不走它）
     healPerSec: number;        // 每秒治疗量（非治疗为 0）
     radius: number;            // 体型/命中半径（士兵未使用，填 0）
@@ -56,7 +55,6 @@ export function createSoldierUnit(id: number, cls: SoldierClass, stats: CombatSt
         baseStats: stats,
         stats,
         hp: stats.hp, maxHp: stats.hp,
-        moveSpeed: cdef.moveSpeed,
         attackInterval: cdef.fireInterval,
         advanceLimit: cdef.advanceLimit,
         healPerSec: cdef.healPerSec,
@@ -87,7 +85,6 @@ export function createEnemyUnit(id: number, type: string, hpOverride: number | u
         baseStats: t.stats,
         stats: t.stats,
         hp, maxHp: hp,
-        moveSpeed: t.speed,
         attackInterval: t.attackInterval,
         advanceLimit: 0,
         healPerSec: 0,

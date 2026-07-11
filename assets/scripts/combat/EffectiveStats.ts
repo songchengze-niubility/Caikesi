@@ -11,7 +11,7 @@ export type EffectiveStatsMap = Partial<Record<SoldierClass, CombatStats>>;
 
 const STAT_KEYS: (keyof CombatStats)[] = [
     'hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg',
-    'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce',
+    'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce', 'moveSpeed',
 ];
 const PROB_STATS: (keyof CombatStats)[] = ['critRate', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgReduce'];
 
@@ -27,6 +27,7 @@ export function normalizeStats(st: CombatStats): CombatStats {
     st.attackSpeed = Math.max(0.01, st.attackSpeed);
     st.critDmg = Math.max(0, st.critDmg);
     st.dmgBonus = Math.max(0, st.dmgBonus);
+    st.moveSpeed = Math.max(0, st.moveSpeed);
     for (const k of PROB_STATS) st[k] = clamp(st[k], 0, 1);
     return st;
 }

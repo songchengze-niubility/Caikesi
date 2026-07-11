@@ -366,14 +366,14 @@ export class BattleManager {
             if (!s.alive) continue;
             if (!s.gate.canMove) continue;   // 眩晕：钉在原地
 
-            if (s.archetype !== 'melee' || s.moveSpeed <= 0) {
+            if (s.archetype !== 'melee') {
                 s.x = s.homeX; s.y = s.homeY;   // 远程/治疗：钉在站位
                 continue;
             }
 
             const target = this._frontmostEnemy();   // 盯最前面那只，守住阵线不追后排
             if (!target) {
-                const moved = this._moveToward(s, s.homeX, s.homeY, s.moveSpeed * dt);  // 没怪：退守
+                const moved = this._moveToward(s, s.homeX, s.homeY, s.stats.moveSpeed * dt);  // 没怪：退守
                 if (moved && s.actionLock <= 0) this._setAction(s, 'run');
                 continue;
             }
@@ -382,7 +382,7 @@ export class BattleManager {
             const d = Math.hypot(dx, dy) || 1;
             if (d > s.stats.range) {
                 // 冲上去，但停在 range 内
-                const step = Math.min(s.moveSpeed * dt, d - s.stats.range * 0.85);
+                const step = Math.min(s.stats.moveSpeed * dt, d - s.stats.range * 0.85);
                 let nx = s.x + (dx / d) * step;
                 const ny = s.y + (dy / d) * step;
                 // 前压上限；且硬保险——绝不越过「怪停靠线 − 射程」，保证怪永远在坦克前方
@@ -631,7 +631,7 @@ export class BattleManager {
 
             if (e.x > front) {
                 if (!e.gate.canMove) continue;     // 眩晕：原地罚站
-                e.x -= e.moveSpeed * dt;           // 各怪按自己的速度向左推进
+                e.x -= e.stats.moveSpeed * dt;     // 各怪按自己的速度向左推进（Buff 减速即刻生效）
                 if (e.x < front) e.x = front;
                 if (e.actionLock <= 0) this._setAction(e, 'run');
             } else if (e.gate.canAct) {

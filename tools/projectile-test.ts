@@ -19,7 +19,8 @@ function firstEnemy(mgr: BattleManager): CombatUnit {
     for (let i = 0; i < 100 && mgr.enemies.length === 0; i++) mgr.tick(0.05);
     assert.ok(mgr.enemies.length > 0, '应已刷出敌人');
     const e = mgr.enemies[0];
-    e.moveSpeed = 0;   // 钉住消除移动干扰
+    e.baseStats = { ...e.baseStats, moveSpeed: 0 };   // 钉住消除移动干扰（换引用，不污染全局配置）
+    e.stats = e.baseStats;
     return e;
 }
 function mkProjectile(p: Partial<Projectile>): Projectile {
@@ -50,7 +51,11 @@ test('穿透：pierce=2 连续命中三只叠位敌人各一次', () => {
     assert.ok(mgr.enemies.length >= 3, '应已刷出三只敌人');
     const es = mgr.enemies.slice(0, 3);
     const hps: number[] = [];
-    es.forEach((e, i) => { e.moveSpeed = 0; e.x = 100 + i * 80; e.y = 0; e.hp = 99999; e.maxHp = 99999; hps.push(e.hp); });
+    es.forEach((e, i) => {
+        e.baseStats = { ...e.baseStats, moveSpeed: 0 };
+        e.stats = e.baseStats;
+        e.x = 100 + i * 80; e.y = 0; e.hp = 99999; e.maxHp = 99999; hps.push(e.hp);
+    });
     void e0;
     mgr.projectiles.push(mkProjectile({ x: 0, y: 0, vx: 900, vy: 0, pierce: 2 }));
     for (let i = 0; i < 40; i++) mgr.tick(0.02);

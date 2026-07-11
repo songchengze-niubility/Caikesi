@@ -18,7 +18,11 @@ function pinEnemies(mgr: BattleManager, n: number): CombatUnit[] {
     for (let i = 0; i < 400 && mgr.enemies.length < n; i++) mgr.tick(0.05);
     assert.ok(mgr.enemies.length >= n, `应已刷出 ${n} 只敌人`);
     const es = mgr.enemies.slice(0, n);
-    es.forEach((e, i) => { e.moveSpeed = 0; e.x = 100 + i * 40; e.y = 0; e.hp = 99999; e.maxHp = 99999; });
+    es.forEach((e, i) => {
+        e.baseStats = { ...e.baseStats, moveSpeed: 0 };
+        e.stats = e.baseStats;
+        e.x = 100 + i * 40; e.y = 0; e.hp = 99999; e.maxHp = 99999;
+    });
     return es;
 }
 const stats50 = () => mkStats({ atk: 50 });

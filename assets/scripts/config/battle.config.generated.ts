@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/battle.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/battle.xlsx
-// 生成时间：2026-07-05T06:10:30.380Z
+// 生成时间：2026-07-11T06:40:57.742Z
 
 /* eslint-disable */
 import type { BattleConfigData } from './BattleConfig';
@@ -19,7 +19,8 @@ export const generatedBattleConfig: BattleConfigData = {
             "blockRate": 0.3,
             "blockRatio": 0.5,
             "dmgBonus": 0,
-            "dmgReduce": 0.1
+            "dmgReduce": 0.1,
+            "moveSpeed": 300
         },
         "dps": {
             "hp": 500,
@@ -33,7 +34,8 @@ export const generatedBattleConfig: BattleConfigData = {
             "blockRate": 0,
             "blockRatio": 0,
             "dmgBonus": 0.1,
-            "dmgReduce": 0
+            "dmgReduce": 0,
+            "moveSpeed": 300
         },
         "healer": {
             "hp": 120,
@@ -47,13 +49,13 @@ export const generatedBattleConfig: BattleConfigData = {
             "blockRate": 0,
             "blockRatio": 0,
             "dmgBonus": 0,
-            "dmgReduce": 0
+            "dmgReduce": 0,
+            "moveSpeed": 220
         }
     },
     "enemyTypes": {
         "zombie": {
             "name": "丧尸",
-            "speed": 90,
             "radius": 28,
             "attackInterval": 0.8,
             "color": [
@@ -74,12 +76,12 @@ export const generatedBattleConfig: BattleConfigData = {
                 "blockRate": 0,
                 "blockRatio": 0,
                 "dmgBonus": 0,
-                "dmgReduce": 0
+                "dmgReduce": 0,
+                "moveSpeed": 90
             }
         },
         "runner": {
             "name": "疾行者",
-            "speed": 175,
             "radius": 22,
             "attackInterval": 0.6,
             "color": [
@@ -100,12 +102,12 @@ export const generatedBattleConfig: BattleConfigData = {
                 "blockRate": 0,
                 "blockRatio": 0,
                 "dmgBonus": 0,
-                "dmgReduce": 0
+                "dmgReduce": 0,
+                "moveSpeed": 175
             }
         },
         "brute": {
             "name": "重装",
-            "speed": 55,
             "radius": 40,
             "attackInterval": 1.2,
             "color": [
@@ -126,12 +128,12 @@ export const generatedBattleConfig: BattleConfigData = {
                 "blockRate": 0,
                 "blockRatio": 0,
                 "dmgBonus": 0,
-                "dmgReduce": 0.15
+                "dmgReduce": 0.15,
+                "moveSpeed": 55
             }
         },
         "boss_butcher": {
             "name": "屠夫领主",
-            "speed": 40,
             "radius": 60,
             "attackInterval": 1.5,
             "color": [
@@ -152,7 +154,8 @@ export const generatedBattleConfig: BattleConfigData = {
                 "blockRate": 0,
                 "blockRatio": 0,
                 "dmgBonus": 0,
-                "dmgReduce": 0.3
+                "dmgReduce": 0.3,
+                "moveSpeed": 40
             }
         }
     },
@@ -769,7 +772,6 @@ export const generatedBattleConfig: BattleConfigData = {
         "tank": {
             "attackType": "melee",
             "fireInterval": 0.5,
-            "moveSpeed": 300,
             "advanceLimit": 80,
             "healPerSec": 0,
             "size": 74
@@ -777,7 +779,6 @@ export const generatedBattleConfig: BattleConfigData = {
         "dps": {
             "attackType": "melee",
             "fireInterval": 0.33,
-            "moveSpeed": 300,
             "advanceLimit": 80,
             "healPerSec": 0,
             "size": 52
@@ -785,7 +786,6 @@ export const generatedBattleConfig: BattleConfigData = {
         "healer": {
             "attackType": "heal",
             "fireInterval": 0,
-            "moveSpeed": 0,
             "advanceLimit": 0,
             "healPerSec": 16,
             "size": 52

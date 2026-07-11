@@ -50,7 +50,8 @@ function firstEnemy(mgr: BattleManager): CombatUnit {
     for (let i = 0; i < 100 && mgr.enemies.length === 0; i++) mgr.tick(0.05);
     assert.ok(mgr.enemies.length > 0);
     const e = mgr.enemies[0];
-    e.moveSpeed = 0;
+    e.baseStats = { ...e.baseStats, moveSpeed: 0 };   // 钉住（换引用，不污染全局配置）
+    e.stats = e.baseStats;
     return e;
 }
 
