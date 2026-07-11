@@ -28,6 +28,7 @@ function mkHooks() {
         spawnFloat: () => { calls.floats++; },
         markDead: (u) => { calls.deaths++; u.alive = false; u.hp = 0; },
         onBuffChanged: (_t, buffId, applied) => { calls.buffEvents.push({ buffId, applied }); },
+        applyKnockback: () => {},
     };
     return { hooks, calls };
 }
@@ -110,7 +111,7 @@ test('集成：stun 行为门——被眩晕的怪一帧不推进，到期恢复
     assert.ok(stunDef, 'buff.xlsx 应有 stun');
     // 经 BattleManager 的事件出口施加：直接用 applyEffect + 管理器内部钩子等价（此处走公开路径）
     applyEffect(mgr.soldiers[0], e, { kind: 'applyBuff', buffId: 'stun', stacks: 1 }, {
-        spawnFloat: () => {}, markDead: () => {}, onBuffChanged: () => {},
+        spawnFloat: () => {}, markDead: () => {}, onBuffChanged: () => {}, applyKnockback: () => {},
     });
     assert.equal(e.gate.canMove, false);
     const x0 = e.x;
@@ -128,7 +129,7 @@ test('集成：poison 周期跳伤按 srcAtk 结算', () => {
     const mgr = mkQuietManager();
     const e = firstEnemy(mgr);
     applyEffect(mgr.soldiers[0], e, { kind: 'applyBuff', buffId: 'poison', stacks: 1 }, {
-        spawnFloat: () => {}, markDead: () => {}, onBuffChanged: () => {},
+        spawnFloat: () => {}, markDead: () => {}, onBuffChanged: () => {}, applyKnockback: () => {},
     });
     const hp0 = e.hp;
     for (let i = 0; i < 21; i++) mgr.tick(0.05);   // 1.05s → 1 跳

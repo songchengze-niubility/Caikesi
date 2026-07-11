@@ -66,7 +66,7 @@ export function createSoldierUnit(id: number, cls: SoldierClass, stats: CombatSt
         alive: true,
         action: 'idle', actionTime: 0, actionLock: 0,
         buffs: [],
-        gate: { canMove: true, canAct: true },
+        gate: { canMove: true, canAct: true, canCast: true, taunting: false },
         skills: unitSkillsForClass(cls),
     };
 }
@@ -97,7 +97,7 @@ export function createEnemyUnit(id: number, type: string, hpOverride: number | u
         alive: true,
         action: 'run', actionTime: 0, actionLock: 0,
         buffs: [],
-        gate: { canMove: true, canAct: true },
+        gate: { canMove: true, canAct: true, canCast: true, taunting: false },
         skills: null,
     };
 }
@@ -108,4 +108,6 @@ export function recomputeDerived(u: CombatUnit): void {
     const g = buffGate(u.buffs, getBuffDef);
     u.gate.canMove = g.canMove;
     u.gate.canAct = g.canAct;
+    u.gate.canCast = g.canCast;
+    u.gate.taunting = g.taunting;
 }

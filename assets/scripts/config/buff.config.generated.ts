@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/buff.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/buff.xlsx
-// 生成时间：2026-07-11T04:25:43.710Z
+// 生成时间：2026-07-11T05:50:01.162Z
 
 /* eslint-disable */
 // @ts-nocheck
@@ -80,6 +80,34 @@ export const generatedBuffConfig = {
             "statMods": [],
             "flags": [
                 "stun"
+            ],
+            "dispelTag": "debuff"
+        },
+        {
+            "id": "taunt_shout",
+            "name": "挑衅",
+            "duration": 3,
+            "maxStacks": 1,
+            "stackRule": "refresh",
+            "period": 0,
+            "periodicEffect": null,
+            "statMods": [],
+            "flags": [
+                "taunt"
+            ],
+            "dispelTag": "buff"
+        },
+        {
+            "id": "silence_seal",
+            "name": "沉默",
+            "duration": 3,
+            "maxStacks": 1,
+            "stackRule": "refresh",
+            "period": 0,
+            "periodicEffect": null,
+            "statMods": [],
+            "flags": [
+                "silence"
             ],
             "dispelTag": "debuff"
         }

@@ -16,7 +16,7 @@ export interface BuffInstance {
     srcAtk: number;    // 施加时的施法者 atk 快照
 }
 
-export interface BehaviorGate { canMove: boolean; canAct: boolean; }
+export interface BehaviorGate { canMove: boolean; canAct: boolean; canCast: boolean; taunting: boolean; }
 
 // 上/叠一层。已有实例：refresh 重置时长、add 叠层钳 maxStacks 且重置时长；都刷新 srcAtk 快照。
 // 返回是否需要重算属性/门。
@@ -96,11 +96,17 @@ export function buffedStats(base: CombatStats, buffs: BuffInstance[], getDef: (i
     return normalizeStats(out);
 }
 
-// 行为门聚合：stun 禁动禁攻；taunt/silence 第 2 段接。
+// 行为门聚合：stun 禁动禁攻禁技；silence 只禁技能释放（进度照走）；taunt 标记吸引火力。
 export function buffGate(buffs: BuffInstance[], getDef: (id: string) => BuffDef | undefined): BehaviorGate {
+    let canMove = true, canAct = true, canCast = true, taunting = false;
     for (const inst of buffs) {
         const def = getDef(inst.id);
-        if (def && def.flags.indexOf('stun') >= 0) return { canMove: false, canAct: false };
+        if (!def) continue;
+        for (const f of def.flags) {
+            if (f === 'stun') { canMove = false; canAct = false; canCast = false; }
+            else if (f === 'silence') canCast = false;
+            else if (f === 'taunt') taunting = true;
+        }
     }
-    return { canMove: true, canAct: true };
+    return { canMove, canAct, canCast, taunting };
 }

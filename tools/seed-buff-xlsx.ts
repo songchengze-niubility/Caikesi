@@ -14,7 +14,9 @@ const BUFFS_ROWS: (string | number)[][] = [
     ['poison',     '中毒', 6,   3, 'add',     1, 'damage:0.15', 'def:-2',                '',     'debuff'],
     ['battle_cry', '战吼', 5,   1, 'refresh', 0, '',            'atk%:0.25',             '',     'buff'],
     ['stone_skin', '石肤', 8,   1, 'refresh', 0, '',            'def:+6|dmgReduce:+0.1', '',     'buff'],
-    ['stun',       '眩晕', 1.5, 1, 'refresh', 0, '',            '',                      'stun', 'debuff'],
+    ['stun',       '眩晕', 1.5, 1, 'refresh', 0, '',            '',                      'stun',    'debuff'],
+    ['taunt_shout', '挑衅', 3,  1, 'refresh', 0, '',            '',                      'taunt',   'buff'],
+    ['silence_seal', '沉默', 3, 1, 'refresh', 0, '',            '',                      'silence', 'debuff'],
 ];
 
 const wb = XLSX.utils.book_new();

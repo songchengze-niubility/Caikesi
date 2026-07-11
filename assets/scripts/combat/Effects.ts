@@ -20,6 +20,8 @@ export interface EffectHooks {
     spawnFloat(x: number, y: number, r: DamageResult, kind?: FloatKind): void;
     markDead(u: CombatUnit): void;
     onBuffChanged(target: CombatUnit, buffId: string, applied: boolean, stacks: number): void;
+    // 位移需要战场知识（钳制边界、事件），由 BattleManager 实现
+    applyKnockback(target: CombatUnit, distance: number): void;
 }
 
 export interface EffectOutcome { damage: number; crit: boolean; dodged: boolean; }
@@ -56,8 +58,11 @@ export function applyEffect(source: EffectSource, target: CombatUnit, effect: Ef
             }
             return NONE;
         }
-        case 'knockback':   // 第 2 段实装（位移钳制 + 战场不变量）
-        case 'summon':      // 第 2/3 段实装（召唤走刷怪管线）
+        case 'knockback': {
+            hooks.applyKnockback(target, effect.distance);
+            return NONE;
+        }
+        case 'summon':      // 第 3 段实装（召唤走刷怪管线）
             return NONE;
     }
 }

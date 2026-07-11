@@ -89,8 +89,9 @@ export interface BuffChangedEvent {
 
 export interface ZoneSpawnedEvent { type: 'zoneSpawned'; x: number; y: number; radius: number; }
 export interface ZoneExpiredEvent { type: 'zoneExpired'; x: number; y: number; }
+export interface KnockbackEvent { type: 'knockback'; targetSide: UnitSide; targetKey: string; distance: number; }
 
-export type BattleEvent = EnemyKilledEvent | SkillCastEvent | BuffChangedEvent | ZoneSpawnedEvent | ZoneExpiredEvent;
+export type BattleEvent = EnemyKilledEvent | SkillCastEvent | BuffChangedEvent | ZoneSpawnedEvent | ZoneExpiredEvent | KnockbackEvent;
 
 // 一片场地效果（毒池/火海）：带时长的区域，周期对域内敌人施加效果列表
 export interface ZoneEffect {
@@ -134,6 +135,13 @@ export class BattleManager {
         markDead: (u) => this._markDead(u),
         onBuffChanged: (target, buffId, applied, stacks) => {
             this.events.push({ type: 'buffChanged', targetSide: target.side, targetKey: target.key, buffId, applied, stacks });
+        },
+        // 击退钳制：敌人向 +x 推离防线（钳 halfW）、我方向 −x（钳左界）；
+        // 远程/治疗士兵钉站位，下一帧 x=homeX 复位，语义上等于免疫击退（可接受）
+        applyKnockback: (target, distance) => {
+            if (target.side === 'enemy') target.x = Math.min(this.halfW, target.x + distance);
+            else target.x = Math.max(-this.halfW + 20, target.x - distance);
+            this.events.push({ type: 'knockback', targetSide: target.side, targetKey: target.key, distance });
         },
     };
 
@@ -439,6 +447,7 @@ export class BattleManager {
         for (const s of this.soldiers) {
             if (!s.alive || !s.skills || !s.gate.canAct) continue;   // 眩晕期间技能进度也暂停
             s.skills.tick(dt);
+            if (!s.gate.canCast) continue;   // 沉默：进度照走，禁释放（就绪保留待放）
             const currentTarget = s.archetype === 'melee'
                 ? this._frontmostEnemy()
                 : this._nearestEnemy(s.x, s.y);
@@ -613,14 +622,22 @@ export class BattleManager {
     }
 
     private _enemyAttack(e: CombatUnit) {
-        // 打最近的活着士兵（贴在坦克前的怪自然打到坦克）
+        // 嘲讽优先：有 taunting 士兵时打最近的 taunting 者；否则打最近的活着士兵
         let target: CombatUnit | null = null;
         let bestD = Infinity;
         for (const s of this.soldiers) {
-            if (!s.alive) continue;
+            if (!s.alive || !s.gate.taunting) continue;
             const dx = s.x - e.x, dy = s.y - e.y;
             const d = dx * dx + dy * dy;
             if (d < bestD) { bestD = d; target = s; }
+        }
+        if (!target) {
+            for (const s of this.soldiers) {
+                if (!s.alive) continue;
+                const dx = s.x - e.x, dy = s.y - e.y;
+                const d = dx * dx + dy * dy;
+                if (d < bestD) { bestD = d; target = s; }
+            }
         }
         if (!target) return;
         applyEffect(e, target, DMG1, this._effectHooks);   // 走完整公式（统一状态变更入口）
