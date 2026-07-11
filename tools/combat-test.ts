@@ -68,7 +68,7 @@ test('BattleManager：最后一波最后一只怪标记为关底击杀', () => {
 
 test('BattleManager：roster 入参决定出战单位（覆盖配置默认）', () => {
     const mgr = new BattleManager(470, 836, 0, {}, ['tank', 'dps']);
-    const classes = mgr.soldiers.map(s => s.cls).slice().sort();
+    const classes = mgr.soldiers.map(s => s.key).slice().sort();
     assert.deepEqual(classes, ['dps', 'tank']);
 });
 

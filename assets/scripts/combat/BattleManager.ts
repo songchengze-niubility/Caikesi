@@ -3,58 +3,16 @@
 //      敌人推进到防线后贴身缠斗、治疗奶血、胜负判定。
 // 只算数据，怎么画交给 BattleEntry。
 
-import { BattleConfig, SoldierClass, AttackType, CombatStats } from '../config/BattleConfig';
+import { BattleConfig, SoldierClass, CombatStats } from '../config/BattleConfig';
 import { calcDamage, DamageResult } from './CombatFormula';
 import type { EffectiveStatsMap } from './EffectiveStats';
-import { UnitSkills, unitSkillsForClass } from './SkillRuntime';
+import { CombatUnit, createSoldierUnit, createEnemyUnit, UnitAction } from './CombatUnit';
 
-export type UnitAction = 'idle' | 'run' | 'attack' | 'death';
+// 统一单位模型定义迁到 CombatUnit.ts；这里 re-export 保住既有消费端 import 路径。
+export type { UnitAction, UnitSide, CombatUnit } from './CombatUnit';
 
 const ATTACK_ACTION_HOLD = 0.32;
 const DEATH_ACTION_HOLD = 0.9;
-
-// 一名士兵（战斗属性走统一 stats；可由装备层生成 effective stats）
-export interface Soldier {
-    cls: SoldierClass;
-    attackType: AttackType; // 近战 / 远程 / 治疗
-    stats: CombatStats;     // 统一战斗属性（无装备时引用配置；有装备时为 effective stats）
-    x: number;            // 当前位置（近战会冲出去）
-    y: number;
-    homeX: number;        // 原始站位（防线、退守都用它）
-    homeY: number;
-    hp: number;           // 当前血量
-    maxHp: number;
-    fireInterval: number; // 基础攻击间隔（治疗为 0）
-    moveSpeed: number;    // 移动速度（0=不动）
-    advanceLimit: number; // 离原站位最多前压多远
-    healPerSec: number;   // 每秒治疗量（非治疗为 0）
-    cd: number;           // 攻击冷却
-    alive: boolean;
-    action: UnitAction;   // 渲染层按它切换 idle/run/attack/death 等动作
-    actionTime: number;   // 当前动作已持续时间（死亡淡出/调试用）
-    actionLock: number;   // 短动作锁，避免攻击刚触发就被 idle/run 覆盖
-    skills: UnitSkills;   // 该单位的自动技能运行态（挂实例上，Boss 技能后续可复用）
-}
-
-// 一只敌人（属性/移动/外观来自其怪物类型 EnemyType）
-export interface Enemy {
-    type: string;         // 怪物类型 key（对应 BattleConfig.enemyTypes）
-    typeName: string;     // 怪物类型名（飘字/调试）
-    stats: CombatStats;   // 战斗属性（引用该类型的 stats）
-    speed: number;        // 推进速度
-    radius: number;       // 体型 + 命中半径
-    attackInterval: number;
-    color: [number, number, number];
-    x: number;
-    y: number;
-    hp: number;
-    maxHp: number;
-    atkCd: number;        // 贴身攻击冷却
-    alive: boolean;
-    action: UnitAction;
-    actionTime: number;
-    actionLock: number;
-}
 
 // 一颗子弹（携带开火者的属性引用，命中时结算）
 export interface Bullet {
@@ -108,9 +66,10 @@ export class BattleManager {
     private halfW = 0;
     private halfH = 0;
 
-    soldiers: Soldier[] = [];
-    enemies: Enemy[] = [];
+    soldiers: CombatUnit[] = [];
+    enemies: CombatUnit[] = [];
     bullets: Bullet[] = [];
+    private _unitSeq = 0;
     // 光束数组做对象池复用：只有前 count 条有效，渲染层按 count 遍历（避免每帧新建数组/对象）
     healBeams: HealBeam[] = [];
     healBeamCount = 0;
@@ -155,30 +114,9 @@ export class BattleManager {
         const L = BattleConfig.layout;
         const frontX = -this.halfW + L.frontMargin;
         this._roster.forEach((cls, i) => {
-            const cdef = BattleConfig.classes[cls];   // 职业行为配置
             const st = this.effectiveStats[cls] ?? BattleConfig.stats[cls]; // 职业战斗属性（统一表）
             const hx = frontX - i * L.spacing;   // 越靠后（i 越大）越靠左
-            this.soldiers.push({
-                cls,
-                attackType: cdef.attackType,
-                stats: st,
-                x: hx,
-                y: 0,
-                homeX: hx,
-                homeY: 0,
-                hp: st.hp,
-                maxHp: st.hp,
-                fireInterval: cdef.fireInterval,
-                moveSpeed: cdef.moveSpeed,
-                advanceLimit: cdef.advanceLimit,
-                healPerSec: cdef.healPerSec,
-                cd: Math.random() * Math.max(cdef.fireInterval, 0.3),
-                alive: true,
-                action: 'idle',
-                actionTime: 0,
-                actionLock: 0,
-                skills: unitSkillsForClass(cls),
-            });
+            this.soldiers.push(createSoldierUnit(this._unitSeq++, cls, st, hx, 0));
         });
     }
 
@@ -253,24 +191,8 @@ export class BattleManager {
     }
 
     private _spawnEnemyOfType(type: string, hpOverride?: number) {
-        const t = BattleConfig.enemyTypes[type];
-        if (!t) return;
-        const hp = hpOverride ?? t.stats.hp;
-        this.enemies.push({
-            type,
-            typeName: t.name,
-            stats: t.stats,
-            speed: t.speed,
-            radius: t.radius,
-            attackInterval: t.attackInterval,
-            color: t.color,
-            x: this.halfW, y: 0, hp, maxHp: hp,
-            atkCd: t.attackInterval * 0.5,
-            alive: true,
-            action: 'run',
-            actionTime: 0,
-            actionLock: 0,
-        });
+        const u = createEnemyUnit(this._unitSeq++, type, hpOverride, this.halfW, 0);
+        if (u) this.enemies.push(u);
     }
 
     private _updateActionClocks(dt: number) {
@@ -278,13 +200,13 @@ export class BattleManager {
         for (const u of this.enemies) this._tickActionClock(u, dt);
     }
 
-    private _tickActionClock(u: Soldier | Enemy, dt: number) {
+    private _tickActionClock(u: CombatUnit, dt: number) {
         u.actionTime += dt;
         if (u.actionLock > 0) u.actionLock = Math.max(0, u.actionLock - dt);
         if (u.alive && u.actionLock <= 0 && u.action !== 'idle') this._setAction(u, 'idle');
     }
 
-    private _setAction(u: Soldier | Enemy, action: UnitAction, lock = 0) {
+    private _setAction(u: CombatUnit, action: UnitAction, lock = 0) {
         if (u.action !== action) {
             u.action = action;
             u.actionTime = 0;
@@ -292,15 +214,15 @@ export class BattleManager {
         if (lock > u.actionLock) u.actionLock = lock;
     }
 
-    private _markDead(u: Soldier | Enemy) {
+    private _markDead(u: CombatUnit) {
         if (!u.alive) return;
         u.hp = 0;
         u.alive = false;
         this._setAction(u, 'death', DEATH_ACTION_HOLD);
-        if (this.enemies.indexOf(u as Enemy) >= 0) this._emitEnemyKilled(u as Enemy);
+        if (u.side === 'enemy') this._emitEnemyKilled(u);
     }
 
-    private _emitEnemyKilled(e: Enemy) {
+    private _emitEnemyKilled(e: CombatUnit) {
         const isStageFinalKill = this.waveIndex >= this.level.waves.length - 1
             && this._waveFullySpawned
             && !this.enemies.some(enemy => enemy.alive);
@@ -308,13 +230,13 @@ export class BattleManager {
             type: 'enemyKilled',
             levelIndex: this.levelIndex,
             waveIndex: this.waveIndex,
-            enemyType: e.type,
+            enemyType: e.key,
             killIndex: this.killIndex++,
             isStageFinalKill,
         });
     }
 
-    private _forceIdle(u: Soldier | Enemy) {
+    private _forceIdle(u: CombatUnit) {
         u.action = 'idle';
         u.actionTime = 0;
         u.actionLock = 0;
@@ -341,7 +263,7 @@ export class BattleManager {
         for (const s of this.soldiers) {
             if (!s.alive) continue;
 
-            if (s.attackType !== 'melee' || s.moveSpeed <= 0) {
+            if (s.archetype !== 'melee' || s.moveSpeed <= 0) {
                 s.x = s.homeX; s.y = s.homeY;   // 远程/治疗：钉在站位
                 continue;
             }
@@ -370,7 +292,7 @@ export class BattleManager {
         }
     }
 
-    private _moveToward(s: Soldier, tx: number, ty: number, step: number): boolean {
+    private _moveToward(s: CombatUnit, tx: number, ty: number, step: number): boolean {
         const dx = tx - s.x, dy = ty - s.y;
         const d = Math.hypot(dx, dy);
         if (d === 0) return false;
@@ -383,10 +305,10 @@ export class BattleManager {
     private _updateFiring(dt: number) {
         this.meleeBeamCount = 0;
         for (const s of this.soldiers) {
-            if (!s.alive || s.attackType === 'heal' || s.stats.atk <= 0) continue;
+            if (!s.alive || s.archetype === 'heal' || s.stats.atk <= 0) continue;
 
             // 近战盯最前面的怪（守线）；远程打最近的
-            const target = s.attackType === 'melee'
+            const target = s.archetype === 'melee'
                 ? this._frontmostEnemy()
                 : this._nearestEnemy(s.x, s.y);
             if (!target) continue;
@@ -397,16 +319,16 @@ export class BattleManager {
             if (dist > s.stats.range) continue;   // 不够近就不打，也不进冷却，靠近即出手
 
             // 近战：持续画一条「正在劈」的连线
-            if (s.attackType === 'melee') {
+            if (s.archetype === 'melee') {
                 this.meleeBeamCount = this._pushBeam(this.meleeBeams, this.meleeBeamCount, s.x, s.y, target.x, target.y);
             }
 
             s.cd -= dt;
             if (s.cd > 0) continue;
-            s.cd = s.fireInterval / Math.max(0.01, s.stats.attackSpeed);  // 攻速缩短间隔
-            s.skills.onBasicAttack();   // 普攻挥出计数（不管命中与否）
+            s.cd = s.attackInterval / Math.max(0.01, s.stats.attackSpeed);  // 攻速缩短间隔
+            if (s.skills) s.skills.onBasicAttack();   // 普攻挥出计数（不管命中与否）
 
-            if (s.attackType === 'melee') {
+            if (s.archetype === 'melee') {
                 this._setAction(s, 'attack', ATTACK_ACTION_HOLD);
                 this._applyDamage(s.stats, target);   // 近战：走完整公式
             } else {
@@ -419,9 +341,9 @@ export class BattleManager {
     // —— 自动技能：计时/计数就绪且有目标即释放；伤害走唯一公式 × 技能倍率 ——
     private _updateSkills(dt: number) {
         for (const s of this.soldiers) {
-            if (!s.alive) continue;
+            if (!s.alive || !s.skills) continue;
             s.skills.tick(dt);
-            const currentTarget = s.attackType === 'melee'
+            const currentTarget = s.archetype === 'melee'
                 ? this._frontmostEnemy()
                 : this._nearestEnemy(s.x, s.y);
             const casts = s.skills.collectCasts(s.x, s.y, this.enemies, currentTarget);
@@ -438,14 +360,14 @@ export class BattleManager {
                     type: 'skillCast',
                     skillId: cast.def.id,
                     skillName: cast.def.name,
-                    casterCls: s.cls,
+                    casterCls: s.key as SoldierClass,
                     hits,
                 });
             }
         }
     }
 
-    private _applySkillDamage(att: CombatStats, defender: Enemy, mult: number): { damage: number; crit: boolean; dodged: boolean } {
+    private _applySkillDamage(att: CombatStats, defender: CombatUnit, mult: number): { damage: number; crit: boolean; dodged: boolean } {
         const r = calcDamage(att, defender.stats);
         const damage = r.dodged ? 0 : Math.max(1, Math.round(r.damage * mult));
         defender.hp -= damage;
@@ -454,8 +376,8 @@ export class BattleManager {
         return { damage, crit: r.crit, dodged: r.dodged };
     }
 
-    private _nearestEnemy(x: number, y: number): Enemy | null {
-        let best: Enemy | null = null;
+    private _nearestEnemy(x: number, y: number): CombatUnit | null {
+        let best: CombatUnit | null = null;
         let bestD = Infinity;
         for (const e of this.enemies) {
             if (!e.alive) continue;
@@ -467,8 +389,8 @@ export class BattleManager {
     }
 
     // 最前面（x 最小、最靠左、离小队最近的推进者）的怪
-    private _frontmostEnemy(): Enemy | null {
-        let best: Enemy | null = null;
+    private _frontmostEnemy(): CombatUnit | null {
+        let best: CombatUnit | null = null;
         let bestX = Infinity;
         for (const e of this.enemies) {
             if (!e.alive) continue;
@@ -477,7 +399,7 @@ export class BattleManager {
         return best;
     }
 
-    private _fireBullet(s: Soldier, target: Enemy) {
+    private _fireBullet(s: CombatUnit, target: CombatUnit) {
         const speed = BattleConfig.bullet.speed;
         const dx = target.x - s.x, dy = target.y - s.y;
         const len = Math.hypot(dx, dy) || 1;
@@ -529,14 +451,14 @@ export class BattleManager {
             if (!e.alive) continue;
 
             if (e.x > front) {
-                e.x -= e.speed * dt;               // 各怪按自己的速度向左推进
+                e.x -= e.moveSpeed * dt;           // 各怪按自己的速度向左推进
                 if (e.x < front) e.x = front;
                 if (e.actionLock <= 0) this._setAction(e, 'run');
             } else {
                 // 到达防线：贴身攻击。所有到达的怪都各自攻击，可叠在一起一起打
-                e.atkCd -= dt;
-                if (e.atkCd <= 0) {
-                    e.atkCd = e.attackInterval / Math.max(0.01, e.stats.attackSpeed);
+                e.cd -= dt;
+                if (e.cd <= 0) {
+                    e.cd = e.attackInterval / Math.max(0.01, e.stats.attackSpeed);
                     this._setAction(e, 'attack', ATTACK_ACTION_HOLD);
                     this._enemyAttack(e);
                 }
@@ -544,9 +466,9 @@ export class BattleManager {
         }
     }
 
-    private _enemyAttack(e: Enemy) {
+    private _enemyAttack(e: CombatUnit) {
         // 打最近的活着士兵（贴在坦克前的怪自然打到坦克）
-        let target: Soldier | null = null;
+        let target: CombatUnit | null = null;
         let bestD = Infinity;
         for (const s of this.soldiers) {
             if (!s.alive) continue;
@@ -559,7 +481,7 @@ export class BattleManager {
     }
 
     // —— 统一伤害结算：算伤害 → 扣血 → 飘字 → 判死 ——
-    private _applyDamage(att: CombatStats, defender: Soldier | Enemy) {
+    private _applyDamage(att: CombatStats, defender: CombatUnit) {
         const r = calcDamage(att, defender.stats);
         defender.hp -= r.damage;
         this._spawnFloat(defender.x, defender.y, r);
@@ -611,8 +533,8 @@ export class BattleManager {
         }
     }
 
-    private _mostHurtAlly(): Soldier | null {
-        let best: Soldier | null = null;
+    private _mostHurtAlly(): CombatUnit | null {
+        let best: CombatUnit | null = null;
         let bestRatio = 1;
         for (const s of this.soldiers) {
             if (!s.alive) continue;

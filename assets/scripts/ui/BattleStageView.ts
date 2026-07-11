@@ -373,11 +373,11 @@ export class BattleStageView {
     }
 
     private updateSoldierVisualActions(manager: BattleManager): void {
-        for (const soldier of manager.soldiers) this.setSoldierVisualAction(soldier.cls, soldier.action);
+        for (const soldier of manager.soldiers) this.setSoldierVisualAction(soldier.key as SoldierClass, soldier.action);
     }
 
     private updateSoldierAnimations(manager: BattleManager, dt: number): void {
-        for (const soldier of manager.soldiers) this.soldierSprites[soldier.cls]?.anim.update(dt);
+        for (const soldier of manager.soldiers) this.soldierSprites[soldier.key as SoldierClass]?.anim.update(dt);
     }
 
     private floatAt(i: number): Label {
@@ -472,15 +472,16 @@ export class BattleStageView {
         g.stroke();
 
         for (const soldier of manager.soldiers) {
+            const cls = soldier.key as SoldierClass;
             const showDeath = !soldier.alive && soldier.action === 'death';
             if (!soldier.alive && !showDeath) {
-                const hidden = this.soldierSprites[soldier.cls];
+                const hidden = this.soldierSprites[cls];
                 if (hidden) hidden.node.active = false;
                 continue;
             }
-            const size = BattleConfig.classes[soldier.cls].size;
+            const size = BattleConfig.classes[cls].size;
             const ratio = Math.max(0, soldier.hp / soldier.maxHp);
-            const visual = this.soldierSprites[soldier.cls];
+            const visual = this.soldierSprites[cls];
             if (visual) {
                 visual.node.active = true;
                 visual.node.setPosition(soldier.x + visual.offsetX, soldier.y + visual.offsetY, 0);
@@ -488,7 +489,7 @@ export class BattleStageView {
                 g.fillColor = this.soldierShadowColor;
                 g.circle(soldier.x, soldier.y - size * 0.48, size * 0.45);
                 g.fill();
-                g.fillColor = ratio > 0.35 ? this.classColors[soldier.cls] : this.soldierHurtColor;
+                g.fillColor = ratio > 0.35 ? this.classColors[cls] : this.soldierHurtColor;
                 g.roundRect(soldier.x - size / 2, soldier.y - size / 2, size, size, 8);
                 g.fill();
             }
