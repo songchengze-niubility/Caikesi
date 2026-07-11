@@ -40,7 +40,7 @@ export const ArtManifest: Record<string, ArtEntry> = {
     'char/tank/run':    { type: 'frames', dir: 'art/char/tank/run',    prefix: 'run',    frames: 18, fps: 18, loop: true,  pingpong: true, blend: 0.45, bodyH: 0.9783, anchorX: 0.5508, footY: 0.9807 },
     'char/tank/attack': { type: 'frames', dir: 'art/char/tank/attack', prefix: 'attack', frames: 18, fps: 24, loop: true,  blend: 0.35, bodyH: 0.9783, anchorX: 0.5508, footY: 0.9807 },
     'char/tank/death':  { type: 'frames', dir: 'art/char/tank/death',  prefix: 'death',  frames: 4,  fps: 8,  loop: false, blend: 0.35, bodyH: 1, anchorX: 0.5, footY: 1 },
-    'char/dps/run': { type: 'frames', dir: 'art/char/dps/run', prefix: 'run', frames: 18, fps: 36, loop: true, blend: 0.45, bodyH: 0.9783, anchorX: 0.5508, footY: 1 },
+    'char/dps/run': { type: 'frames', dir: 'art/char/dps/run', prefix: 'run', frames: 6, fps: 6, loop: true, blend: 0.45, bodyH: 0.9812, anchorX: 0.4497, footY: 1 },
     'char/dps/attack': { type: 'frames', dir: 'art/char/dps/attack', prefix: 'attack', frames: 36, fps: 24, loop: true, blend: 0.45, bodyH: 0.9451, anchorX: 0.3841, footY: 1 },
     'char/dps/death':   { type: 'frames', dir: 'art/char/dps/death',   prefix: 'death',  frames: 4,  fps: 8,  loop: false, blend: 0.35, bodyH: 0.9619, anchorX: 0.3756, footY: 0.9805 },
     'char/healer/run':    { type: 'frames', dir: 'art/char/healer/run',    prefix: 'run',    frames: 18, fps: 18, loop: true,  pingpong: true, blend: 0.45, bodyH: 0.9783, anchorX: 0.5508, footY: 0.9807 },

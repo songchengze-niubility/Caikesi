@@ -98,9 +98,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--background-mode",
-        choices=("auto", "white", "edge"),
+        choices=("auto", "white", "edge", "alpha"),
         default="auto",
-        help="Background removal mode: auto combines white and sampled edge color.",
+        help=(
+            "Background removal mode: auto combines white and sampled edge color; "
+            "alpha preserves an existing transparent matte without re-keying RGB."
+        ),
     )
     parser.add_argument(
         "--edge-tolerance",
@@ -387,6 +390,18 @@ def cut_white_background(
     arr = np.asarray(image, dtype=np.float32).copy()
     rgb = arr[:, :, :3]
     original_alpha = arr[:, :, 3]
+
+    # 已经由 chroma-key/抠图工具产出的 RGBA 不能再按边缘 RGB 去底：透明像素的
+    # RGB 常被写成黑色，二次 edge key 会把黑衣角色本体一起删掉。alpha 模式只
+    # 尊重现有 matte，并保留统一的 alpha cutoff / edge-contract 收尾能力。
+    if background_mode == "alpha":
+        new_alpha = original_alpha.copy()
+        if alpha_cutoff > 0:
+            new_alpha[new_alpha < alpha_cutoff] = 0.0
+        if edge_contract > 0:
+            new_alpha = erode_alpha(new_alpha, edge_contract)
+        arr[:, :, 3] = np.clip(new_alpha, 0.0, 255.0)
+        return Image.fromarray(arr.astype(np.uint8), "RGBA")
 
     dist_from_white = np.linalg.norm(255.0 - rgb, axis=2)
     channel_spread = rgb.max(axis=2) - rgb.min(axis=2)
@@ -1235,7 +1250,14 @@ def normalize_images(
             }
 
     visual_stabilization: dict[str, Any] | None = None
-    if visual_stabilize and len(normalized) > 1:
+    if visual_stabilize and anchor_mode == "sideview":
+        # sideview 已用“身体主干列密度 + 地线”锁定世界坐标。旧 visual core 会把
+        # 马尾、披风和长剑纳入多个横向带，反而可能给单帧追加十余像素的错误平移。
+        visual_stabilization = {
+            "skipped": True,
+            "reason": "sideview anchor already locks the body core and ground line",
+        }
+    elif visual_stabilize and len(normalized) > 1:
         visual_anchors: list[tuple[int, float]] = []
         for index, (_, image, _) in enumerate(normalized):
             bbox = alpha_bbox(image, alpha_threshold)
