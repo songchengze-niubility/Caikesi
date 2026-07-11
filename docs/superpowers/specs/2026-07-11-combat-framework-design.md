@@ -77,7 +77,7 @@ applyEffect(source: CombatUnit, target: CombatUnit, effect: Effect, ctx: BattleC
 | dispelTag | 驱散标签(增益/减益/中毒…) |
 
 - 帧逻辑只做 `remaining -= dt`、周期累计触发 `periodicEffect`、到期移除;增删层数时置脏重算 `liveStats` 与 `gate`。
-- 事件:`buffApplied` / `buffExpired`(渲染层画图标/变色用)。
+- 事件:`buffApplied` / `buffExpired`(渲染层画图标/变色用)。**实做偏差(2026-07-11)**:两事件合并为单一 `buffChanged { applied: boolean }`,信息等价、union 更短。
 
 ### 1.4 技能升级为"触发 + 目标 + 效果列表"
 
