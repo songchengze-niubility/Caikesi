@@ -19,7 +19,8 @@ function firstEnemy(mgr: BattleManager): CombatUnit {
     for (let i = 0; i < 100 && mgr.enemies.length === 0; i++) mgr.tick(0.05);
     assert.ok(mgr.enemies.length > 0, '应已刷出敌人');
     const e = mgr.enemies[0];
-    e.baseStats = { ...e.baseStats, moveSpeed: 0 };   // 钉住消除移动干扰（换引用，不污染全局配置）
+    // 钉住消除移动干扰 + 清零闪避/格挡保证伤害断言确定性（换引用，不污染全局配置）
+    e.baseStats = { ...e.baseStats, moveSpeed: 0, dodgeRate: 0, blockRate: 0 };
     e.stats = e.baseStats;
     return e;
 }
@@ -52,7 +53,7 @@ test('穿透：pierce=2 连续命中三只叠位敌人各一次', () => {
     const es = mgr.enemies.slice(0, 3);
     const hps: number[] = [];
     es.forEach((e, i) => {
-        e.baseStats = { ...e.baseStats, moveSpeed: 0 };
+        e.baseStats = { ...e.baseStats, moveSpeed: 0, dodgeRate: 0, blockRate: 0 };
         e.stats = e.baseStats;
         e.x = 100 + i * 80; e.y = 0; e.hp = 99999; e.maxHp = 99999; hps.push(e.hp);
     });

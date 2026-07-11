@@ -270,7 +270,8 @@ export class BattleStageView {
     }
 
     render(manager: BattleManager, dt: number, noticeText: string, noticeTtl: number, winRewardText: string): void {
-        this.background.update(dt);
+        // 行军中背景卷动提速（表现假象：队伍原地跑，世界向后退）
+        this.background.update(manager.phase === 'marching' ? dt * 3 : dt);
         this.updateSoldierVisualActions(manager);
         this.renderUnits(manager);
         this.renderFloats(manager);
@@ -525,6 +526,12 @@ export class BattleStageView {
             this.rewardLabel.string = winRewardText;
         } else if (manager.phase === 'lost') {
             this.statusLabel.string = '小队全灭  点击重开';
+            this.rewardLabel.string = '';
+        } else if (manager.phase === 'marching') {
+            const p = manager.marchDuration > 0
+                ? Math.min(100, Math.round((1 - manager.marchRemaining / manager.marchDuration) * 100))
+                : 0;
+            this.statusLabel.string = `行军中 ${p}%`;
             this.rewardLabel.string = '';
         } else {
             this.statusLabel.string = '';

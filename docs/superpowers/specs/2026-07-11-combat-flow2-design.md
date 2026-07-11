@@ -90,6 +90,12 @@
 - **Plan B:行军推进**(moveSpeed 属性迁移、marching 状态机、渲染最简表现、march-test)。
 - B 不依赖 A;先 B 后 A 可让 pacing 重校只发生一次(A 的重校在 B 的行军节奏之上做),**推荐先 B 后 A**。
 
+## Plan B 实做偏差回写(2026-07-11)
+
+- dps 实为近战、原移速 300——保留 300(而非设计稿臆写的 220),近战冲锋行为等价;healer 从 0 补 220 仅供行军。
+- 末波 `distance` 列填 600 而非 0(该列对末波无效,不强制归零,省一次特判)。
+- 其余按设计落地:表现假象行军、marching 取代 waveGap、moveSpeed 进 CombatStats、frost 减速占位 Buff。
+
 ## 明确不做(YAGNI)
 
 - 玩家装配技能槽/技能获得(后续版本,届时加 PlayerData 字段)。
