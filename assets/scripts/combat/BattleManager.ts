@@ -20,14 +20,23 @@ const DEATH_ACTION_HOLD = 0.9;
 
 // 普攻用的常量效果（模块级复用，热路径零分配）
 const DMG1: Effect = { kind: 'damage', mult: 1 };
+const BASIC_ATTACK_EFFECTS: Effect[] = [DMG1];
 
-// 一颗子弹（携带开火者的属性引用，命中时结算）
-export interface Bullet {
+// 护栏：占位阶段达到上限静默跳过生成（铺量前的规模保险，见 ai/skills/性能约束.md）
+const MAX_PROJECTILES = 64;
+
+// 一枚弹道体（原 Bullet 泛化）：携带开火者属性引用 + 命中效果列表；
+// gravity>0 为抛物（y 轴向上、重力向下拉），pierce 为剩余穿透数，hitIds 防穿透二次结算。
+export interface Projectile {
     x: number;
     y: number;
     vx: number;
     vy: number;
-    stats: CombatStats;   // 开火者的攻击属性
+    stats: CombatStats;   // 开火者的攻击属性（EffectSource）
+    effects: Effect[];    // 命中效果列表
+    pierce: number;       // 剩余穿透数（0=命中即灭）
+    gravity: number;      // 0=直线
+    hitIds: number[];     // 已命中单位 id（穿透去重）
     alive: boolean;
 }
 
@@ -85,7 +94,7 @@ export class BattleManager {
 
     soldiers: CombatUnit[] = [];
     enemies: CombatUnit[] = [];
-    bullets: Bullet[] = [];
+    projectiles: Projectile[] = [];
     private _unitSeq = 0;
     // 光束数组做对象池复用：只有前 count 条有效，渲染层按 count 遍历（避免每帧新建数组/对象）
     healBeams: HealBeam[] = [];
@@ -199,7 +208,7 @@ export class BattleManager {
         this._updateMovement(dt);
         this._updateFiring(dt);
         this._updateSkills(dt);
-        this._updateBullets(dt);
+        this._updateProjectiles(dt);
         this._updateEnemies(dt);
         this._updateHealing(dt);
         this._updateFloats(dt);
@@ -402,7 +411,8 @@ export class BattleManager {
                 applyEffect(s, target, DMG1, this._effectHooks);   // 近战：走完整公式
             } else {
                 this._setAction(s, 'attack', ATTACK_ACTION_HOLD);
-                this._fireBullet(s, target);    // 远程：发子弹（命中再结算）
+                // 远程：发直线弹（命中再结算），行为与旧 Bullet 等价
+                this._spawnProjectile(s.x, s.y, target, BattleConfig.bullet.speed, 0, 0, BASIC_ATTACK_EFFECTS, s.stats);
             }
         }
     }
@@ -469,48 +479,54 @@ export class BattleManager {
         return best;
     }
 
-    private _fireBullet(s: CombatUnit, target: CombatUnit) {
-        const speed = BattleConfig.bullet.speed;
-        const dx = target.x - s.x, dy = target.y - s.y;
-        const len = Math.hypot(dx, dy) || 1;
-        this.bullets.push({
-            x: s.x, y: s.y,
-            vx: (dx / len) * speed,
-            vy: (dy / len) * speed,
-            stats: s.stats,   // 携带开火者攻击属性
+    // 生成一枚弹道体：抛物瞄准公式 t=dist/speed, vy0=dy/t+0.5*g*t（g=0 退化为直线）
+    private _spawnProjectile(fromX: number, fromY: number, target: CombatUnit, speed: number, gravity: number, pierce: number, effects: Effect[], stats: CombatStats) {
+        if (this.projectiles.length >= MAX_PROJECTILES) return;   // 护栏：静默跳过
+        const dx = target.x - fromX, dy = target.y - fromY;
+        const dist = Math.hypot(dx, dy) || 1;
+        const t = dist / speed;
+        this.projectiles.push({
+            x: fromX, y: fromY,
+            vx: dx / t,
+            vy: dy / t + 0.5 * gravity * t,
+            stats, effects, pierce, gravity,
+            hitIds: [],
             alive: true,
         });
     }
 
-    // —— 子弹飞行 + 命中 ——
-    private _updateBullets(dt: number) {
+    // —— 弹道飞行 + 命中（直线/穿透/抛物统一路径）——
+    private _updateProjectiles(dt: number) {
         const br = BattleConfig.bullet.radius;
 
-        for (const b of this.bullets) {
-            if (!b.alive) continue;
-            b.x += b.vx * dt;
-            b.y += b.vy * dt;
-            if (Math.abs(b.x) > this.halfW + 40 || Math.abs(b.y) > this.halfH + 40) {
-                b.alive = false;
+        for (const p of this.projectiles) {
+            if (!p.alive) continue;
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            if (p.gravity > 0) p.vy -= p.gravity * dt;
+            if (Math.abs(p.x) > this.halfW + 40 || Math.abs(p.y) > this.halfH + 40) {
+                p.alive = false;
                 continue;
             }
             for (const e of this.enemies) {
                 if (!e.alive) continue;
+                if (p.hitIds.indexOf(e.id) >= 0) continue;   // 穿透去重
                 const hit = br + e.radius;   // 命中半径随怪体型
-                const dx = e.x - b.x, dy = e.y - b.y;
+                const dx = e.x - p.x, dy = e.y - p.y;
                 if (dx * dx + dy * dy <= hit * hit) {
-                    applyEffect(b, e, DMG1, this._effectHooks);   // 命中：走完整公式（子弹携带开火者 stats）
-                    b.alive = false;
-                    break;
+                    for (const eff of p.effects) applyEffect(p, e, eff, this._effectHooks);
+                    p.hitIds.push(e.id);
+                    if (p.pierce <= 0) { p.alive = false; break; }
+                    p.pierce--;
                 }
             }
         }
-        // 原地压缩存活子弹，不每帧新建数组
+        // 原地压缩存活弹道，不每帧新建数组
         let w = 0;
-        for (let i = 0; i < this.bullets.length; i++) {
-            if (this.bullets[i].alive) this.bullets[w++] = this.bullets[i];
+        for (let i = 0; i < this.projectiles.length; i++) {
+            if (this.projectiles[i].alive) this.projectiles[w++] = this.projectiles[i];
         }
-        this.bullets.length = w;
+        this.projectiles.length = w;
     }
 
     // —— 敌人推进（向左）：无碰撞，全部冲到防线叠在一起，各自一起攻击（群殴） ——

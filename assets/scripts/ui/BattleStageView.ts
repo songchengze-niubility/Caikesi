@@ -420,7 +420,7 @@ export class BattleStageView {
         g.clear();
         const bulletRadius = BattleConfig.bullet.radius;
         g.fillColor = this.bulletColor;
-        for (const bullet of manager.bullets) g.circle(bullet.x, bullet.y, bulletRadius);
+        for (const projectile of manager.projectiles) g.circle(projectile.x, projectile.y, bulletRadius);
         g.fill();
 
         for (const enemy of manager.enemies) {
