@@ -433,6 +433,7 @@ export class BattleEntry extends Component {
                 this._stageView.onSkillCast(this._mgr, event);
                 continue;
             }
+            if (event.type !== 'enemyKilled') continue;   // buffChanged 等表现级事件：色块占位阶段暂不消费
             const enemyDef = BattleConfig.enemyTypes[event.enemyType];
             if (enemyDef) this._battleExpGained += enemyDef.exp;
             const level = BattleConfig.levels[event.levelIndex];

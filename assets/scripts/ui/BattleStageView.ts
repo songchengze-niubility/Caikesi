@@ -406,6 +406,7 @@ export class BattleStageView {
                 case 'crit': label.fontSize = 42; label.color = this.tempColor.set(255, 180, 40, alpha); break;
                 case 'block': label.fontSize = 28; label.color = this.tempColor.set(120, 200, 255, alpha); break;
                 case 'skill': label.fontSize = 36; label.color = this.tempColor.set(120, 235, 255, alpha); break;
+                case 'heal': label.fontSize = 30; label.color = this.tempColor.set(140, 235, 140, alpha); break;
                 case 'dodge': label.fontSize = 28; label.color = this.tempColor.set(210, 210, 210, alpha); break;
                 default: label.fontSize = 30; label.color = this.tempColor.set(255, 255, 255, alpha); break;
             }

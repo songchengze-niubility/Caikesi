@@ -4,15 +4,22 @@
 // 只算数据，怎么画交给 BattleEntry。
 
 import { BattleConfig, SoldierClass, CombatStats } from '../config/BattleConfig';
-import { calcDamage, DamageResult } from './CombatFormula';
+import { DamageResult } from './CombatFormula';
 import type { EffectiveStatsMap } from './EffectiveStats';
-import { CombatUnit, createSoldierUnit, createEnemyUnit, UnitAction } from './CombatUnit';
+import { CombatUnit, createSoldierUnit, createEnemyUnit, recomputeDerived, UnitAction, UnitSide } from './CombatUnit';
+import { applyEffect, EffectHooks } from './Effects';
+import { tickBuffs, BuffInstance } from './BuffSystem';
+import { getBuffDef, BuffDef } from '../config/BuffConfig';
+import type { Effect } from '../config/EffectTypes';
 
 // 统一单位模型定义迁到 CombatUnit.ts；这里 re-export 保住既有消费端 import 路径。
 export type { UnitAction, UnitSide, CombatUnit } from './CombatUnit';
 
 const ATTACK_ACTION_HOLD = 0.32;
 const DEATH_ACTION_HOLD = 0.9;
+
+// 普攻用的常量效果（模块级复用，热路径零分配）
+const DMG1: Effect = { kind: 'damage', mult: 1 };
 
 // 一颗子弹（携带开火者的属性引用，命中时结算）
 export interface Bullet {
@@ -32,7 +39,7 @@ export interface FloatText {
     ttl: number;
     maxTtl: number;
     text: string;
-    kind: 'normal' | 'crit' | 'block' | 'dodge' | 'skill';
+    kind: 'normal' | 'crit' | 'block' | 'dodge' | 'skill' | 'heal';
 }
 
 // 治疗光束（仅供界面画反馈，逻辑不依赖）
@@ -60,7 +67,17 @@ export interface SkillCastEvent {
     hits: { damage: number; crit: boolean; dodged: boolean }[];
 }
 
-export type BattleEvent = EnemyKilledEvent | SkillCastEvent;
+// Buff 增删事件（applied=true 施加/叠层，false 到期/被驱散）；渲染层画图标/变色用
+export interface BuffChangedEvent {
+    type: 'buffChanged';
+    targetSide: UnitSide;
+    targetKey: string;
+    buffId: string;      // 驱散时为驱散标签
+    applied: boolean;
+    stacks: number;
+}
+
+export type BattleEvent = EnemyKilledEvent | SkillCastEvent | BuffChangedEvent;
 
 export class BattleManager {
     private halfW = 0;
@@ -85,6 +102,40 @@ export class BattleManager {
     private gapTimer = 0;
     private effectiveStats: EffectiveStatsMap;
     private _roster: SoldierClass[];
+
+    // Effect 管线回调（构造时建一次，不每帧建闭包）
+    private _effectHooks: EffectHooks = {
+        spawnFloat: (x, y, r, kind) => this._spawnFloat(x, y, r, kind),
+        markDead: (u) => this._markDead(u),
+        onBuffChanged: (target, buffId, applied, stacks) => {
+            this.events.push({ type: 'buffChanged', targetSide: target.side, targetKey: target.key, buffId, applied, stacks });
+        },
+    };
+
+    // Buff 周期/到期回调的当前单位上下文（避免每单位每帧新建闭包）
+    private _buffUnit: CombatUnit | null = null;
+    private _onBuffPeriodic = (def: BuffDef, inst: BuffInstance) => {
+        const u = this._buffUnit!;
+        if (!u.alive || !def.periodicEffect) return;
+        const eff = def.periodicEffect;
+        // DoT/HoT 语义：按施加时的 srcAtk 快照 × 层数直接结算，不走 calcDamage（无闪避暴击，可预期）
+        if (eff.kind === 'damage') {
+            const dmg = Math.max(1, Math.round(inst.srcAtk * eff.mult * inst.stacks));
+            u.hp -= dmg;
+            this._spawnFloat(u.x, u.y, { damage: dmg, crit: false, blocked: false, dodged: false }, 'skill');
+            if (u.hp <= 0) this._markDead(u);
+        } else if (eff.kind === 'heal') {
+            const amount = Math.max(1, Math.round(inst.srcAtk * eff.mult * inst.stacks));
+            u.hp = Math.min(u.maxHp, u.hp + amount);
+            this._spawnFloat(u.x, u.y, { damage: amount, crit: false, blocked: false, dodged: false }, 'heal');
+        } else if (eff.kind === 'applyBuff') {
+            applyEffect(u, u, eff, this._effectHooks);
+        }
+    };
+    private _onBuffExpired = (def: BuffDef) => {
+        const u = this._buffUnit!;
+        this.events.push({ type: 'buffChanged', targetSide: u.side, targetKey: u.key, buffId: def.id, applied: false, stacks: 0 });
+    };
     // 当前波每个刷怪组的运行时状态
     private _groups: { type: string; count: number; interval: number; hp?: number; spawned: number; timer: number }[] = [];
 
@@ -143,6 +194,7 @@ export class BattleManager {
     tick(dt: number) {
         if (this.phase === 'won' || this.phase === 'lost') return;
         this._updateActionClocks(dt);
+        this._updateBuffs(dt);
         this._updateSpawning(dt);
         this._updateMovement(dt);
         this._updateFiring(dt);
@@ -198,6 +250,22 @@ export class BattleManager {
     private _updateActionClocks(dt: number) {
         for (const u of this.soldiers) this._tickActionClock(u, dt);
         for (const u of this.enemies) this._tickActionClock(u, dt);
+    }
+
+    // —— Buff 帧逻辑：时长/周期/到期；无 buff 单位零开销跳过 ——
+    private _updateBuffs(dt: number) {
+        this._tickUnitBuffs(this.soldiers, dt);
+        this._tickUnitBuffs(this.enemies, dt);
+    }
+
+    private _tickUnitBuffs(list: CombatUnit[], dt: number) {
+        for (const u of list) {
+            if (!u.alive || u.buffs.length === 0) continue;
+            this._buffUnit = u;
+            const dirty = tickBuffs(u.buffs, dt, getBuffDef, this._onBuffPeriodic, this._onBuffExpired);
+            if (dirty) recomputeDerived(u);
+        }
+        this._buffUnit = null;
     }
 
     private _tickActionClock(u: CombatUnit, dt: number) {
@@ -262,6 +330,7 @@ export class BattleManager {
     private _updateMovement(dt: number) {
         for (const s of this.soldiers) {
             if (!s.alive) continue;
+            if (!s.gate.canMove) continue;   // 眩晕：钉在原地
 
             if (s.archetype !== 'melee' || s.moveSpeed <= 0) {
                 s.x = s.homeX; s.y = s.homeY;   // 远程/治疗：钉在站位
@@ -305,7 +374,7 @@ export class BattleManager {
     private _updateFiring(dt: number) {
         this.meleeBeamCount = 0;
         for (const s of this.soldiers) {
-            if (!s.alive || s.archetype === 'heal' || s.stats.atk <= 0) continue;
+            if (!s.alive || !s.gate.canAct || s.archetype === 'heal' || s.stats.atk <= 0) continue;
 
             // 近战盯最前面的怪（守线）；远程打最近的
             const target = s.archetype === 'melee'
@@ -330,7 +399,7 @@ export class BattleManager {
 
             if (s.archetype === 'melee') {
                 this._setAction(s, 'attack', ATTACK_ACTION_HOLD);
-                this._applyDamage(s.stats, target);   // 近战：走完整公式
+                applyEffect(s, target, DMG1, this._effectHooks);   // 近战：走完整公式
             } else {
                 this._setAction(s, 'attack', ATTACK_ACTION_HOLD);
                 this._fireBullet(s, target);    // 远程：发子弹（命中再结算）
@@ -341,7 +410,7 @@ export class BattleManager {
     // —— 自动技能：计时/计数就绪且有目标即释放；伤害走唯一公式 × 技能倍率 ——
     private _updateSkills(dt: number) {
         for (const s of this.soldiers) {
-            if (!s.alive || !s.skills) continue;
+            if (!s.alive || !s.skills || !s.gate.canAct) continue;   // 眩晕期间技能进度也暂停
             s.skills.tick(dt);
             const currentTarget = s.archetype === 'melee'
                 ? this._frontmostEnemy()
@@ -351,7 +420,7 @@ export class BattleManager {
                 const hits: SkillCastEvent['hits'] = [];
                 for (const target of cast.targets) {
                     if (!target.alive) continue;
-                    hits.push(this._applySkillDamage(s.stats, target, cast.def.dmgMult));
+                    hits.push(this._applySkillDamage(s, target, cast.def.dmgMult));
                 }
                 // 同帧前序技能清场导致目标全灭：本次落空不发事件（触发已重置，属可接受损耗）
                 if (hits.length === 0) continue;
@@ -367,13 +436,9 @@ export class BattleManager {
         }
     }
 
-    private _applySkillDamage(att: CombatStats, defender: CombatUnit, mult: number): { damage: number; crit: boolean; dodged: boolean } {
-        const r = calcDamage(att, defender.stats);
-        const damage = r.dodged ? 0 : Math.max(1, Math.round(r.damage * mult));
-        defender.hp -= damage;
-        this._spawnFloat(defender.x, defender.y, { ...r, damage }, 'skill');
-        if (defender.hp <= 0) this._markDead(defender);
-        return { damage, crit: r.crit, dodged: r.dodged };
+    // 技能伤害：走 applyEffect（Task 5 会连同效果列表一起消掉这里的每次对象分配）
+    private _applySkillDamage(att: CombatUnit, defender: CombatUnit, mult: number): { damage: number; crit: boolean; dodged: boolean } {
+        return applyEffect(att, defender, { kind: 'damage', mult }, this._effectHooks, 'skill');
     }
 
     private _nearestEnemy(x: number, y: number): CombatUnit | null {
@@ -429,7 +494,7 @@ export class BattleManager {
                 const hit = br + e.radius;   // 命中半径随怪体型
                 const dx = e.x - b.x, dy = e.y - b.y;
                 if (dx * dx + dy * dy <= hit * hit) {
-                    this._applyDamage(b.stats, e);   // 命中：走完整公式
+                    applyEffect(b, e, DMG1, this._effectHooks);   // 命中：走完整公式（子弹携带开火者 stats）
                     b.alive = false;
                     break;
                 }
@@ -451,10 +516,11 @@ export class BattleManager {
             if (!e.alive) continue;
 
             if (e.x > front) {
+                if (!e.gate.canMove) continue;     // 眩晕：原地罚站
                 e.x -= e.moveSpeed * dt;           // 各怪按自己的速度向左推进
                 if (e.x < front) e.x = front;
                 if (e.actionLock <= 0) this._setAction(e, 'run');
-            } else {
+            } else if (e.gate.canAct) {
                 // 到达防线：贴身攻击。所有到达的怪都各自攻击，可叠在一起一起打
                 e.cd -= dt;
                 if (e.cd <= 0) {
@@ -477,15 +543,7 @@ export class BattleManager {
             if (d < bestD) { bestD = d; target = s; }
         }
         if (!target) return;
-        this._applyDamage(e.stats, target);   // 走完整公式
-    }
-
-    // —— 统一伤害结算：算伤害 → 扣血 → 飘字 → 判死 ——
-    private _applyDamage(att: CombatStats, defender: CombatUnit) {
-        const r = calcDamage(att, defender.stats);
-        defender.hp -= r.damage;
-        this._spawnFloat(defender.x, defender.y, r);
-        if (defender.hp <= 0) this._markDead(defender);
+        applyEffect(e, target, DMG1, this._effectHooks);   // 走完整公式（统一状态变更入口）
     }
 
     // 生成一条战斗飘字
@@ -524,7 +582,7 @@ export class BattleManager {
     private _updateHealing(dt: number) {
         this.healBeamCount = 0;
         for (const h of this.soldiers) {
-            if (!h.alive || h.healPerSec <= 0) continue;
+            if (!h.alive || !h.gate.canAct || h.healPerSec <= 0) continue;
             const target = this._mostHurtAlly();
             if (!target) continue;
             target.hp = Math.min(target.maxHp, target.hp + h.healPerSec * dt);
