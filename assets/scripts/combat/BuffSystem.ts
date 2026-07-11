@@ -64,7 +64,8 @@ export function tickBuffs(
         const inst = buffs[i];
         const def = getDef(inst.id);
         if (!def) { dirty = true; continue; }   // 配置被删的孤儿实例直接清掉
-        inst.remaining -= dt;
+        const permanent = def.duration === -1;   // 永久 Buff（常驻/光环被动）：不递减、永不到期
+        if (!permanent) inst.remaining -= dt;
         if (def.period > 0 && def.periodicEffect) {
             inst.periodAccum += dt;
             while (inst.periodAccum >= def.period) {
@@ -72,7 +73,7 @@ export function tickBuffs(
                 onPeriodic(def, inst);
             }
         }
-        if (inst.remaining <= 0) {
+        if (!permanent && inst.remaining <= 0) {
             dirty = true;
             onExpired(def);
             continue;

@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/buff.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/buff.xlsx
-// 生成时间：2026-07-11T06:40:57.752Z
+// 生成时间：2026-07-11T07:07:05.201Z
 
 /* eslint-disable */
 // @ts-nocheck
@@ -128,6 +128,24 @@ export const generatedBuffConfig = {
             ],
             "flags": [],
             "dispelTag": "debuff"
+        },
+        {
+            "id": "war_banner",
+            "name": "战旗",
+            "duration": -1,
+            "maxStacks": 1,
+            "stackRule": "refresh",
+            "period": 0,
+            "periodicEffect": null,
+            "statMods": [
+                {
+                    "key": "atk",
+                    "flat": 0,
+                    "pct": 0.05
+                }
+            ],
+            "flags": [],
+            "dispelTag": ""
         }
     ]
 };

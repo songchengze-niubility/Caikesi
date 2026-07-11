@@ -77,6 +77,26 @@ test('buffedStats：flat×层数 + pct×层数，概率钳 [0,1]，不改 base',
     assert.equal(base.dodgeRate, 0.5);
 });
 
+test('永久 Buff（duration=-1）：tick 100 秒不掉且属性聚合有效', () => {
+    const d = put(mkDef({ id: 'perm', duration: -1, statMods: [{ key: 'atk', flat: 10, pct: 0 }] }));
+    const buffs: BuffInstance[] = [];
+    applyBuffStack(buffs, d, 0);
+    for (let i = 0; i < 100; i++) tickBuffs(buffs, 1, getDef, () => {}, () => {});
+    assert.equal(buffs.length, 1, '永久 Buff 不应到期');
+    const base = { ...BattleConfig.stats.dps, atk: 100 };
+    assert.equal(buffedStats(base, buffs, getDef).atk, 110);
+});
+
+test('永久周期 Buff：不到期但周期照跳', () => {
+    const d = put(mkDef({ id: 'permTick', duration: -1, period: 1, periodicEffect: { kind: 'damage', mult: 0.1 } }));
+    const buffs: BuffInstance[] = [];
+    applyBuffStack(buffs, d, 10);
+    let fires = 0;
+    tickBuffs(buffs, 2.5, getDef, () => fires++, () => {});
+    assert.equal(fires, 2);
+    assert.equal(buffs.length, 1);
+});
+
 test('dispel：按标签移除至多 count 个；gate：stun 关门', () => {
     const d1 = put(mkDef({ id: 'x1', dispelTag: 'debuff' }));
     const d2 = put(mkDef({ id: 'x2', dispelTag: 'debuff', flags: ['stun'] }));

@@ -721,7 +721,7 @@ function buildBuffConfig(wb: XLSX.WorkBook): { config: unknown; summary: string 
         if (knownBuffIds.has(id)) err(`Buffs: id "${id}" 重复定义`);
         knownBuffIds.add(id);
         const duration = reqNum(r['duration'], `Buffs[${id}].duration`);
-        if (duration <= 0) err(`Buffs[${id}].duration 必须 > 0`);
+        if (duration <= 0 && duration !== -1) err(`Buffs[${id}].duration 必须 > 0（或 -1 表示永久）`);
         const maxStacks = reqNum(r['maxStacks'], `Buffs[${id}].maxStacks`);
         if (maxStacks < 1) err(`Buffs[${id}].maxStacks 必须 >= 1`);
         const stackRule = reqStr(r['stackRule'], `Buffs[${id}].stackRule`);

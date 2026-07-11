@@ -18,6 +18,8 @@ const BUFFS_ROWS: (string | number)[][] = [
     ['taunt_shout', '挑衅', 3,  1, 'refresh', 0, '',            '',                      'taunt',   'buff'],
     ['silence_seal', '沉默', 3, 1, 'refresh', 0, '',            '',                      'silence', 'debuff'],
     ['frost',        '冰缓', 3, 1, 'refresh', 0, '',            'moveSpeed%:-0.3',       '',        'debuff'],
+    // duration=-1 永久（常驻/光环被动承载体，2026-07-11 Plan A）
+    ['war_banner',   '战旗', -1, 1, 'refresh', 0, '',           'atk%:0.05',             '',        ''],
 ];
 
 const wb = XLSX.utils.book_new();
