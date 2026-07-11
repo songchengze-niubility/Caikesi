@@ -23,8 +23,23 @@ export interface SkillDef {
     delivery: DeliveryDef | null;   // 投递方式：null=instant；line/arc 发弹道、zone 落场地
 }
 
+// —— 被动技能（2 槽制：每职业主动+被动合计 ≤ 2 行，导表校验）——
+export type PassiveTrigger = 'always' | 'onHit' | 'onHurt' | 'onKill' | 'onCast';
+export type PassiveTargetMode = 'trigger' | 'self' | 'team';
+
+export interface PassiveDef {
+    id: string;
+    name: string;
+    cls: string;
+    trigger: PassiveTrigger;      // always=开战常驻/光环；其余为条件触发钩子
+    chance: number;               // 触发概率 0~1（always 必为 1）
+    targetMode: PassiveTargetMode;// trigger=事件对象 / self=自己 / team=全队存活者
+    effects: Effect[];
+}
+
 export interface SkillConfigShape {
     skills: SkillDef[];
+    passives: PassiveDef[];
 }
 
 export const SkillConfig = generatedSkillConfig as SkillConfigShape;
@@ -32,4 +47,9 @@ export const SkillConfig = generatedSkillConfig as SkillConfigShape;
 // 某职业的技能列表（保持配置行顺序 = UI 按钮顺序）
 export function skillsForClass(cls: string): SkillDef[] {
     return SkillConfig.skills.filter(s => s.cls === cls);
+}
+
+// 某职业的被动列表
+export function passivesForClass(cls: string): PassiveDef[] {
+    return SkillConfig.passives.filter(p => p.cls === cls);
 }

@@ -754,26 +754,27 @@ function buildSkillConfig(wb: XLSX.WorkBook): { config: unknown; summary: string
     const VALID_CLASSES = new Set(['tank', 'dps', 'healer']);   // 与 BattleConfig.SoldierClass 手写 union 对齐
     const VALID_TRIGGERS = new Set(['timer', 'attackCount']);
     const VALID_TARGETS = new Set(['aoe', 'nearest', 'single']);
+    const VALID_PASSIVE_TRIGGERS = new Set(['always', 'onHit', 'onHurt', 'onKill', 'onCast']);
+    const VALID_TARGET_MODES = new Set(['trigger', 'self', 'team']);
+    const SLOT_CAP = 2;   // 每职业主/被动合计槽位上限
 
     const { rows } = sheetToRows(wb, 'Skills');
     const skills: unknown[] = [];
+    const passives: unknown[] = [];
     const seen = new Set<string>();
+    const slotCount = new Map<string, number>();
     for (const r of rows) {
         const id = reqStr(r['id'], 'Skills.id');
         if (seen.has(id)) err(`Skills: id "${id}" 重复定义`);
         seen.add(id);
         const cls = reqStr(r['cls'], `Skills[${id}].cls`);
         if (!VALID_CLASSES.has(cls)) err(`Skills[${id}]: cls "${cls}" 非法（须为 tank/dps/healer）`);
-        const trigger = reqStr(r['trigger'], `Skills[${id}].trigger`);
-        if (!VALID_TRIGGERS.has(trigger)) err(`Skills[${id}]: trigger "${trigger}" 非法（timer/attackCount）`);
-        const target = reqStr(r['target'], `Skills[${id}].target`);
-        if (!VALID_TARGETS.has(target)) err(`Skills[${id}]: target "${target}" 非法（aoe/nearest/single）`);
-        const triggerValue = reqNum(r['triggerValue'], `Skills[${id}].triggerValue`);
-        if (triggerValue <= 0) err(`Skills[${id}].triggerValue 必须 > 0`);
-        const radius = reqNum(r['radius'], `Skills[${id}].radius`);
-        const maxTargets = reqNum(r['maxTargets'], `Skills[${id}].maxTargets`);
-        if (target === 'aoe' && radius <= 0) err(`Skills[${id}]: target=aoe 时 radius 必须 > 0`);
-        if (target === 'nearest' && maxTargets <= 0) err(`Skills[${id}]: target=nearest 时 maxTargets 必须 > 0`);
+        slotCount.set(cls, (slotCount.get(cls) ?? 0) + 1);
+        if ((slotCount.get(cls) ?? 0) > SLOT_CAP) err(`Skills: 职业 "${cls}" 超过 ${SLOT_CAP} 个技能槽`);
+        const kind = reqStr(r['kind'], `Skills[${id}].kind`);
+        const name = reqStr(r['name'], `Skills[${id}].name`);
+
+        // 效果列表两类通用：非空 + applyBuff 跨表校验 + damage 倍率
         const effects = parseEffectList(String(r['effects'] ?? ''), m => err(`Skills[${id}].effects: ${m}`));
         if (effects.length === 0) err(`Skills[${id}].effects 至少需要一个效果`);
         for (const eff of effects) {
@@ -782,12 +783,43 @@ function buildSkillConfig(wb: XLSX.WorkBook): { config: unknown; summary: string
             }
             if (eff.kind === 'damage' && eff.mult <= 0) err(`Skills[${id}].effects: damage 倍率必须 > 0`);
         }
-        const delivery = parseDelivery(String(r['delivery'] ?? ''), m => err(`Skills[${id}].delivery: ${m}`));
-        skills.push({ id, name: reqStr(r['name'], `Skills[${id}].name`), cls, trigger, triggerValue, target, radius, maxTargets, effects, delivery });
+
+        if (kind === 'active') {
+            for (const col of ['passiveTrigger', 'chance', 'targetMode']) {
+                if (String(r[col] ?? '').trim() !== '') err(`Skills[${id}]: 主动技能的被动列 ${col} 必须为空`);
+            }
+            const trigger = reqStr(r['trigger'], `Skills[${id}].trigger`);
+            if (!VALID_TRIGGERS.has(trigger)) err(`Skills[${id}]: trigger "${trigger}" 非法（timer/attackCount）`);
+            const target = reqStr(r['target'], `Skills[${id}].target`);
+            if (!VALID_TARGETS.has(target)) err(`Skills[${id}]: target "${target}" 非法（aoe/nearest/single）`);
+            const triggerValue = reqNum(r['triggerValue'], `Skills[${id}].triggerValue`);
+            if (triggerValue <= 0) err(`Skills[${id}].triggerValue 必须 > 0`);
+            const radius = reqNum(r['radius'], `Skills[${id}].radius`);
+            const maxTargets = reqNum(r['maxTargets'], `Skills[${id}].maxTargets`);
+            if (target === 'aoe' && radius <= 0) err(`Skills[${id}]: target=aoe 时 radius 必须 > 0`);
+            if (target === 'nearest' && maxTargets <= 0) err(`Skills[${id}]: target=nearest 时 maxTargets 必须 > 0`);
+            const delivery = parseDelivery(String(r['delivery'] ?? ''), m => err(`Skills[${id}].delivery: ${m}`));
+            skills.push({ id, name, cls, trigger, triggerValue, target, radius, maxTargets, effects, delivery });
+        } else if (kind === 'passive') {
+            for (const col of ['trigger', 'triggerValue', 'target', 'radius', 'maxTargets', 'delivery']) {
+                if (String(r[col] ?? '').trim() !== '') err(`Skills[${id}]: 被动技能的主动列 ${col} 必须为空`);
+            }
+            const passiveTrigger = reqStr(r['passiveTrigger'], `Skills[${id}].passiveTrigger`);
+            if (!VALID_PASSIVE_TRIGGERS.has(passiveTrigger)) err(`Skills[${id}].passiveTrigger "${passiveTrigger}" 非法（always/onHit/onHurt/onKill/onCast）`);
+            const chance = reqNum(r['chance'], `Skills[${id}].chance`);
+            if (chance < 0 || chance > 1) err(`Skills[${id}].chance 必须在 [0,1]`);
+            if (passiveTrigger === 'always' && chance !== 1) err(`Skills[${id}]: always 被动的 chance 必须为 1`);
+            const targetMode = reqStr(r['targetMode'], `Skills[${id}].targetMode`);
+            if (!VALID_TARGET_MODES.has(targetMode)) err(`Skills[${id}].targetMode "${targetMode}" 非法（trigger/self/team）`);
+            if (passiveTrigger === 'onKill' && targetMode === 'trigger') err(`Skills[${id}]: onKill 被动不可用 targetMode=trigger（被杀者已死）`);
+            passives.push({ id, name, cls, trigger: passiveTrigger, chance, targetMode, effects });
+        } else {
+            err(`Skills[${id}].kind "${kind}" 非法（active/passive）`);
+        }
     }
-    if (skills.length === 0) err('Skills: 至少需要 1 个技能');
-    const config = { skills };
-    const summary = `skills=${skills.length}`;
+    if (skills.length === 0) err('Skills: 至少需要 1 个主动技能');
+    const config = { skills, passives };
+    const summary = `skills=${skills.length} passives=${passives.length}`;
     return { config, summary };
 }
 

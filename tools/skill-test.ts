@@ -1,7 +1,7 @@
 // 技能系统测试（纯逻辑，tsx 运行）。
 import assert from 'node:assert/strict';
 import { UnitSkills, selectTargets, unitSkillsForClass, type SkillTargetable } from '../assets/scripts/combat/SkillRuntime';
-import type { SkillDef } from '../assets/scripts/config/SkillConfig';
+import { passivesForClass, type SkillDef } from '../assets/scripts/config/SkillConfig';
 import { BattleManager } from '../assets/scripts/combat/BattleManager';
 import { BattleConfig, type CombatStats } from '../assets/scripts/config/BattleConfig';
 
@@ -75,10 +75,24 @@ test('selectTargets：single 只打当前目标，目标死亡/为空则不选',
     assert.deepEqual(selectTargets(def, 0, 0, [t], null), []);
 });
 
-test('unitSkillsForClass(dps) 装载配置中的 3 个技能', () => {
+test('unitSkillsForClass(dps) 装载配置中的 2 个主动技能（2 槽制）', () => {
     const sk = unitSkillsForClass('dps');
-    assert.equal(sk.count, 3);
+    assert.equal(sk.count, 2);
     assert.ok(sk.defAt(0));
+});
+
+test('passivesForClass：tank 坚壁（onHurt/self）、healer 战旗光环（always/team）', () => {
+    const tankP = passivesForClass('tank');
+    assert.equal(tankP.length, 1);
+    assert.equal(tankP[0].trigger, 'onHurt');
+    assert.equal(tankP[0].targetMode, 'self');
+    assert.ok(tankP[0].chance > 0 && tankP[0].chance <= 1);
+    const healerP = passivesForClass('healer');
+    assert.equal(healerP.length, 1);
+    assert.equal(healerP[0].trigger, 'always');
+    assert.equal(healerP[0].chance, 1);
+    assert.equal(healerP[0].targetMode, 'team');
+    assert.deepEqual(passivesForClass('dps'), []);
 });
 
 test('BattleManager 集成：战斗产生 skillCast 事件，enemyKilled 计数不受影响', () => {
