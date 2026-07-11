@@ -18,6 +18,7 @@
 import * as XLSX from 'xlsx';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { parseEffectList, parseStatMods } from '../assets/scripts/config/EffectTypes';
 
 // ============ 校验错误/警告收集（每个源独立，跑前清空）============
 // err   = 会让产物坏掉的硬错误（缺字段、引用不存在、键不一致）→ 阻断该源导出。
@@ -700,6 +701,50 @@ function buildCraftConfig(wb: XLSX.WorkBook): { config: unknown; summary: string
     return { config, summary };
 }
 
+// ============ buff 模块解析器 ============
+// 读 buff.xlsx 的 Buffs sheet → Buff 定义；periodicEffect/statMods 用 EffectTypes 编码解析。
+// knownBuffIds 供 skill 源跨表校验 applyBuff 引用（SOURCES 里 buff 必须排在 skill 前）。
+// Buffs: id, name, duration, maxStacks, stackRule, period, periodicEffect, statMods, flags, dispelTag
+const knownBuffIds = new Set<string>();
+
+function buildBuffConfig(wb: XLSX.WorkBook): { config: unknown; summary: string } {
+    const VALID_STACK_RULES = new Set(['refresh', 'add']);
+    const VALID_FLAGS = new Set(['stun', 'taunt', 'silence']);
+
+    const { rows } = sheetToRows(wb, 'Buffs');
+    const buffs: unknown[] = [];
+    knownBuffIds.clear();
+    for (const r of rows) {
+        const id = reqStr(r['id'], 'Buffs.id');
+        if (knownBuffIds.has(id)) err(`Buffs: id "${id}" 重复定义`);
+        knownBuffIds.add(id);
+        const duration = reqNum(r['duration'], `Buffs[${id}].duration`);
+        if (duration <= 0) err(`Buffs[${id}].duration 必须 > 0`);
+        const maxStacks = reqNum(r['maxStacks'], `Buffs[${id}].maxStacks`);
+        if (maxStacks < 1) err(`Buffs[${id}].maxStacks 必须 >= 1`);
+        const stackRule = reqStr(r['stackRule'], `Buffs[${id}].stackRule`);
+        if (!VALID_STACK_RULES.has(stackRule)) err(`Buffs[${id}].stackRule "${stackRule}" 非法（refresh/add）`);
+        const period = num(r['period']) ?? 0;
+        const periodicList = parseEffectList(String(r['periodicEffect'] ?? ''), m => err(`Buffs[${id}].periodicEffect: ${m}`));
+        if (period > 0 && periodicList.length === 0) err(`Buffs[${id}]: period>0 但没有 periodicEffect`);
+        if (period <= 0 && periodicList.length > 0) err(`Buffs[${id}]: 有 periodicEffect 但 period<=0`);
+        if (periodicList.length > 1) err(`Buffs[${id}].periodicEffect 只允许一个效果`);
+        const statMods = parseStatMods(String(r['statMods'] ?? ''), m => err(`Buffs[${id}].statMods: ${m}`));
+        const flags = String(r['flags'] ?? '').split('|').map(s => s.trim()).filter(Boolean);
+        for (const f of flags) if (!VALID_FLAGS.has(f)) err(`Buffs[${id}].flags: 未知标记 "${f}"（stun/taunt/silence）`);
+        buffs.push({
+            id, name: reqStr(r['name'], `Buffs[${id}].name`),
+            duration, maxStacks, stackRule, period,
+            periodicEffect: periodicList[0] ?? null,
+            statMods, flags, dispelTag: String(r['dispelTag'] ?? ''),
+        });
+    }
+    if (buffs.length === 0) err('Buffs: 至少需要 1 个 buff');
+    const config = { buffs };
+    const summary = `buffs=${buffs.length}`;
+    return { config, summary };
+}
+
 // ============ skill 模块解析器 ============
 // 读 skill.xlsx 的 1 sheet → 技能配置（保持行顺序，UI 按顺序对应按钮）。
 // Skills: id, name, cls, trigger, triggerValue, target, radius, maxTargets, dmgMult
@@ -851,6 +896,13 @@ const SOURCES: ConfigSource[] = [
         outRel: '../assets/scripts/config/craft.config.generated.ts',
         exportVar: 'generatedCraftConfig',
         build: buildCraftConfig,
+    },
+    {
+        name: 'buff',
+        xlsxRel: 'config-xlsx/buff.xlsx',
+        outRel: '../assets/scripts/config/buff.config.generated.ts',
+        exportVar: 'generatedBuffConfig',
+        build: buildBuffConfig,
     },
     {
         name: 'skill',
