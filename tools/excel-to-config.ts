@@ -772,9 +772,15 @@ function buildSkillConfig(wb: XLSX.WorkBook): { config: unknown; summary: string
         const maxTargets = reqNum(r['maxTargets'], `Skills[${id}].maxTargets`);
         if (target === 'aoe' && radius <= 0) err(`Skills[${id}]: target=aoe 时 radius 必须 > 0`);
         if (target === 'nearest' && maxTargets <= 0) err(`Skills[${id}]: target=nearest 时 maxTargets 必须 > 0`);
-        const dmgMult = reqNum(r['dmgMult'], `Skills[${id}].dmgMult`);
-        if (dmgMult <= 0) err(`Skills[${id}].dmgMult 必须 > 0`);
-        skills.push({ id, name: reqStr(r['name'], `Skills[${id}].name`), cls, trigger, triggerValue, target, radius, maxTargets, dmgMult });
+        const effects = parseEffectList(String(r['effects'] ?? ''), m => err(`Skills[${id}].effects: ${m}`));
+        if (effects.length === 0) err(`Skills[${id}].effects 至少需要一个效果`);
+        for (const eff of effects) {
+            if (eff.kind === 'applyBuff' && !knownBuffIds.has(eff.buffId)) {
+                err(`Skills[${id}].effects: applyBuff 引用了不存在的 buff "${eff.buffId}"（见 buff.xlsx）`);
+            }
+            if (eff.kind === 'damage' && eff.mult <= 0) err(`Skills[${id}].effects: damage 倍率必须 > 0`);
+        }
+        skills.push({ id, name: reqStr(r['name'], `Skills[${id}].name`), cls, trigger, triggerValue, target, radius, maxTargets, effects });
     }
     if (skills.length === 0) err('Skills: 至少需要 1 个技能');
     const config = { skills };

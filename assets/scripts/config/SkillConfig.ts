@@ -5,6 +5,7 @@
 //    本文件只保留 TypeScript 类型定义与查询辅助。
 
 import { generatedSkillConfig } from './skill.config.generated';
+import type { Effect } from './EffectTypes';
 
 export type SkillTrigger = 'timer' | 'attackCount';
 export type SkillTarget = 'aoe' | 'nearest' | 'single';
@@ -18,7 +19,7 @@ export interface SkillDef {
     target: SkillTarget;
     radius: number;           // aoe 用
     maxTargets: number;       // nearest 用
-    dmgMult: number;          // 伤害倍率（乘在 calcDamage 结果上）
+    effects: Effect[];        // 效果列表（伤害只是其中一种），xlsx 编码见 EffectTypes.ts
 }
 
 export interface SkillConfigShape {

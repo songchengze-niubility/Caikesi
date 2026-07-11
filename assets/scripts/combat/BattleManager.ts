@@ -420,7 +420,17 @@ export class BattleManager {
                 const hits: SkillCastEvent['hits'] = [];
                 for (const target of cast.targets) {
                     if (!target.alive) continue;
-                    hits.push(this._applySkillDamage(s, target, cast.def.dmgMult));
+                    // 逐效果结算；hits 聚合口径：damage 累加、crit 任一、dodged 取首个伤害效果（单效果时与旧行为等价）
+                    let damage = 0, crit = false, dodged = false, hasDamage = false;
+                    for (const eff of cast.def.effects) {
+                        const out = applyEffect(s, target, eff, this._effectHooks, 'skill');
+                        if (eff.kind === 'damage') {
+                            if (!hasDamage) { dodged = out.dodged; hasDamage = true; }
+                            damage += out.damage;
+                            crit = crit || out.crit;
+                        }
+                    }
+                    hits.push({ damage, crit, dodged });
                 }
                 // 同帧前序技能清场导致目标全灭：本次落空不发事件（触发已重置，属可接受损耗）
                 if (hits.length === 0) continue;
@@ -434,11 +444,6 @@ export class BattleManager {
                 });
             }
         }
-    }
-
-    // 技能伤害：走 applyEffect（Task 5 会连同效果列表一起消掉这里的每次对象分配）
-    private _applySkillDamage(att: CombatUnit, defender: CombatUnit, mult: number): { damage: number; crit: boolean; dodged: boolean } {
-        return applyEffect(att, defender, { kind: 'damage', mult }, this._effectHooks, 'skill');
     }
 
     private _nearestEnemy(x: number, y: number): CombatUnit | null {

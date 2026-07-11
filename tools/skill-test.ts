@@ -13,7 +13,8 @@ function mkDef(partial: Partial<SkillDef>): SkillDef {
     return {
         id: 'test', name: '测试', cls: 'dps',
         trigger: 'timer', triggerValue: 5,
-        target: 'single', radius: 0, maxTargets: 0, dmgMult: 1,
+        target: 'single', radius: 0, maxTargets: 0,
+        effects: [{ kind: 'damage', mult: 1 }],
         ...partial,
     };
 }
@@ -101,6 +102,33 @@ test('BattleManager 集成：战斗产生 skillCast 事件，enemyKilled 计数�
     let total = 0;
     for (const w of BattleConfig.levels[0].waves) for (const s of w.spawns) total += s.count;
     assert.equal(events.filter(e => e.type === 'enemyKilled').length, total);
+});
+
+test('BattleManager 集成：效果列表技能——毒箭一击挂上中毒并周期跳伤', () => {
+    // range=0 隔离普攻；快触发 single 技能带 damage + applyBuff:poison。
+    // atk=30 避免秒杀（丧尸 120 血）；挂毒后卸掉技能，只留毒伤，断言精确跳伤值。
+    const mgr = new BattleManager(470, 836, 0, {
+        dps: { ...BattleConfig.stats.dps, hp: 99999, atk: 30, range: 0, critRate: 0, dodgeRate: 0 },
+    }, ['dps']);
+    mgr.soldiers[0].skills = new UnitSkills([mkDef({
+        trigger: 'timer', triggerValue: 0.1, target: 'nearest', maxTargets: 1,
+        effects: [{ kind: 'damage', mult: 1 }, { kind: 'applyBuff', buffId: 'poison', stacks: 1 }],
+    })]);
+    const events: import('../assets/scripts/combat/BattleManager').BattleEvent[] = [];
+    for (let i = 0; i < 10 && mgr.enemies.length === 0; i++) mgr.tick(0.05);
+    assert.ok(mgr.enemies.length > 0);
+    const e = mgr.enemies[0];
+    for (let i = 0; i < 4 && e.buffs.length === 0; i++) { mgr.tick(0.05); events.push(...mgr.drainEvents()); }
+    assert.equal(e.buffs.length, 1, '技能应挂上中毒');
+    assert.equal(e.buffs[0].id, 'poison');
+    assert.equal(e.buffs[0].srcAtk, 30, '毒伤快照施法者 atk');
+    assert.ok(events.some(ev => ev.type === 'buffChanged' && ev.buffId === 'poison' && ev.applied));
+    assert.ok(events.some(ev => ev.type === 'skillCast' && ev.hits.length === 1 && ev.hits[0].damage > 0));
+    mgr.soldiers[0].skills = new UnitSkills([]);   // 卸掉技能，隔离毒伤
+    const hp0 = e.hp;
+    for (let i = 0; i < 21; i++) mgr.tick(0.05);   // 1.05s → 恰好 1 跳毒（periodAccum 从 0 起算）
+    const expected = Math.max(1, Math.round(30 * 0.15 * 1));
+    assert.equal(e.hp, hp0 - expected, '中毒应按 srcAtk×倍率×层数 周期扣血');
 });
 
 let failed = 0;
