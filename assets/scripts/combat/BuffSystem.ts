@@ -14,17 +14,19 @@ export interface BuffInstance {
     remaining: number;
     periodAccum: number;
     srcAtk: number;    // 施加时的施法者 atk 快照
+    srcMult: number;   // 施加时快照 1+全伤害+技能伤害（DoT 跳伤乘它；HoT 跳疗不乘）
 }
 
 export interface BehaviorGate { canMove: boolean; canAct: boolean; canCast: boolean; taunting: boolean; }
 
-// 上/叠一层。已有实例：refresh 重置时长、add 叠层钳 maxStacks 且重置时长；都刷新 srcAtk 快照。
+// 上/叠一层。已有实例：refresh 重置时长、add 叠层钳 maxStacks 且重置时长；都刷新 srcAtk/srcMult 快照。
 // 返回是否需要重算属性/门。
-export function applyBuffStack(buffs: BuffInstance[], def: BuffDef, srcAtk: number, stacks = 1): boolean {
+export function applyBuffStack(buffs: BuffInstance[], def: BuffDef, srcAtk: number, stacks = 1, srcMult = 1): boolean {
     for (const inst of buffs) {
         if (inst.id !== def.id) continue;
         inst.remaining = def.duration;
         inst.srcAtk = srcAtk;
+        inst.srcMult = srcMult;
         if (def.stackRule === 'add') {
             const next = Math.min(def.maxStacks, inst.stacks + stacks);
             const changed = next !== inst.stacks;
@@ -33,7 +35,7 @@ export function applyBuffStack(buffs: BuffInstance[], def: BuffDef, srcAtk: numb
         }
         return false;   // refresh：层数没变，属性聚合不变
     }
-    buffs.push({ id: def.id, stacks: Math.min(def.maxStacks, Math.max(1, stacks)), remaining: def.duration, periodAccum: 0, srcAtk });
+    buffs.push({ id: def.id, stacks: Math.min(def.maxStacks, Math.max(1, stacks)), remaining: def.duration, periodAccum: 0, srcAtk, srcMult });
     return true;
 }
 

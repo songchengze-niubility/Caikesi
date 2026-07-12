@@ -4,7 +4,7 @@
 import { generatedInlayConfig } from '../config/inlay.config.generated';
 import { GemType, InscriptionEffect, EquipStatKey, Quality, PERCENT_STATS } from '../inventory/EquipDefs';
 
-export interface InlayGemDef { label: string; stat: EquipStatKey; baseValue: number; maxLevel: number }
+export interface InlayGemDef { label: string; stat: EquipStatKey; baseValue: number; maxLevel: number; levelRatio?: number }
 export interface InlaySocketCount { gemSockets: number; inscriptionSlots: number }
 export interface InlayInscriptionDef { stat: EquipStatKey; valueMin: number; valueMax: number }
 export interface InlayConfigShape {
@@ -37,7 +37,8 @@ export function gemStatValue(type: GemType, level: number): number {
     const def = InlayConfig.gems[type];
     if (!def) return 0;
     const clamped = Math.max(1, Math.min(gemMaxLevel(type), Math.floor(level)));
-    return def.baseValue * clamped;
+    // 等比价值（2026-07-11 spec 5.3）：baseValue × levelRatio^(lv-1)；levelRatio 缺省 1 = 各级同值兜底
+    return def.baseValue * Math.pow(def.levelRatio ?? 1, clamped - 1);
 }
 
 export function gemTypes(): GemType[] {

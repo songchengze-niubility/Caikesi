@@ -55,6 +55,18 @@ test('damage：致死走 markDead；倍率放大', () => {
     assert.equal(tgt.alive, false);
 });
 
+test('damage：伤害标签透传——普攻标签只吃 basicDmgBonus，技能标签只吃 skillDmgBonus', () => {
+    const src = mkUnit(mkStats({ atk: 100, basicDmgBonus: 0.5, skillDmgBonus: 0.2 }));
+    const tgt = mkUnit(mkStats({ hp: 10000, def: 0 }));
+    const { hooks } = mkHooks();
+    const basic = applyEffect(src, tgt, { kind: 'damage', mult: 1 }, hooks, undefined, { source: 'basic', scope: 'single' });
+    assert.equal(basic.damage, Math.round(100 * 1.5), '普攻标签应 ×(1+0.5)');
+    const skill = applyEffect(src, tgt, { kind: 'damage', mult: 1 }, hooks, 'skill', { source: 'skill', scope: 'single' });
+    assert.equal(skill.damage, Math.round(100 * 1.2), '技能标签应 ×(1+0.2)');
+    const untagged = applyEffect(src, tgt, { kind: 'damage', mult: 1 }, hooks);
+    assert.equal(untagged.damage, 100, '无标签不吃分类加成（旧行为等价）');
+});
+
 test('heal：按施法者 atk 倍率回血，封顶 maxHp', () => {
     const src = mkUnit(mkStats({ atk: 40 }));
     const tgt = mkUnit(mkStats({ hp: 100 }));

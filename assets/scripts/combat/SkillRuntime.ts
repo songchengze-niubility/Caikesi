@@ -48,6 +48,9 @@ export function selectTargets<T extends SkillTargetable>(
 export class UnitSkills {
     private states: SkillState[];
 
+    // 技能急速（来自面板 skillHaste，BattleManager 每帧刷新，Buff 增减急速自然生效；0 = 无加速）
+    haste = 0;
+
     constructor(defs: SkillDef[]) {
         this.states = defs.map(def => ({ def, timer: 0, attackCounter: 0 }));
     }
@@ -55,9 +58,15 @@ export class UnitSkills {
     get count(): number { return this.states.length; }
     defAt(i: number): SkillDef | undefined { return this.states[i]?.def; }
 
+    // 触发门槛：timer 型原值（急速加在计时增速上）；attackCount 型所需次数 ÷(1+急速) 向上取整、保底 1
+    private _required(st: SkillState): number {
+        if (st.def.trigger === 'timer') return st.def.triggerValue;
+        return Math.max(1, Math.ceil(st.def.triggerValue / (1 + this.haste)));
+    }
+
     tick(dt: number) {
         for (const st of this.states) {
-            if (st.def.trigger === 'timer') st.timer += dt;
+            if (st.def.trigger === 'timer') st.timer += dt * (1 + this.haste);
         }
     }
 
@@ -72,12 +81,12 @@ export class UnitSkills {
         const st = this.states[i];
         if (!st) return 0;
         const v = st.def.trigger === 'timer' ? st.timer : st.attackCounter;
-        return Math.max(0, Math.min(1, v / st.def.triggerValue));
+        return Math.max(0, Math.min(1, v / this._required(st)));
     }
 
     private _ready(st: SkillState): boolean {
         const v = st.def.trigger === 'timer' ? st.timer : st.attackCounter;
-        return v >= st.def.triggerValue;
+        return v >= this._required(st);
     }
 
     // 收集本帧可释放的技能：就绪且选得到目标才出手并重置；选不到目标保留待放

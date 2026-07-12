@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/inlay.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/inlay.xlsx
-// 生成时间：2026-07-05T09:00:20.275Z
+// 生成时间：2026-07-12T04:41:25.576Z
 
 /* eslint-disable */
 // @ts-nocheck
@@ -10,32 +10,37 @@ export const generatedInlayConfig = {
         "atk": {
             "label": "攻击",
             "stat": "atk",
-            "baseValue": 30,
-            "maxLevel": 4
+            "baseValue": 33.4,
+            "maxLevel": 6,
+            "levelRatio": 1.6
         },
         "hp": {
             "label": "生命",
             "stat": "hp",
-            "baseValue": 120,
-            "maxLevel": 4
+            "baseValue": 133.7,
+            "maxLevel": 6,
+            "levelRatio": 1.6
         },
         "def": {
             "label": "防御",
             "stat": "def",
-            "baseValue": 8,
-            "maxLevel": 4
+            "baseValue": 8.9,
+            "maxLevel": 6,
+            "levelRatio": 1.6
         },
         "crit": {
             "label": "暴击",
             "stat": "critRate",
             "baseValue": 0.02,
-            "maxLevel": 4
+            "maxLevel": 6,
+            "levelRatio": 1.6
         },
         "dmg": {
             "label": "增伤",
             "stat": "dmgBonus",
             "baseValue": 0.03,
-            "maxLevel": 4
+            "maxLevel": 6,
+            "levelRatio": 1.6
         }
     },
     "socketCounts": {
@@ -63,18 +68,18 @@ export const generatedInlayConfig = {
     "inscriptions": [
         {
             "stat": "atk",
-            "valueMin": 10,
-            "valueMax": 40
+            "valueMin": 52,
+            "valueMax": 208
         },
         {
             "stat": "hp",
-            "valueMin": 60,
-            "valueMax": 200
+            "valueMin": 312,
+            "valueMax": 1040
         },
         {
             "stat": "def",
-            "valueMin": 3,
-            "valueMax": 10
+            "valueMin": 16,
+            "valueMax": 52
         },
         {
             "stat": "critRate",
@@ -95,6 +100,41 @@ export const generatedInlayConfig = {
             "stat": "dmgReduce",
             "valueMin": 0.01,
             "valueMax": 0.05
+        },
+        {
+            "stat": "atkPct",
+            "valueMin": 0.104,
+            "valueMax": 0.3119
+        },
+        {
+            "stat": "hpPct",
+            "valueMin": 0.104,
+            "valueMax": 0.3119
+        },
+        {
+            "stat": "defPct",
+            "valueMin": 0.104,
+            "valueMax": 0.3119
+        },
+        {
+            "stat": "moveSpeedPct",
+            "valueMin": 0.104,
+            "valueMax": 0.26
+        },
+        {
+            "stat": "singleDmgBonus",
+            "valueMin": 0.02,
+            "valueMax": 0.06
+        },
+        {
+            "stat": "aoeDmgBonus",
+            "valueMin": 0.02,
+            "valueMax": 0.06
+        },
+        {
+            "stat": "skillHaste",
+            "valueMin": 0.03,
+            "valueMax": 0.08
         }
     ]
 };

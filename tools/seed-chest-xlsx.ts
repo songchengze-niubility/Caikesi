@@ -30,6 +30,18 @@ const TYPE_WEIGHTS_ROWS: (string | number)[][] = [
     ['final_boss', 'chapter', 20],
 ];
 
+// 开箱内容档案（2026-07-11 表化，取代 ChestService.CHEST_REWARD_PROFILE 硬编码；现值原样搬运）。
+// forgeStone 实际落袋 = roll[min,max] + floor(来源关卡/2)（关卡加成在 ChestService）；
+// gemCount=0 / scrollMax=0 = 该箱型不产出该材料。数值占位，子计划 B 按经济流速反解。
+const REWARDS_HEADER = ['chestType', 'equipmentRolls', 'forgeStoneMin', 'forgeStoneMax', 'gemCount', 'gemLevelMin', 'gemLevelMax', 'scrollMin', 'scrollMax'];
+// 2026-07-12 宝石砍档（用户拍板）：普通箱不掉宝石，宝石成 Boss/章节箱专属惊喜——
+// 毕业期望从 56.8 颗（远超全队 20 孔）降到孔位量级，掉宝更有仪式感。
+const REWARDS_ROWS: (string | number)[][] = [
+    ['normal',  1, 2, 4,  0, 1, 1, 0, 0],
+    ['boss',    2, 4, 8,  2, 1, 2, 1, 1],
+    ['chapter', 3, 8, 12, 3, 2, 3, 1, 2],
+];
+
 const wb = XLSX.utils.book_new();
 
 function addSheet(name: string, header: string[], rows: (string | number)[][]) {
@@ -39,10 +51,11 @@ function addSheet(name: string, header: string[], rows: (string | number)[][]) {
 
 addSheet('Groups', GROUPS_HEADER, GROUPS_ROWS);
 addSheet('TypeWeights', TYPE_WEIGHTS_HEADER, TYPE_WEIGHTS_ROWS);
+addSheet('Rewards', REWARDS_HEADER, REWARDS_ROWS);
 
 mkdirSync(dirname(OUT), { recursive: true });
 const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 writeFileSync(OUT, buf);
 
 console.log(`✓ 已生成 ${OUT}`);
-console.log(`  sheets: Groups(${GROUPS_ROWS.length}) TypeWeights(${TYPE_WEIGHTS_ROWS.length})`);
+console.log(`  sheets: Groups(${GROUPS_ROWS.length}) TypeWeights(${TYPE_WEIGHTS_ROWS.length}) Rewards(${REWARDS_ROWS.length})`);

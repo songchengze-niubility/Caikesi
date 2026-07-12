@@ -50,9 +50,10 @@ test('gainExp：不同角色互不影响', () => {
 
 test('gainExp：满级后经验不再累加溢出', () => {
     const m = new CharacterGrowthModel();
-    m.gainExp('healer', 10_000_000);
+    // maxLevel=100 时按 ×1.15 几何曲线累计约 3.4 亿经验封顶，喂 10 亿确保满级
+    m.gainExp('healer', 1_000_000_000);
     const lv = m.levelOf('healer');
-    assert.ok(lv >= 1, '应达到某个封顶等级');
+    assert.equal(lv, 100, '应封顶在 maxLevel=100');
     const exp1 = m.expOf('healer');
     m.gainExp('healer', 999);
     assert.equal(m.levelOf('healer'), lv, '满级后等级不再变化');

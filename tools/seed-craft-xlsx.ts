@@ -1,18 +1,20 @@
 // craft.xlsx 种子脚本（一次性/重建用）。
 // 用途：生成 tools/config-xlsx/craft.xlsx，之后策划直接编辑该 xlsx。
+// costForgeStone 为框架接管列（balance:derive 反解：tier_1 ≈ craftCostRuns 局石头收入；tier_2/3 外推 provisional）。
 
 import * as XLSX from 'xlsx';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { derivedValues } from './balance-model/derived.values.generated';
 
 const OUT = resolve(__dirname, 'config-xlsx/craft.xlsx');
 
 // 3 档，合成只消耗打造石（宝石/铭文走镶嵌/铭文系统，不在合成流程消耗）。
 const TIERS_HEADER = ['tierId', 'label', 'levelMin', 'levelMax', 'costForgeStone'];
 const TIERS_ROWS: (string | number)[][] = [
-    ['tier_1', '初阶', 1, 10, 10],
-    ['tier_2', '中阶', 11, 20, 25],
-    ['tier_3', '高阶', 21, 30, 50],
+    ['tier_1', '初阶', 1, 10, derivedValues.craft.tierCosts.tier_1],
+    ['tier_2', '中阶', 11, 20, derivedValues.craft.tierCosts.tier_2],
+    ['tier_3', '高阶', 21, 30, derivedValues.craft.tierCosts.tier_3],
 ];
 
 // 档位越高，权重越往史诗/传说偏。

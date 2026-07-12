@@ -55,6 +55,33 @@ test('无目标时保留待放，出现目标后释放一次且只一次', () =>
     assert.equal(sk.collectCasts(0, 0, [t], t).length, 0);
 });
 
+test('技能急速：timer 型计时 ×(1+haste)', () => {
+    const sk = new UnitSkills([mkDef({ trigger: 'timer', triggerValue: 10 })]);
+    sk.haste = 1.0;
+    sk.tick(5);   // 5 秒 × (1+1.0) = 10 → 就绪
+    assert.equal(sk.progress(0), 1, 'haste=1 时 5 秒应就绪');
+    const t = mkEnemy(0, 0);
+    assert.equal(sk.collectCasts(0, 0, [t], t).length, 1);
+});
+
+test('技能急速：attackCount 型所需次数 ÷(1+haste) 向上取整', () => {
+    const sk = new UnitSkills([mkDef({ trigger: 'attackCount', triggerValue: 4 })]);
+    sk.haste = 0.5;   // ceil(4/1.5)=3 次
+    const t = mkEnemy(0, 0);
+    sk.onBasicAttack(); sk.onBasicAttack();
+    assert.equal(sk.collectCasts(0, 0, [t], t).length, 0, '2 次不应就绪');
+    sk.onBasicAttack();
+    assert.equal(sk.collectCasts(0, 0, [t], t).length, 1, '3 次应就绪');
+});
+
+test('技能急速：极高急速下计数型保底 1 次普攻', () => {
+    const sk = new UnitSkills([mkDef({ trigger: 'attackCount', triggerValue: 2 })]);
+    sk.haste = 9;   // ceil(2/10)=1 → 保底 1
+    const t = mkEnemy(0, 0);
+    sk.onBasicAttack();
+    assert.equal(sk.collectCasts(0, 0, [t], t).length, 1, '1 次普攻应就绪');
+});
+
 test('selectTargets：aoe 只命中半径内活敌', () => {
     const def = mkDef({ target: 'aoe', radius: 100 });
     const near = mkEnemy(50, 0), far = mkEnemy(500, 0), dead = mkEnemy(10, 0, false);

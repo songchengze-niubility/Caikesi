@@ -30,6 +30,25 @@ test('makeId 连续调用唯一', () => {
     assert.equal(ids.size, 1000);
 });
 
+test('穿戴等级：需求=装备等级，只在穿戴时校验；不传 charLevel 不校验（兼容）', () => {
+    const m = new InventoryModel();
+    const item: EquipItem = { ...fixedItem('lv12', 'common'), level: 12 };
+    m.backpack.push(item);
+    const r = m.equip('lv12', 'tank', 5);
+    assert.equal(r.ok, false, '角色 Lv5 穿 Lv12 装备应被拒');
+    assert.ok(/等级不足/.test(r.reason ?? ''), `reason 应含"等级不足"，实际：${r.reason}`);
+    assert.ok(m.backpack.some(it => it.id === 'lv12'), '失败不得改动背包');
+    assert.equal(m.equip('lv12', 'tank', 12).ok, true, '等级刚好达标应可穿');
+    m.unequip('tank', 'weapon');
+    assert.equal(m.equip('lv12', 'tank').ok, true, '不传 charLevel 不校验（旧调用兼容）');
+    // 仓库同规则
+    const m2 = new InventoryModel();
+    const w: EquipItem = { ...fixedItem('wlv8', 'common'), level: 8 };
+    m2.warehouse.push(w);
+    assert.equal(m2.equipFromWarehouse('wlv8', 'dps', 7).ok, false, '仓库穿戴同样校验');
+    assert.equal(m2.equipFromWarehouse('wlv8', 'dps', 8).ok, true);
+});
+
 test('新建模型：背包/仓库空，每个角色 5 装备栏均 null', () => {
     const m = new InventoryModel();
     assert.equal(m.backpack.length, 0);
@@ -360,7 +379,7 @@ test('入库装备自动补孔位（legend=3孔/2位）', () => {
     assert.equal(it.inscriptions!.length, 2);
 });
 
-test('出售镶了宝石的装备→returnedGems 汇总退回宝石', () => {
+test('出售镶了宝石的装备→returnedMaterials 汇总退回宝石', () => {
     const m = new InventoryModel();
     m.addItemToBackpack({
         id: 'gemmed', slot: 'weapon', name: '剑', quality: 'legend',
@@ -369,18 +388,36 @@ test('出售镶了宝石的装备→returnedGems 汇总退回宝石', () => {
     const id = m.backpack[m.backpack.length - 1].id;
     const r = m.sellItem(id);
     assert.ok(r.ok);
-    assert.ok(r.returnedGems && r.returnedGems.length === 2);
-    const atkGem = r.returnedGems!.find(g => g.id === 'gem_atk_2');
+    const atkGem = r.returnedMaterials!.find(g => g.id === 'gem_atk_2');
     assert.ok(atkGem && atkGem.count === 1);
+    assert.ok(r.returnedMaterials!.find(g => g.id === 'gem_hp_1'));
 });
 
-test('出售无宝石装备→returnedGems 为空数组或省略', () => {
+test('出售无宝石装备→returnedMaterials 仅含打造石返还', () => {
     const m = new InventoryModel();
     m.dropRandom();
     const id = m.backpack[0].id;
     const r = m.sellItem(id);
     assert.ok(r.ok);
-    assert.ok(!r.returnedGems || r.returnedGems.length === 0);
+    assert.ok(r.returnedMaterials!.every(x => x.id === 'forge_stone'), '无宝石时只应返打造石');
+});
+
+test('出售返打造石：按品质返还并与退回宝石合入 returnedMaterials（值来自 balance:derive）', () => {
+    const m = new InventoryModel();
+    m.backpack.push(fixedItem('s1', 'common'), fixedItem('s2', 'rare'));
+    const r1 = m.sellItem('s1');
+    assert.equal(r1.ok, true);
+    assert.equal(r1.returnedMaterials?.find(x => x.id === 'forge_stone')?.count, 5, 'common 应返 5 打造石（derive 反解）');
+    const r2 = m.sellItem('s2');
+    assert.equal(r2.returnedMaterials?.find(x => x.id === 'forge_stone')?.count, 20, 'rare 应返 20 打造石（fine×2 阶梯）');
+});
+
+test('sellBatch：批量返石累计，且与退回宝石共存', () => {
+    const m = new InventoryModel();
+    m.backpack.push(fixedItem('b1', 'common'), fixedItem('b2', 'fine'));
+    const r = m.sellBatch('fine');
+    assert.equal(r.ok, true);
+    assert.equal(r.returnedMaterials?.find(x => x.id === 'forge_stone')?.count, 5 + 10, 'common5+fine10 应返 15');
 });
 
 console.log(`\n装备测试：${pass} 通过，${fail} 失败`);

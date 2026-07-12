@@ -34,6 +34,11 @@ const STAT_META: { key: keyof CombatStats; label: string; min: number; max: numb
     { key: 'dmgBonus',   label: '伤害加成', min: 0,   max: 2,    step: 0.05 },
     { key: 'dmgReduce',  label: '伤害减免', min: 0,   max: 0.9,  step: 0.05 },
     { key: 'moveSpeed',  label: '移速',     min: 0,   max: 600,  step: 10 },
+    { key: 'skillHaste',     label: '技能急速',   min: 0, max: 2, step: 0.05 },
+    { key: 'basicDmgBonus',  label: '普攻伤加成', min: 0, max: 2, step: 0.05 },
+    { key: 'skillDmgBonus',  label: '技能伤加成', min: 0, max: 2, step: 0.05 },
+    { key: 'singleDmgBonus', label: '单体伤加成', min: 0, max: 2, step: 0.05 },
+    { key: 'aoeDmgBonus',    label: '群体伤加成', min: 0, max: 2, step: 0.05 },
 ];
 
 // 职业 → 分组标题

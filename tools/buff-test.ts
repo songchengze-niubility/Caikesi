@@ -63,6 +63,20 @@ test('周期：2.5 秒 period=1 触发 2 次（单帧跨多周期补触发）', 
     assert.equal(fires, 3);   // 累计 3.1 秒 → 第 3 跳
 });
 
+test('srcMult 快照：施加/刷新记录乘数，DoT 结算口径 = srcAtk×mult×stacks×srcMult', () => {
+    const d = put(mkDef({ id: 'dot_mult', duration: 10, period: 1, periodicEffect: { kind: 'damage', mult: 0.5 } }));
+    const buffs: BuffInstance[] = [];
+    applyBuffStack(buffs, d, 40, 1, 1.4);   // srcAtk=40，快照 1+全伤害0.1+技能伤害0.3
+    assert.equal(buffs[0].srcMult, 1.4, '新建实例应记录 srcMult');
+    // 与 BattleManager._onBuffPeriodic 同式结算
+    const dmg = Math.max(1, Math.round(buffs[0].srcAtk * 0.5 * buffs[0].stacks * buffs[0].srcMult));
+    assert.equal(dmg, Math.round(40 * 0.5 * 1 * 1.4));
+    applyBuffStack(buffs, d, 40, 1, 1.1);   // 刷新应更新快照
+    assert.equal(buffs[0].srcMult, 1.1);
+    applyBuffStack(buffs, d, 40);            // 缺省 srcMult=1（向后兼容）
+    assert.equal(buffs[0].srcMult, 1);
+});
+
 test('buffedStats：flat×层数 + pct×层数，概率钳 [0,1]，不改 base', () => {
     const d = put(mkDef({ id: 's', maxStacks: 2, stackRule: 'add', statMods: [
         { key: 'atk', flat: 5, pct: 0 }, { key: 'atk', flat: 0, pct: 0.1 }, { key: 'dodgeRate', flat: 0.9, pct: 0 },

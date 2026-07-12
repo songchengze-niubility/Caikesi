@@ -12,9 +12,14 @@ export interface DamageResult {
     dodged: boolean;
 }
 
+// 伤害标签：来源（普攻/技能）× 范围（单体/群体），由攻击管线打标。
+// 同乘区加算：最终加成 = 全伤害 + (普攻|技能) + (单体|群体)，整体 ×(1+合计)，三类不互乘。
+// 不传标签 = 只吃全伤害（与旧行为逐位等价）。
+export interface DamageTags { source: 'basic' | 'skill'; scope: 'single' | 'aoe' }
+
 const NONE: DamageResult = { damage: 0, crit: false, blocked: false, dodged: false };
 
-export function calcDamage(att: CombatStats, def: CombatStats): DamageResult {
+export function calcDamage(att: CombatStats, def: CombatStats, tags?: DamageTags): DamageResult {
     if (att.atk <= 0) return NONE;
 
     // 1) 闪避：完全免伤
@@ -39,8 +44,10 @@ export function calcDamage(att: CombatStats, def: CombatStats): DamageResult {
         blocked = true;
     }
 
-    // 5) 伤害加成（攻击方） 6) 伤害减免（防御方）
-    dmg *= (1 + att.dmgBonus);
+    // 5) 伤害加成（攻击方，同乘区加算） 6) 伤害减免（防御方）
+    const srcBonus = tags ? (tags.source === 'basic' ? att.basicDmgBonus : att.skillDmgBonus) : 0;
+    const scopeBonus = tags ? (tags.scope === 'single' ? att.singleDmgBonus : att.aoeDmgBonus) : 0;
+    dmg *= (1 + att.dmgBonus + srcBonus + scopeBonus);
     dmg *= (1 - def.dmgReduce);
 
     return { damage: Math.max(1, Math.round(dmg)), crit, blocked, dodged: false };

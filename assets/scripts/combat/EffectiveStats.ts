@@ -12,6 +12,7 @@ export type EffectiveStatsMap = Partial<Record<SoldierClass, CombatStats>>;
 const STAT_KEYS: (keyof CombatStats)[] = [
     'hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg',
     'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce', 'moveSpeed',
+    'skillHaste', 'basicDmgBonus', 'skillDmgBonus', 'singleDmgBonus', 'aoeDmgBonus',
 ];
 const PROB_STATS: (keyof CombatStats)[] = ['critRate', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgReduce'];
 
@@ -28,12 +29,24 @@ export function normalizeStats(st: CombatStats): CombatStats {
     st.critDmg = Math.max(0, st.critDmg);
     st.dmgBonus = Math.max(0, st.dmgBonus);
     st.moveSpeed = Math.max(0, st.moveSpeed);
+    st.skillHaste = Math.max(0, st.skillHaste);
+    st.basicDmgBonus = Math.max(0, st.basicDmgBonus);
+    st.skillDmgBonus = Math.max(0, st.skillDmgBonus);
+    st.singleDmgBonus = Math.max(0, st.singleDmgBonus);
+    st.aoeDmgBonus = Math.max(0, st.aoeDmgBonus);
     for (const k of PROB_STATS) st[k] = clamp(st[k], 0, 1);
     return st;
 }
 
-export function calcEffectiveStats(base: CombatStats, items: (EquipItem | null | undefined)[]): CombatStats {
+// 百分比键 → 作用的面板键。双层公式（2026-07-11）：面板 = (白板+固定) × (1+百分比合计)
+const PCT_MAP = { hpPct: 'hp', atkPct: 'atk', defPct: 'def', moveSpeedPct: 'moveSpeed' } as const;
+type PctKey = keyof typeof PCT_MAP;
+const PCT_KEYS = Object.keys(PCT_MAP) as PctKey[];
+
+// levelPct：角色等级的三围百分比（乘全池——白板+装备+宝石一起放大；不作用 moveSpeed）
+export function calcEffectiveStats(base: CombatStats, items: (EquipItem | null | undefined)[], levelPct = 0): CombatStats {
     const out: CombatStats = { ...base };
+    const pct = { hp: levelPct, atk: levelPct, def: levelPct, moveSpeed: 0 };
     for (const item of items) {
         if (!item) continue;
         const inlay = itemInlayStats(item);
@@ -41,7 +54,15 @@ export function calcEffectiveStats(base: CombatStats, items: (EquipItem | null |
             const bonus = (item.stats?.[k] ?? 0) + (inlay[k] ?? 0);
             if (bonus) out[k] += bonus;
         }
+        for (const pk of PCT_KEYS) {
+            const bonus = (item.stats?.[pk] ?? 0) + (inlay[pk] ?? 0);
+            if (bonus) pct[PCT_MAP[pk]] += bonus;
+        }
     }
+    out.hp = Math.round(out.hp * (1 + pct.hp));
+    out.atk = Math.round(out.atk * (1 + pct.atk));
+    out.def = Math.round(out.def * (1 + pct.def));
+    out.moveSpeed = Math.round(out.moveSpeed * (1 + pct.moveSpeed));
     return normalizeStats(out);
 }
 
@@ -56,11 +77,9 @@ export function buildEffectiveStatsMap(
         const base = BattleConfig.stats[cls];
         if (!base) continue;
         const level = levels[cls];
-        const scaledBase: CombatStats = level
-            ? { ...base, hp: base.hp * charLevelCoef(level), atk: base.atk * charLevelCoef(level) }
-            : base;
         const slots = equipped?.[c];
-        map[cls] = calcEffectiveStats(scaledBase, slots ? SLOTS.map(s => slots[s]) : []);
+        // 等级 = 三围百分比乘全池（旧行为只放大白板 hp/atk；2026-07-11 双层公式改此，含 def）
+        map[cls] = calcEffectiveStats(base, slots ? SLOTS.map(s => slots[s]) : [], level ? charLevelCoef(level) - 1 : 0);
     }
     return map;
 }

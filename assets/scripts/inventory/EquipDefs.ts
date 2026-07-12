@@ -5,7 +5,11 @@ import { calcEquipItemStats } from '../config/EquipConfig';
 
 export type EquipSlot = 'weapon' | 'helmet' | 'chest' | 'pants' | 'shoes'; // 武器/头盔/胸甲/裤子/鞋子
 export type Quality = 'common' | 'fine' | 'rare' | 'epic' | 'legend';       // 白/绿/蓝/紫/橙
-export type EquipStatKey = 'hp' | 'atk' | 'def' | 'range' | 'attackSpeed' | 'critRate' | 'critDmg' | 'dodgeRate' | 'blockRate' | 'blockRatio' | 'dmgBonus' | 'dmgReduce';
+// 2026-07-11 双层叠算扩键：三围/移速百分比（hpPct 等）归二级属性池，作用于 (白板+固定) 全池；
+// moveSpeed/skillHaste/伤害四拆为新平铺维度。见 spec 2026-07-11-progression-framework-design.md §3。
+export type EquipStatKey = 'hp' | 'atk' | 'def' | 'range' | 'attackSpeed' | 'critRate' | 'critDmg' | 'dodgeRate' | 'blockRate' | 'blockRatio' | 'dmgBonus' | 'dmgReduce'
+    | 'moveSpeed' | 'hpPct' | 'atkPct' | 'defPct' | 'moveSpeedPct'
+    | 'skillHaste' | 'basicDmgBonus' | 'skillDmgBonus' | 'singleDmgBonus' | 'aoeDmgBonus';
 export type EquipStats = Partial<Record<EquipStatKey, number>>;
 
 export type GemType = 'atk' | 'hp' | 'def' | 'crit' | 'dmg';   // 宝石类型（映射属性见 inlay.xlsx/Gems）
@@ -67,9 +71,21 @@ export const STAT_LABEL: Record<EquipStatKey, string> = {
     blockRatio: '格挡减伤',
     dmgBonus: '增伤',
     dmgReduce: '减伤',
+    moveSpeed: '移速',
+    hpPct: '生命%',
+    atkPct: '攻击%',
+    defPct: '防御%',
+    moveSpeedPct: '移速%',
+    skillHaste: '技能急速',
+    basicDmgBonus: '普攻伤害',
+    skillDmgBonus: '技能伤害',
+    singleDmgBonus: '单体伤害',
+    aoeDmgBonus: '群体伤害',
 };
-export const PERCENT_STATS: EquipStatKey[] = ['attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce'];
-export const STAT_ORDER: EquipStatKey[] = ['atk', 'hp', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce'];
+export const PERCENT_STATS: EquipStatKey[] = ['attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce',
+    'hpPct', 'atkPct', 'defPct', 'moveSpeedPct', 'skillHaste', 'basicDmgBonus', 'skillDmgBonus', 'singleDmgBonus', 'aoeDmgBonus'];
+export const STAT_ORDER: EquipStatKey[] = ['atk', 'hp', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce',
+    'moveSpeed', 'atkPct', 'hpPct', 'defPct', 'moveSpeedPct', 'skillHaste', 'basicDmgBonus', 'skillDmgBonus', 'singleDmgBonus', 'aoeDmgBonus'];
 
 export function formatStatValue(key: EquipStatKey, value: number): string {
     if (PERCENT_STATS.indexOf(key) >= 0) return `${Math.round(value * 100)}%`;

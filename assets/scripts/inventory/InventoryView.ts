@@ -62,6 +62,8 @@ export class InventoryView {
         private model: InventoryModel,
         private onChanged: (kind: InventoryChangeKind, payload?: InventoryChangePayload) => void,
         private onDrop?: () => OpResult,
+        // 角色等级提供者（穿戴等级校验：需求=装备等级）；缺省不校验（旧调用兼容）
+        private levelOf?: (c: CharacterId) => number,
     ) {
         this.root = new Node('InventoryView');
         this.root.layer = parent.layer;
@@ -586,10 +588,10 @@ export class InventoryView {
             if (drag.item.slot !== target.slot) {
                 r = { ok: false, reason: `这件装备只能放到${SLOT_LABEL[drag.item.slot]}` };
             } else if (drag.zone === 'backpack' && drag.id) {
-                r = this.model.equip(drag.id, this.activeChar);
+                r = this.model.equip(drag.id, this.activeChar, this.levelOf?.(this.activeChar) ?? Infinity);
                 changed = 'equip';
             } else if (drag.zone === 'warehouse' && drag.id) {
-                r = this.model.equipFromWarehouse(drag.id, this.activeChar);
+                r = this.model.equipFromWarehouse(drag.id, this.activeChar, this.levelOf?.(this.activeChar) ?? Infinity);
                 changed = 'equip';
             } else {
                 r = { ok: true };
@@ -663,7 +665,7 @@ export class InventoryView {
                 break;
             case 'equip':
                 if (!this.sel || this.sel.zone !== 'backpack' || !this.sel.id) { this.setToast('先在背包选要穿的装备'); this.render(); return; }
-                r = m.equip(this.sel.id, this.activeChar); break;
+                r = m.equip(this.sel.id, this.activeChar, this.levelOf?.(this.activeChar) ?? Infinity); break;
             case 'unequip':
                 if (!this.sel || this.sel.zone !== 'equipped' || !this.sel.slot) { this.setToast('先选装备栏里的装备'); this.render(); return; }
                 r = m.unequip(this.activeChar, this.sel.slot); break;
@@ -674,7 +676,7 @@ export class InventoryView {
             if (kind === 'batchSell') this.setToast(`出售 ${r.sold?.length ?? 0} 件，获得 ${r.gold ?? 0} 金币`);
             if (kind === 'lock') this.setToast(r.item?.locked ? '已锁定' : '已解锁');
             if (kind !== 'lock' && kind !== 'sort') this.sel = null;
-            this.onChanged(kind as InventoryChangeKind, { gold: r.gold, sold: r.sold?.length, returnedGems: (r as any).returnedGems } as any);
+            this.onChanged(kind as InventoryChangeKind, { gold: r.gold, sold: r.sold?.length, returnedMaterials: (r as any).returnedMaterials } as any);
         }
         this.render();
     }

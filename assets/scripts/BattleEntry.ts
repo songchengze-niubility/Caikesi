@@ -134,7 +134,9 @@ export class BattleEntry extends Component {
         this._progress = new ProgressModel(BattleConfig.levels.length, BattleConfig.startLevel);
         this._invView = new InventoryView(this.node, this._halfW, this._halfH, this._inv, (kind, payload) => {
             void this._handleInventoryChanged(kind, payload);
-        }, () => this._configuredDebugDrop());
+        }, () => this._configuredDebugDrop(),
+        // 穿戴等级校验：需求=装备等级；_growth 尚未载入时不拦（读档后即正常生效）
+        (c) => this._growth ? this._growth.levelOf(c) : Infinity);
         const dataReady = this._loadAllPlayerData();
         this._accountPanel = new AccountPanel({
             host: this.node,
@@ -324,8 +326,8 @@ export class BattleEntry extends Component {
         }
         const data = await loadPlayerData();
         if (payload?.gold && payload.gold > 0) data.gold = (data.gold ?? 0) + payload.gold;
-        // 出售退回已镶宝石（Task 6 的 returnedGems 经此落到 materials）
-        const returned = (payload as any)?.returnedGems as { id: string; count: number }[] | undefined;
+        // 出售返还材料（宝石退回+打造石返还，2026-07-11 改名 returnedMaterials）经此落到 materials
+        const returned = (payload as any)?.returnedMaterials as { id: string; count: number }[] | undefined;
         if (returned && returned.length) {
             data.materials = data.materials ?? {};
             for (const g of returned) data.materials[g.id] = (data.materials[g.id] ?? 0) + g.count;

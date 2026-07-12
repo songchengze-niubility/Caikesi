@@ -48,7 +48,8 @@ function checkStatRanges(st: Record<string, number>, where: string) {
         const v = st[k];
         if (v < 0 || v > 1) warn(`${where}.${k} = ${v} 超出 [0,1]（概率/比例应在 0~1）`);
     }
-    const nonNeg = ['hp', 'atk', 'def', 'range', 'attackSpeed', 'critDmg', 'dmgBonus', 'moveSpeed'];
+    const nonNeg = ['hp', 'atk', 'def', 'range', 'attackSpeed', 'critDmg', 'dmgBonus', 'moveSpeed',
+        'skillHaste', 'basicDmgBonus', 'skillDmgBonus', 'singleDmgBonus', 'aoeDmgBonus'];
     for (const k of nonNeg) {
         if (st[k] < 0) warn(`${where}.${k} = ${st[k]} 为负`);
     }
@@ -57,8 +58,11 @@ function checkStatRanges(st: Record<string, number>, where: string) {
 
 // ============ 通用小工具（任意模块解析器复用）============
 type Cell = unknown;
-const STAT_KEYS = ['hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce', 'moveSpeed'];
+const STAT_KEYS = ['hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce', 'moveSpeed',
+    'skillHaste', 'basicDmgBonus', 'skillDmgBonus', 'singleDmgBonus', 'aoeDmgBonus'];
 const STAT_KEY_SET = new Set(STAT_KEYS);
+// 装备侧合法键 = CombatStats 键 + 叠算层百分比键（EquipStatKey，见 EquipDefs 2026-07-11 双层叠算扩键）
+const EQUIP_STAT_KEY_SET = new Set([...STAT_KEYS, 'hpPct', 'atkPct', 'defPct', 'moveSpeedPct']);
 
 // 把单元格转成数字；空/非法 → null
 function num(c: Cell): number | null {
@@ -186,14 +190,17 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
 
     // —— Levels（拍平行 → 嵌套 Level[]）——
     const { rows: lvlRows } = sheetToRows(wb, 'Levels');
-    // 先按 levelIndex 聚合（同时校验同关 levelName/dropGroup 一致、同波 distance 一致）
-    const levelMap = new Map<number, { name: string; dropGroup: string; waves: Map<number, { spawns: unknown[]; distance: number }> }>();
+    // 先按 levelIndex 聚合（同时校验同关 levelName/dropGroup/enemyScale 一致、同波 distance 一致）
+    const levelMap = new Map<number, { name: string; dropGroup: string; enemyScale: number; waves: Map<number, { spawns: unknown[]; distance: number }> }>();
     for (const r of lvlRows) {
         const li = reqNum(r['levelIndex'], `Levels.levelIndex`);
         const name = reqStr(r['levelName'], `Levels@level${li}.levelName`);
         const distance = reqNum(r['distance'], `Levels@level${li}.distance`);
         if (distance < 0) err(`Levels@level${li}.distance = ${distance} 不可为负`);
         const dropGroup = reqStr(r['dropGroup'], `Levels@level${li}.dropGroup`);
+        // enemyScale：本关怪物 hp/atk 统一缩放（难度导出列，2026-07-12）；缺省 1
+        const enemyScale = num(r['enemyScale']) ?? 1;
+        if (enemyScale <= 0) err(`Levels@level${li}.enemyScale = ${enemyScale} 必须 > 0`);
         const wi = reqNum(r['waveIndex'], `Levels@level${li} wave${r['waveIndex']}.waveIndex`);
         const type = reqStr(r['type'], `Levels@level${li} wave${wi}.type`);
         const count = reqNum(r['count'], `Levels@level${li} wave${wi}.count`);
@@ -205,12 +212,13 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
 
         let lvl = levelMap.get(li);
         if (!lvl) {
-            lvl = { name, dropGroup, waves: new Map() };
+            lvl = { name, dropGroup, enemyScale, waves: new Map() };
             levelMap.set(li, lvl);
         } else {
             // 同关一致性
             if (lvl.name !== name) err(`Levels: level${li} 的 levelName 不一致（${lvl.name} vs ${name}）`);
             if (lvl.dropGroup !== dropGroup) err(`Levels: level${li} 的 dropGroup 不一致（${lvl.dropGroup} vs ${dropGroup}）`);
+            if (lvl.enemyScale !== enemyScale) err(`Levels: level${li} 的 enemyScale 不一致（${lvl.enemyScale} vs ${enemyScale}）`);
         }
         let wv = lvl.waves.get(wi);
         if (!wv) { wv = { spawns: [], distance }; lvl.waves.set(wi, wv); }
@@ -236,7 +244,7 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
             const wv = lvl.waves.get(wi)!;
             return { spawns: wv.spawns, distance: wv.distance };
         });
-        return { name: lvl.name, dropGroup: lvl.dropGroup, waves };
+        return { name: lvl.name, dropGroup: lvl.dropGroup, enemyScale: lvl.enemyScale, waves };
     });
     if (levels.length === 0) err('Levels: 没有任何关卡');
 
@@ -362,7 +370,7 @@ function buildEquipConfig(wb: XLSX.WorkBook): { config: unknown; summary: string
         const stat = reqStr(r['stat'], `SlotBonuses[${slot}].stat`);
         const value = reqNum(r['value'], `SlotBonuses[${slot}.${stat}].value`);
         if (!VALID_SLOTS.has(slot)) err(`SlotBonuses: slot "${slot}" 非法`);
-        if (!STAT_KEY_SET.has(stat)) err(`SlotBonuses: stat "${stat}" 不在 CombatStats 中`);
+        if (!EQUIP_STAT_KEY_SET.has(stat)) err(`SlotBonuses: stat "${stat}" 不是合法装备属性键`);
         if (value < 0) warn(`SlotBonuses[${slot}.${stat}].value = ${value} 为负`);
         if (!slotBonuses[slot]) slotBonuses[slot] = {};
         if (slotBonuses[slot][stat] !== undefined) err(`SlotBonuses: ${slot}.${stat} 重复定义`);
@@ -377,7 +385,7 @@ function buildEquipConfig(wb: XLSX.WorkBook): { config: unknown; summary: string
     for (const r of affixRows) {
         const stat = reqStr(r['stat'], 'Affixes.stat');
         const value = reqNum(r['value'], `Affixes[${stat}].value`);
-        if (!STAT_KEY_SET.has(stat)) err(`Affixes: stat "${stat}" 不在 CombatStats 中`);
+        if (!EQUIP_STAT_KEY_SET.has(stat)) err(`Affixes: stat "${stat}" 不是合法装备属性键`);
         if (value <= 0) warn(`Affixes[${stat}].value = ${value} 应 > 0`);
         if (affixStats.has(stat)) err(`Affixes: stat "${stat}" 重复定义`);
         affixStats.add(stat);
@@ -623,8 +631,27 @@ function buildChestConfig(wb: XLSX.WorkBook): { config: unknown; summary: string
         if (total <= 0) err(`TypeWeights[${group}]: 权重总和必须 > 0`);
     }
 
-    const config = { groups, typeWeights };
-    const summary = `groups=${Object.keys(groups).length} typeWeightGroups=${Object.keys(typeWeights).length}`;
+    // Rewards：开箱内容档案（2026-07-11 表化，取代 ChestService.CHEST_REWARD_PROFILE 硬编码）
+    const { rows: rewardRows } = sheetToRows(wb, 'Rewards');
+    const rewards: Record<string, unknown> = {};
+    for (const r of rewardRows) {
+        const chestType = reqStr(r['chestType'], 'Rewards.chestType');
+        if (!validChestSet.has(chestType)) err(`Rewards: chestType "${chestType}" 非法`);
+        if (rewards[chestType]) err(`Rewards: chestType "${chestType}" 重复定义`);
+        const nums: Record<string, number> = {};
+        for (const k of ['equipmentRolls', 'forgeStoneMin', 'forgeStoneMax', 'gemCount', 'gemLevelMin', 'gemLevelMax', 'scrollMin', 'scrollMax']) {
+            nums[k] = reqNum(r[k], `Rewards[${chestType}].${k}`);
+            if (nums[k] < 0) err(`Rewards[${chestType}].${k} 不可为负`);
+        }
+        if (nums['forgeStoneMin'] > nums['forgeStoneMax']) err(`Rewards[${chestType}]: forgeStoneMin > forgeStoneMax`);
+        if (nums['gemLevelMin'] > nums['gemLevelMax']) err(`Rewards[${chestType}]: gemLevelMin > gemLevelMax`);
+        if (nums['scrollMin'] > nums['scrollMax']) err(`Rewards[${chestType}]: scrollMin > scrollMax`);
+        rewards[chestType] = nums;
+    }
+    for (const t of VALID_CHESTS) if (!rewards[t]) err(`Rewards: 缺少箱型 "${t}"`);
+
+    const config = { groups, typeWeights, rewards };
+    const summary = `groups=${Object.keys(groups).length} typeWeightGroups=${Object.keys(typeWeights).length} rewards=${Object.keys(rewards).length}`;
     return { config, summary };
 }
 
@@ -841,13 +868,19 @@ function buildInlayConfig(wb: XLSX.WorkBook): { config: unknown; summary: string
         if (gemKeys.has(type)) err(`Gems: type "${type}" 重复定义`);
         gemKeys.add(type);
         const stat = reqStr(r['stat'], `Gems[${type}].stat`);
-        if (!STAT_KEY_SET.has(stat)) err(`Gems[${type}]: stat "${stat}" 不在 CombatStats 中`);
+        if (!EQUIP_STAT_KEY_SET.has(stat)) err(`Gems[${type}]: stat "${stat}" 不是合法装备属性键`);
         const baseValue = reqNum(r['baseValue'], `Gems[${type}].baseValue`);
         if (baseValue <= 0) warn(`Gems[${type}].baseValue = ${baseValue} 应 > 0`);
         const maxLevel = reqNum(r['maxLevel'], `Gems[${type}].maxLevel`);
         if (maxLevel < 1) err(`Gems[${type}].maxLevel 必须 >= 1`);
-        if (maxLevel > 4) warn(`Gems[${type}].maxLevel = ${maxLevel} 超过 4：MaterialId 联合类型只覆盖 1~4，需同步拓宽 RewardTypes`);
-        gems[type] = { label: reqStr(r['label'], `Gems[${type}].label`), stat, baseValue, maxLevel };
+        if (maxLevel > 6) warn(`Gems[${type}].maxLevel = ${maxLevel} 超过 6：MaterialId 联合类型只覆盖 1~6，需同步拓宽 RewardTypes`);
+        // levelRatio 可选：等比价值 baseValue × ratio^(lv-1)；缺省不写字段（运行时按 1 兜底）
+        const levelRatio = num(r['levelRatio']);
+        if (levelRatio !== null && levelRatio < 1) warn(`Gems[${type}].levelRatio = ${levelRatio} 应 >= 1`);
+        gems[type] = {
+            label: reqStr(r['label'], `Gems[${type}].label`), stat, baseValue, maxLevel,
+            ...(levelRatio !== null ? { levelRatio } : {}),
+        };
     }
     if (Object.keys(gems).length === 0) err('Gems: 至少需要 1 个宝石类型');
 
@@ -871,7 +904,7 @@ function buildInlayConfig(wb: XLSX.WorkBook): { config: unknown; summary: string
     const inscriptions: unknown[] = [];
     for (const r of inscRows) {
         const stat = reqStr(r['stat'], 'Inscriptions.stat');
-        if (!STAT_KEY_SET.has(stat)) err(`Inscriptions: stat "${stat}" 不在 CombatStats 中`);
+        if (!EQUIP_STAT_KEY_SET.has(stat)) err(`Inscriptions: stat "${stat}" 不是合法装备属性键`);
         const valueMin = reqNum(r['valueMin'], `Inscriptions[${stat}].valueMin`);
         const valueMax = reqNum(r['valueMax'], `Inscriptions[${stat}].valueMax`);
         if (valueMin <= 0) warn(`Inscriptions[${stat}].valueMin = ${valueMin} 应 > 0`);
@@ -882,6 +915,55 @@ function buildInlayConfig(wb: XLSX.WorkBook): { config: unknown; summary: string
 
     const config = { gems, socketCounts, inscriptions };
     const summary = `gems=${Object.keys(gems).length} socketCounts=${Object.keys(socketCounts).length} inscriptions=${inscriptions.length}`;
+    return { config, summary };
+}
+
+// ============ balance 模块解析器 ============
+// 读 balance.xlsx 的 4 sheet → 养成框架真源（份额/锚点/上限/例外）。游戏运行时不消费，供 balance-model 求解。
+function buildBalanceConfig(wb: XLSX.WorkBook): { config: unknown; summary: string } {
+    const VALID_MODULES = ['base', 'level', 'equip', 'gem', 'inscription', 'skill'];
+
+    const { rows: shareRows } = sheetToRows(wb, 'Shares');
+    const shares: Record<string, number> = {};
+    for (const r of shareRows) {
+        const module = reqStr(r['module'], 'Shares.module');
+        if (!VALID_MODULES.includes(module)) err(`Shares: module "${module}" 非法`);
+        if (shares[module] !== undefined) err(`Shares: module "${module}" 重复定义`);
+        const share = reqNum(r['share'], `Shares[${module}].share`);
+        if (share < 0 || share > 1) err(`Shares[${module}].share = ${share} 超出 [0,1]`);
+        shares[module] = share;
+    }
+    for (const m of VALID_MODULES) if (shares[m] === undefined) err(`Shares: 缺少模块 "${m}"`);
+    const shareSum = VALID_MODULES.reduce((acc, m) => acc + (shares[m] ?? 0), 0);
+    if (Math.abs(shareSum - 1) > 1e-9) err(`Shares: 份额合计必须 = 1，实际 ${shareSum}`);
+
+    const readKV = (sheet: string): Record<string, number> => {
+        const { rows } = sheetToRows(wb, sheet);
+        const out: Record<string, number> = {};
+        for (const r of rows) {
+            const key = reqStr(r['key'], `${sheet}.key`);
+            if (out[key] !== undefined) err(`${sheet}: key "${key}" 重复定义`);
+            out[key] = reqNum(r['value'], `${sheet}[${key}].value`);
+        }
+        return out;
+    };
+    const anchors = readKV('Anchors');
+    const caps = readKV('Caps');
+    for (const k of Object.keys(caps)) {
+        if (caps[k] <= 0 || caps[k] > 2) warn(`Caps[${k}] = ${caps[k]} 超出常识范围 (0,2]`);
+    }
+
+    const { rows: overrideRows } = sheetToRows(wb, 'Overrides');
+    const overrides: unknown[] = [];
+    for (const r of overrideRows) {
+        const target = reqStr(r['target'], 'Overrides.target');
+        const value = reqNum(r['value'], `Overrides[${target}].value`);
+        const reason = reqStr(r['reason'], `Overrides[${target}].reason`);
+        overrides.push({ target, value, reason });
+    }
+
+    const config = { shares, anchors, caps, overrides };
+    const summary = `shares=${Object.keys(shares).length} anchors=${Object.keys(anchors).length} caps=${Object.keys(caps).length} overrides=${overrides.length}`;
     return { config, summary };
 }
 
@@ -958,6 +1040,13 @@ const SOURCES: ConfigSource[] = [
         outRel: '../assets/scripts/config/inlay.config.generated.ts',
         exportVar: 'generatedInlayConfig',
         build: buildInlayConfig,
+    },
+    {
+        name: 'balance',
+        xlsxRel: 'config-xlsx/balance.xlsx',
+        outRel: '../assets/scripts/config/balance.config.generated.ts',
+        exportVar: 'generatedBalanceConfig',
+        build: buildBalanceConfig,
     },
 ];
 

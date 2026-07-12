@@ -1,41 +1,30 @@
 // 关卡节奏门槛自检（纯逻辑，tsx 运行，不进常规测试链）。
 // 用途：关卡/掉落/装备数值调参后跑 `npm run sim:pacing`，验证三台阶（第4/7/10关）卡点成立。
 //
-// 装备档位用「期望套装平铺加成」建模（数值由 equip.xlsx 推导，改了装备表要同步这里）：
-//   全套 5 件的 hp/atk 基础平铺 = hp 725（头200+胸300+腿225）、atk 60（武器）；
-//   实际加成 ≈ 平铺 × 品质倍率均值 × 等级系数（1+(lv-1)×0.03）：
-//   - t1 过第4关：1~3关掉落成型（common/fine、Lv≈3）  F≈1.10×1.06≈1.17
-//   - t2 过第7关：4~6关掉落成型（fine/rare、Lv≈7）    F≈1.50×1.18≈1.77
-//   - t3 过第10关：7~9关掉落成型（rare/epic、Lv≈12）  F≈1.90×1.33≈2.53
+// 装备档位（2026-07-12 起）从 balance:derive 的报告读取——四档 = 裸装 / 台阶关 L4/L7/L10 的
+// "达标玩家"等效 hp/atk 平铺（推进模型 P(n) 的 ready 状态，含装备+宝石+铭文+等级折算）。
+// 改数值表后跑 `npm run balance:derive && npm run seed:* && npm run config` 再跑本门禁。
 import { BattleManager } from '../assets/scripts/combat/BattleManager';
 import { BattleConfig, SoldierClass, CombatStats } from '../assets/scripts/config/BattleConfig';
+import { derivedValues } from './balance-model/derived.values.generated';
 
 const RUNS = 5;            // 每个场景模拟次数（战斗内含暴击/闪避随机）
 const MAX_TICKS = 24000;   // 0.05s/tick → 最长 20 分钟战斗，防不收敛
 const PASS_RATE = 0.8;     // 「大概率通过」阈值
 const FAIL_RATE = 0.4;     // 「大概率卡关」阈值（胜率必须低于它）
 
-// 档位：裸装 / 1~3段成型 / 4~6段成型 / 7~9段成型（平铺加成见文件头推导）
-const LOADOUTS = [
-    { name: '裸装', hp: 0, atk: 0 },
-    { name: '1~3段装', hp: 850, atk: 70 },
-    { name: '4~6段装', hp: 1280, atk: 105 },
-    { name: '7~9段装', hp: 1830, atk: 150 },
-];
+// 面板（roster 序）：每关"入场"（顺推未回刷）与"达标"（台阶关回刷后）两套完整 18 维面板
+const PANELS = derivedValues.report.pacingPanels;
 
 // 基线出战组合：与 battle.xlsx/Misc.roster 的默认组合一致（前排肉 + 输出）。
 const DEFAULT_ROSTER: SoldierClass[] = ['tank', 'dps'];
 
-// 给每个出战角色套同一档装备平铺加成，构造多角色 effectiveStats + 传 roster。
-function winRate(levelIndex: number, tier: number, roster: SoldierClass[] = DEFAULT_ROSTER): number {
+// 直接把推进模型面板当 effectiveStats 喂给 BattleManager（模拟口径 = 难度导出口径）
+function winRate(levelIndex: number, panels: readonly CombatStats[], roster: SoldierClass[] = DEFAULT_ROSTER): number {
     let wins = 0;
     for (let run = 0; run < RUNS; run++) {
-        const gear = LOADOUTS[tier];
         const eff: Record<string, CombatStats> = {};
-        for (const cls of roster) {
-            const base = BattleConfig.stats[cls];
-            eff[cls] = { ...base, hp: base.hp + gear.hp, atk: base.atk + gear.atk };
-        }
+        roster.forEach((cls, i) => { eff[cls] = { ...panels[i] }; });
         const mgr = new BattleManager(470, 836, levelIndex, eff, roster);
         for (let i = 0; i < MAX_TICKS && mgr.phase !== 'won' && mgr.phase !== 'lost'; i++) {
             mgr.tick(0.05);
@@ -46,33 +35,17 @@ function winRate(levelIndex: number, tier: number, roster: SoldierClass[] = DEFA
     return wins / RUNS;
 }
 
-// 每个门槛：level 下标 + 应卡关的装备档（可缺省）+ 应通过的装备档
-const GATES: Array<{ level: number; failTier?: number; passTier: number }> = [
-    { level: 0, passTier: 0 },
-    { level: 1, passTier: 0 },
-    { level: 2, passTier: 0 },
-    { level: 3, failTier: 0, passTier: 1 }, // 台阶一
-    { level: 4, passTier: 1 },
-    { level: 5, passTier: 1 },
-    { level: 6, failTier: 1, passTier: 2 }, // 台阶二
-    { level: 7, passTier: 2 },
-    { level: 8, passTier: 2 },
-    { level: 9, failTier: 2, passTier: 3 }, // 台阶三 Boss
-];
-
+// 门槛：每关"达标"面板应通过（10 项快速回归）。
+// 台阶卡点的"存在性"不在这里查——模型入场面板系统性高估真实玩家（宝石 Boss 专属后前期为零、
+// 掉落随机），模型内的"入场必败"是伪信号；卡点由 `npm run sim:progress` 的
+// "台阶关卡关额外局数 ∈ [3,12]"实测带保证（改战斗/掉落数值后手动跑）。
 let failed = 0;
-for (const gate of GATES) {
-    const name = BattleConfig.levels[gate.level].name;
-    if (gate.failTier !== undefined) {
-        const rate = winRate(gate.level, gate.failTier);
-        const ok = rate < FAIL_RATE;
-        if (!ok) failed++;
-        console.log(`  ${ok ? '✓' : '✗'} ${name} @${LOADOUTS[gate.failTier].name} 应卡关：胜率 ${(rate * 100).toFixed(0)}%（要求 <${FAIL_RATE * 100}%）`);
-    }
-    const rate = winRate(gate.level, gate.passTier);
+for (let level = 0; level < BattleConfig.levels.length; level++) {
+    const name = BattleConfig.levels[level].name;
+    const rate = winRate(level, PANELS.ready[level]);
     const ok = rate >= PASS_RATE;
     if (!ok) failed++;
-    console.log(`  ${ok ? '✓' : '✗'} ${name} @${LOADOUTS[gate.passTier].name} 应通过：胜率 ${(rate * 100).toFixed(0)}%（要求 ≥${PASS_RATE * 100}%）`);
+    console.log(`  ${ok ? '✓' : '✗'} ${name} @达标 应通过：胜率 ${(rate * 100).toFixed(0)}%（要求 ≥${PASS_RATE * 100}%）`);
 }
 
 console.log(`\n节奏自检：${failed === 0 ? '全部达标' : failed + ' 项不达标'}`);

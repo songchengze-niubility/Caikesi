@@ -7,31 +7,38 @@
 import * as XLSX from 'xlsx';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+// 框架派生值（balance.xlsx → npm run balance:derive）；本 seed 只在 charGrowth 两列引用
+import { derivedValues } from './balance-model/derived.values.generated';
 
 const OUT = resolve(__dirname, 'config-xlsx/battle.xlsx');
 
-// —— Stats sheet：角色属性表（class 作行 key，12 个数值属性）——
-const STATS_HEADER = ['class', 'hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce', 'moveSpeed'];
+// —— Stats sheet：角色属性表（class 作行 key，18 个数值属性）——
+// 2026-07-11 属性系统扩展：末 5 列（skillHaste/basicDmgBonus/skillDmgBonus/singleDmgBonus/aoeDmgBonus）
+// 起手全 0（行为等价），绝对数值由养成框架子计划 B 反解。
+const STATS_HEADER = ['class', 'hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce', 'moveSpeed',
+    'skillHaste', 'basicDmgBonus', 'skillDmgBonus', 'singleDmgBonus', 'aoeDmgBonus'];
 const STATS_ROWS: (string | number)[][] = [
     // moveSpeed 2026-07-11 从 Classes 表迁入统一属性表：tank/dps 沿用原值 300（近战冲锋行为等价）；
     // healer 原为 0（钉站位），补 220 仅供全队行军取最慢值用，战斗中 heal 原型仍钉站位。
-    ['tank',   360, 14, 10, 90,  1.0, 0.05, 0.5, 0.0,  0.30, 0.5, 0.0,  0.10, 300],
+    ['tank',   360, 14, 10, 90,  1.0, 0.05, 0.5, 0.0,  0.30, 0.5, 0.0,  0.10, 300, 0, 0, 0, 0, 0],
     // dps 基础面板 2026-07-04 ×5.5：旧值(hp90/atk28)裸装连第1关都过不了（1v1 丧尸都是五五开）；
     // 装备 hp/atk 平铺值在 equip.xlsx 同倍放大，保持装备相对价值不变
-    ['dps',    500, 155, 2,  90,  1.3, 0.25, 1.0, 0.05, 0.0,  0.0, 0.10, 0.0,  300],
-    ['healer', 120, 0,  4,  0,   1.0, 0.0,  0.5, 0.10, 0.0,  0.0, 0.0,  0.0,  220],
+    ['dps',    500, 155, 2,  90,  1.3, 0.25, 1.0, 0.05, 0.0,  0.0, 0.10, 0.0,  300, 0, 0, 0, 0, 0],
+    ['healer', 120, 0,  4,  0,   1.0, 0.0,  0.5, 0.10, 0.0,  0.0, 0.0,  0.0,  220, 0, 0, 0, 0, 0],
 ];
 
 // —— EnemyTypes sheet：怪物图鉴（type 作行 key；color 用 "r,g,b" 字符串；stats 拍平到同表）——
 const ENEMY_HEADER = ['type', 'name', 'radius', 'attackInterval', 'color',
-    'hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce', 'moveSpeed', 'exp'];
+    'hp', 'atk', 'def', 'range', 'attackSpeed', 'critRate', 'critDmg', 'dodgeRate', 'blockRate', 'blockRatio', 'dmgBonus', 'dmgReduce', 'moveSpeed',
+    'skillHaste', 'basicDmgBonus', 'skillDmgBonus', 'singleDmgBonus', 'aoeDmgBonus', 'exp'];
 const ENEMY_ROWS: (string | number)[][] = [
-    // moveSpeed（原顶层 speed 列）2026-07-11 迁入 stats 组，数值原样搬运
-    ['zombie', '丧尸',   28, 0.8, '230,70,70',  120, 18, 4,  0, 1.0, 0.05, 0.5, 0.05, 0.0, 0.0, 0.0, 0.0,  90,  5],
-    ['runner', '疾行者', 22, 0.6, '240,150,60', 70,  14, 2,  0, 1.4, 0.05, 0.5, 0.15, 0.0, 0.0, 0.0, 0.0,  175, 4],
-    ['brute',  '重装',   40, 1.2, '170,80,200', 360, 30, 12, 0, 0.8, 0.05, 0.5, 0.0,  0.0, 0.0, 0.0, 0.15, 55,  10],
+    // moveSpeed（原顶层 speed 列）2026-07-11 迁入 stats 组，数值原样搬运；
+    // 2026-07-11 属性系统扩展加 5 列全 0（exp 保持末列）
+    ['zombie', '丧尸',   28, 0.8, '230,70,70',  120, 18, 4,  0, 1.0, 0.05, 0.5, 0.05, 0.0, 0.0, 0.0, 0.0,  90,  0, 0, 0, 0, 0, 5],
+    ['runner', '疾行者', 22, 0.6, '240,150,60', 70,  14, 2,  0, 1.4, 0.05, 0.5, 0.15, 0.0, 0.0, 0.0, 0.0,  175, 0, 0, 0, 0, 0, 4],
+    ['brute',  '重装',   40, 1.2, '170,80,200', 360, 30, 12, 0, 0.8, 0.05, 0.5, 0.0,  0.0, 0.0, 0.0, 0.15, 55,  0, 0, 0, 0, 0, 10],
     // 第一章 Boss：纯数值型大体型（高血高攻高减免），无技能机制；血量经 sim:pacing 校准（t2 卡关 / t3 可过）
-    ['boss_butcher', '屠夫领主', 60, 1.5, '150,40,40', 15100, 55, 20, 0, 0.8, 0.05, 0.5, 0.0, 0.0, 0.0, 0.0, 0.30, 40, 200],
+    ['boss_butcher', '屠夫领主', 60, 1.5, '150,40,40', 15100, 55, 20, 0, 0.8, 0.05, 0.5, 0.0, 0.0, 0.0, 0.0, 0.30, 40, 0, 0, 0, 0, 0, 200],
 ];
 
 // —— Classes sheet：职业行为（class 作行 key；attackType 是字符串枚举）——
@@ -46,7 +53,8 @@ const CLASSES_ROWS: (string | number)[][] = [
 // —— Levels sheet：关卡，拍平到 spawn-group 粒度 ——
 // 列：levelIndex, levelName, distance, dropGroup, waveIndex, type, count, interval, hp(可选,空=不覆盖)
 // distance = 清完该波后行军到下一刷怪点的距离（像素），同一波各行必须一致；末波该值无效（2026-07-11 取代 waveGap）
-const LEVELS_HEADER = ['levelIndex', 'levelName', 'distance', 'dropGroup', 'waveIndex', 'type', 'count', 'interval', 'hp'];
+// enemyScale（2026-07-12 难度导出列）：本关全部怪 hp/atk 统一缩放，同关一致；由 addSheet 前按 levelIndex 追加
+const LEVELS_HEADER = ['levelIndex', 'levelName', 'distance', 'dropGroup', 'waveIndex', 'type', 'count', 'interval', 'hp', 'enemyScale'];
 const LEVELS_ROWS: (string | number)[][] = [
     // 第一章 10 关，台阶卡点在第 4/7/10 关（levelIndex 3/6/9）。
     // L4~L10 的 hp 覆盖值由 `npm run sim:pacing` 于 2026-07-04 校准（13 门槛全达标：
@@ -136,10 +144,16 @@ const MISC_ROWS: (string | number)[][] = [
     ['startLevel', 0],
     ['squadCap', 2],
     ['roster', 'tank,dps'],
-    ['charGrowth.expBase', 50],
+    // expBase / statGrowthPerLevel 为框架接管列（balance:derive 反解：经验=顺推自然到毕业级；等级线=20% 战力份额）
+    ['charGrowth.expBase', derivedValues.battle.expBase],
     ['charGrowth.expGrowthPerLevel', 1.15],
-    ['charGrowth.statGrowthPerLevel', 0.05],
-    ['charGrowth.maxLevel', 30],
+    ['charGrowth.statGrowthPerLevel', derivedValues.battle.statGrowthPerLevel],
+    ['charGrowth.maxLevel', 100],   // 2026-07-11 30→100：长线养成空间
+    // 经验曲线分段（2026-07-11 产出 spec §2）：1~30 ×1.15 / 31~60 ×1.08 / 61~100 ×1.04（占位，子计划 B 反解）
+    ['charGrowth.expSeg2Start', 31],
+    ['charGrowth.expSeg2Growth', 1.08],
+    ['charGrowth.expSeg3Start', 61],
+    ['charGrowth.expSeg3Growth', 1.04],
     ['combat.minDamageRate', 0.1],
     ['layout.frontMargin', 360],
     ['layout.spacing', 110],
@@ -176,7 +190,10 @@ function addSheet(name: string, header: string[], rows: (string | number)[][]) {
 addSheet('Stats', STATS_HEADER, STATS_ROWS);
 addSheet('EnemyTypes', ENEMY_HEADER, ENEMY_ROWS);
 addSheet('Classes', CLASSES_HEADER, CLASSES_ROWS);
-addSheet('Levels', LEVELS_HEADER, LEVELS_ROWS);
+// 难度缩放列按 levelIndex 追加（balance:derive 难度导出：新旧战力比 × 难度系数）
+const enemyScales = (derivedValues.battle as { enemyScales?: readonly number[] }).enemyScales;
+const LEVELS_ROWS_SCALED = LEVELS_ROWS.map(r => [...r, enemyScales?.[r[0] as number] ?? 1]);
+addSheet('Levels', LEVELS_HEADER, LEVELS_ROWS_SCALED);
 addSheet('Misc', MISC_HEADER, MISC_ROWS);
 addSheet('Scene', SCENE_HEADER, SCENE_ROWS);
 

@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/battle.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/battle.xlsx
-// 生成时间：2026-07-11T07:25:23.255Z
+// 生成时间：2026-07-12T05:09:36.803Z
 
 /* eslint-disable */
 import type { BattleConfigData } from './BattleConfig';
@@ -20,7 +20,12 @@ export const generatedBattleConfig: BattleConfigData = {
             "blockRatio": 0.5,
             "dmgBonus": 0,
             "dmgReduce": 0.1,
-            "moveSpeed": 300
+            "moveSpeed": 300,
+            "skillHaste": 0,
+            "basicDmgBonus": 0,
+            "skillDmgBonus": 0,
+            "singleDmgBonus": 0,
+            "aoeDmgBonus": 0
         },
         "dps": {
             "hp": 500,
@@ -35,7 +40,12 @@ export const generatedBattleConfig: BattleConfigData = {
             "blockRatio": 0,
             "dmgBonus": 0.1,
             "dmgReduce": 0,
-            "moveSpeed": 300
+            "moveSpeed": 300,
+            "skillHaste": 0,
+            "basicDmgBonus": 0,
+            "skillDmgBonus": 0,
+            "singleDmgBonus": 0,
+            "aoeDmgBonus": 0
         },
         "healer": {
             "hp": 120,
@@ -50,7 +60,12 @@ export const generatedBattleConfig: BattleConfigData = {
             "blockRatio": 0,
             "dmgBonus": 0,
             "dmgReduce": 0,
-            "moveSpeed": 220
+            "moveSpeed": 220,
+            "skillHaste": 0,
+            "basicDmgBonus": 0,
+            "skillDmgBonus": 0,
+            "singleDmgBonus": 0,
+            "aoeDmgBonus": 0
         }
     },
     "enemyTypes": {
@@ -77,7 +92,12 @@ export const generatedBattleConfig: BattleConfigData = {
                 "blockRatio": 0,
                 "dmgBonus": 0,
                 "dmgReduce": 0,
-                "moveSpeed": 90
+                "moveSpeed": 90,
+                "skillHaste": 0,
+                "basicDmgBonus": 0,
+                "skillDmgBonus": 0,
+                "singleDmgBonus": 0,
+                "aoeDmgBonus": 0
             }
         },
         "runner": {
@@ -103,7 +123,12 @@ export const generatedBattleConfig: BattleConfigData = {
                 "blockRatio": 0,
                 "dmgBonus": 0,
                 "dmgReduce": 0,
-                "moveSpeed": 175
+                "moveSpeed": 175,
+                "skillHaste": 0,
+                "basicDmgBonus": 0,
+                "skillDmgBonus": 0,
+                "singleDmgBonus": 0,
+                "aoeDmgBonus": 0
             }
         },
         "brute": {
@@ -129,7 +154,12 @@ export const generatedBattleConfig: BattleConfigData = {
                 "blockRatio": 0,
                 "dmgBonus": 0,
                 "dmgReduce": 0.15,
-                "moveSpeed": 55
+                "moveSpeed": 55,
+                "skillHaste": 0,
+                "basicDmgBonus": 0,
+                "skillDmgBonus": 0,
+                "singleDmgBonus": 0,
+                "aoeDmgBonus": 0
             }
         },
         "boss_butcher": {
@@ -155,7 +185,12 @@ export const generatedBattleConfig: BattleConfigData = {
                 "blockRatio": 0,
                 "dmgBonus": 0,
                 "dmgReduce": 0.3,
-                "moveSpeed": 40
+                "moveSpeed": 40,
+                "skillHaste": 0,
+                "basicDmgBonus": 0,
+                "skillDmgBonus": 0,
+                "singleDmgBonus": 0,
+                "aoeDmgBonus": 0
             }
         }
     },
@@ -163,6 +198,7 @@ export const generatedBattleConfig: BattleConfigData = {
         {
             "name": "第1关 · 试炼",
             "dropGroup": "c1_early",
+            "enemyScale": 0.88,
             "waves": [
                 {
                     "spawns": [
@@ -209,6 +245,7 @@ export const generatedBattleConfig: BattleConfigData = {
         {
             "name": "第2关 · 前哨",
             "dropGroup": "c1_early",
+            "enemyScale": 0.51,
             "waves": [
                 {
                     "spawns": [
@@ -260,6 +297,7 @@ export const generatedBattleConfig: BattleConfigData = {
         {
             "name": "第3关 · 溃堤",
             "dropGroup": "c1_early",
+            "enemyScale": 1.97,
             "waves": [
                 {
                     "spawns": [
@@ -312,6 +350,7 @@ export const generatedBattleConfig: BattleConfigData = {
         {
             "name": "第4关 · 铁壁",
             "dropGroup": "c1_mid",
+            "enemyScale": 2.21,
             "waves": [
                 {
                     "spawns": [
@@ -374,6 +413,7 @@ export const generatedBattleConfig: BattleConfigData = {
         {
             "name": "第5关 · 缓坡",
             "dropGroup": "c1_mid",
+            "enemyScale": 1.28,
             "waves": [
                 {
                     "spawns": [
@@ -436,6 +476,7 @@ export const generatedBattleConfig: BattleConfigData = {
         {
             "name": "第6关 · 夹击",
             "dropGroup": "c1_mid",
+            "enemyScale": 2.04,
             "waves": [
                 {
                     "spawns": [
@@ -498,6 +539,7 @@ export const generatedBattleConfig: BattleConfigData = {
         {
             "name": "第7关 · 壁垒",
             "dropGroup": "c1_late",
+            "enemyScale": 2.56,
             "waves": [
                 {
                     "spawns": [
@@ -571,6 +613,7 @@ export const generatedBattleConfig: BattleConfigData = {
         {
             "name": "第8关 · 风暴",
             "dropGroup": "c1_late",
+            "enemyScale": 2.85,
             "waves": [
                 {
                     "spawns": [
@@ -644,6 +687,7 @@ export const generatedBattleConfig: BattleConfigData = {
         {
             "name": "第9关 · 黑潮",
             "dropGroup": "c1_late",
+            "enemyScale": 2.9,
             "waves": [
                 {
                     "spawns": [
@@ -717,6 +761,7 @@ export const generatedBattleConfig: BattleConfigData = {
         {
             "name": "第10关 · 屠夫领主",
             "dropGroup": "c1_boss",
+            "enemyScale": 2.9,
             "waves": [
                 {
                     "spawns": [
@@ -791,10 +836,14 @@ export const generatedBattleConfig: BattleConfigData = {
     "startLevel": 0,
     "squadCap": 2,
     "charGrowth": {
-        "expBase": 50,
+        "expBase": 343,
         "expGrowthPerLevel": 1.15,
-        "statGrowthPerLevel": 0.05,
-        "maxLevel": 30
+        "statGrowthPerLevel": 0.0338,
+        "maxLevel": 100,
+        "expSeg2Start": 31,
+        "expSeg2Growth": 1.08,
+        "expSeg3Start": 61,
+        "expSeg3Growth": 1.04
     },
     "combat": {
         "minDamageRate": 0.1

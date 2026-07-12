@@ -10,9 +10,10 @@ function test(name: string, fn: () => void) {
     catch (e) { fail++; console.error('  ✗ ' + name + ' — ' + (e as Error).message); }
 }
 
-test('craftEquipment：材料充足时扣除材料并产出档位区间内的装备', () => {
+test('craftEquipment：材料充足时扣除材料并产出档位区间内的装备（成本读配置，随 balance:derive 变）', () => {
     const tier = getCraftTier('tier_1');
-    const materials: MaterialSave = { forge_stone: 10 };
+    const cost = tier.cost.forge_stone!;
+    const materials: MaterialSave = { forge_stone: cost };
     const result = craftEquipment(materials, 'tier_1', 'weapon', () => 0.5);
     assert.equal(result.ok, true);
     assert.ok(result.item);
@@ -22,20 +23,21 @@ test('craftEquipment：材料充足时扣除材料并产出档位区间内的装
         `等级应落在档位区间内，得到 ${result.item!.level}`,
     );
     assert.equal(result.remainingMaterials!.forge_stone, 0);
-    assert.equal(materials.forge_stone, 10, '不应就地修改传入的 materials');
+    assert.equal(materials.forge_stone, cost, '不应就地修改传入的 materials');
 });
 
 test('craftEquipment：材料不足时拒绝且不返回 remainingMaterials', () => {
-    const materials: MaterialSave = { forge_stone: 5 };
+    const short = getCraftTier('tier_1').cost.forge_stone! - 1;
+    const materials: MaterialSave = { forge_stone: short };
     const result = craftEquipment(materials, 'tier_1', 'weapon', () => 0.5);
     assert.equal(result.ok, false);
     assert.equal(result.reason, '材料不足');
     assert.equal(result.remainingMaterials, undefined);
-    assert.equal(materials.forge_stone, 5);
+    assert.equal(materials.forge_stone, short);
 });
 
 test('craftEquipment：高档位打造石不足时拒绝', () => {
-    const materials: MaterialSave = { forge_stone: 10 };
+    const materials: MaterialSave = { forge_stone: getCraftTier('tier_2').cost.forge_stone! - 1 };
     const result = craftEquipment(materials, 'tier_2', 'helmet', () => 0.5);
     assert.equal(result.ok, false);
     assert.equal(result.reason, '材料不足');

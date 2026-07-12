@@ -1,7 +1,7 @@
 // ⚠️ 本文件由 tools/excel-to-config.ts 自动生成，请勿手改。
 // 改数值请编辑 tools/config-xlsx/equip.xlsx，然后跑：npm run config
 // 源文件：tools/config-xlsx/equip.xlsx
-// 生成时间：2026-07-04T14:33:27.976Z
+// 生成时间：2026-07-12T04:41:25.564Z
 
 /* eslint-disable */
 // @ts-nocheck
@@ -45,20 +45,20 @@ export const generatedEquipConfig = {
     },
     "slotBonuses": {
         "weapon": {
-            "atk": 60,
+            "atk": 78,
             "critRate": 0.02
         },
         "helmet": {
-            "hp": 200,
-            "def": 2
+            "hp": 260,
+            "def": 3
         },
         "chest": {
-            "hp": 300,
-            "def": 4,
+            "hp": 389,
+            "def": 5,
             "dmgReduce": 0.02
         },
         "pants": {
-            "hp": 225,
+            "hp": 292,
             "dodgeRate": 0.015
         },
         "shoes": {
@@ -69,15 +69,15 @@ export const generatedEquipConfig = {
     "affixes": [
         {
             "stat": "hp",
-            "value": 140
+            "value": 182
         },
         {
             "stat": "atk",
-            "value": 25
+            "value": 32
         },
         {
             "stat": "def",
-            "value": 1.5
+            "value": 2
         },
         {
             "stat": "range",
@@ -110,6 +110,38 @@ export const generatedEquipConfig = {
         {
             "stat": "dmgReduce",
             "value": 0.01
+        },
+        {
+            "stat": "hpPct",
+            "value": 0.0389
+        },
+        {
+            "stat": "atkPct",
+            "value": 0.0389
+        },
+        {
+            "stat": "defPct",
+            "value": 0.0389
+        },
+        {
+            "stat": "moveSpeed",
+            "value": 19
+        },
+        {
+            "stat": "moveSpeedPct",
+            "value": 0.0389
+        },
+        {
+            "stat": "skillHaste",
+            "value": 0.05
+        },
+        {
+            "stat": "basicDmgBonus",
+            "value": 0.04
+        },
+        {
+            "stat": "skillDmgBonus",
+            "value": 0.04
         }
     ],
     "levelScaling": {

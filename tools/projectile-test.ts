@@ -31,6 +31,7 @@ function mkProjectile(p: Partial<Projectile>): Projectile {
         effects: [{ kind: 'damage', mult: 1 }],
         pierce: 0, gravity: 0, hitIds: [],
         owner: null, isBasicAttack: false,
+        tags: { source: 'skill', scope: 'single' },   // 测试面板加成全 0，标签取值不影响旧断言
         alive: true,
         ...p,
     };

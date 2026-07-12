@@ -7,7 +7,8 @@ import { ensureInlaySlots } from '../inlay/InlayModel';
 import { gemMaterialId, MaterialItem } from '../services/RewardTypes';
 
 export interface OpResult { ok: boolean; reason?: string; item?: EquipItem; }
-export interface SellResult extends OpResult { gold?: number; sold?: EquipItem[]; returnedGems?: MaterialItem[]; }
+// returnedMaterials（2026-07-11 由 returnedGems 改名）：出售返还材料 = 已镶宝石退回 + 按品质返打造石
+export interface SellResult extends OpResult { gold?: number; sold?: EquipItem[]; returnedMaterials?: MaterialItem[]; }
 export type InventorySortMode = 'quality' | 'slot' | 'name';
 export type InventoryZone = 'backpack' | 'warehouse';
 const OK: OpResult = { ok: true };
@@ -64,6 +65,17 @@ export function sellPriceOf(item: EquipItem): number {
     return SELL_PRICE[item.quality] ?? 0;
 }
 
+// 出售返还打造石（2026-07-11 产出 spec §6）：fine 档 = 合成价 × 回收率（balance.xlsx/Anchors.sellReturnRate），
+// 品质半倍/倍数阶梯。数值来源：npm run balance:derive → derived.values.generated.ts 的 sell.forgeStone
+// （游戏侧不 import tools 产物，derive 后人工回填并保持注释同步；后续可搬表）。
+const SELL_FORGE_STONE: Record<Quality, number> = {
+    common: 5,
+    fine: 10,
+    rare: 20,
+    epic: 40,
+    legend: 80,
+};
+
 // 把一批卖出装备身上已镶的宝石汇总成 MaterialItem[]（同 id 合并数量）。
 function collectReturnedGems(items: EquipItem[]): MaterialItem[] {
     const counts: Record<string, number> = {};
@@ -75,6 +87,15 @@ function collectReturnedGems(items: EquipItem[]): MaterialItem[] {
         }
     }
     return Object.keys(counts).map(id => ({ id: id as MaterialItem['id'], count: counts[id] }));
+}
+
+// 出售返还材料 = 镶嵌宝石退回 + 按品质返打造石
+function collectReturnedMaterials(items: EquipItem[]): MaterialItem[] {
+    const out = collectReturnedGems(items);
+    let stones = 0;
+    for (const it of items) stones += SELL_FORGE_STONE[it.quality] ?? 0;
+    if (stones > 0) out.push({ id: 'forge_stone', count: stones });
+    return out;
 }
 
 export class InventoryModel {
@@ -154,7 +175,7 @@ export class InventoryModel {
             const item = list[i];
             if (item.locked) return { ok: false, reason: '锁定装备不能出售' };
             list.splice(i, 1);
-            return { ok: true, item, sold: [item], gold: sellPriceOf(item), returnedGems: collectReturnedGems([item]) };
+            return { ok: true, item, sold: [item], gold: sellPriceOf(item), returnedMaterials: collectReturnedMaterials([item]) };
         }
         return { ok: false, reason: '装备不存在' };
     }
@@ -176,7 +197,7 @@ export class InventoryModel {
             }
         }
         if (sold.length === 0) return { ok: false, reason: '没有可出售装备', sold, gold: 0 };
-        return { ok: true, sold, gold, returnedGems: collectReturnedGems(sold) };
+        return { ok: true, sold, gold, returnedMaterials: collectReturnedMaterials(sold) };
     }
 
     // 调试掉落：随机生成一件 → 背包
@@ -209,10 +230,14 @@ export class InventoryModel {
 
     // 背包某件 → 指定角色的对应部位装备栏；该角色该部位原有装备退回背包。
     // 净背包数 = -1(移出该件) +(0或1)(退回旧件) ≤ 原数 → 永不超上限，无需判满/回滚。
-    equip(id: string, character: CharacterId): OpResult {
+    // charLevel：穿戴等级校验（需求=装备等级，spec 2026-07-11 §5.2）；缺省 Infinity=不校验（旧调用兼容）。
+    // 只在穿戴时校验——老存档已穿戴的不强制脱，读档自愈不动穿戴状态。
+    equip(id: string, character: CharacterId, charLevel = Infinity): OpResult {
         if (!this.equipped[character]) return fail('角色不存在');
         const i = this.backpack.findIndex(it => it.id === id);
         if (i < 0) return fail('装备不在背包');
+        const reqLevel = this.backpack[i].level ?? 1;
+        if (reqLevel > charLevel) return fail(`角色等级不足（需 Lv.${reqLevel}）`);
         const item = this.backpack.splice(i, 1)[0];
         const prev = this.equipped[character][item.slot];
         this.equipped[character][item.slot] = item;
@@ -221,10 +246,12 @@ export class InventoryModel {
     }
 
     // 仓库某件 → 指定角色装备栏；原有装备退回仓库。净仓库数不增，换装安全。
-    equipFromWarehouse(id: string, character: CharacterId): OpResult {
+    equipFromWarehouse(id: string, character: CharacterId, charLevel = Infinity): OpResult {
         if (!this.equipped[character]) return fail('角色不存在');
         const i = this.warehouse.findIndex(it => it.id === id);
         if (i < 0) return fail('装备不在仓库');
+        const reqLevel = this.warehouse[i].level ?? 1;
+        if (reqLevel > charLevel) return fail(`角色等级不足（需 Lv.${reqLevel}）`);
         const item = this.warehouse.splice(i, 1)[0];
         const prev = this.equipped[character][item.slot];
         this.equipped[character][item.slot] = item;

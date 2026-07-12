@@ -14,13 +14,14 @@ test('gemMaterialId：拼出 gem_<type>_<level>', () => {
     assert.equal(gemMaterialId('crit', 4), 'gem_crit_4');
 });
 
-test('MATERIAL_LABEL：覆盖全部宝石键(类型×1~4) + rune_scroll + forge_stone', () => {
+test('MATERIAL_LABEL：覆盖全部宝石键(类型×1~6) + rune_scroll + forge_stone', () => {
     for (const t of gemTypes()) {
-        for (let lv = 1; lv <= Math.min(4, gemMaxLevel(t)); lv++) {
+        for (let lv = 1; lv <= gemMaxLevel(t); lv++) {
             const id = gemMaterialId(t, lv);
             assert.ok(MATERIAL_LABEL[id], `缺少标签: ${id}`);
         }
     }
+    assert.equal(MATERIAL_LABEL['gem_atk_6'], '攻击宝石·Lv.6', '标签应覆盖到 6 级');
     assert.ok(MATERIAL_LABEL['rune_scroll']);
     assert.ok(MATERIAL_LABEL['forge_stone']);
 });

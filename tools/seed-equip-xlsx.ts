@@ -4,8 +4,21 @@
 import * as XLSX from 'xlsx';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { derivedValues } from './balance-model/derived.values.generated';
+import { TPL } from './balance-model/templates';
 
 const OUT = resolve(__dirname, 'config-xlsx/equip.xlsx');
+
+// 框架接管：一级平铺（hp/atk/def/moveSpeed 及其百分比）× primaryScale（balance:derive 反解装备 50% 份额）。
+// 暴击/伤害类等二级词条保持手填值（概率型数值不随战力盘子线性放大）。
+const K = derivedValues.equip.primaryScale;
+const PRIMARY = new Set(['hp', 'atk', 'def', 'moveSpeed']);
+const PRIMARY_PCT = new Set(['hpPct', 'atkPct', 'defPct', 'moveSpeedPct']);
+function scaled(stat: string, value: number): number {
+    if (PRIMARY.has(stat)) return Math.round(value * K);
+    if (PRIMARY_PCT.has(stat)) return Number((value * K).toFixed(4));
+    return value;
+}
 
 const QUALITIES_HEADER = ['quality', 'label', 'multiplier', 'rollMin', 'rollMax', 'extraStats'];
 const QUALITIES_ROWS: (string | number)[][] = [
@@ -17,37 +30,13 @@ const QUALITIES_ROWS: (string | number)[][] = [
 ];
 
 // value 是该部位的基础加成；实际掉落 = value × 品质倍率 × 随机 roll。
+// 形状（部位/词条池的相对比例）在 tools/balance-model/templates.ts 单一真源；此处只做缩放落表。
 const SLOT_BONUSES_HEADER = ['slot', 'stat', 'value'];
-const SLOT_BONUSES_ROWS: (string | number)[][] = [
-    // hp/atk 平铺值 2026-07-04 随 dps 基础面板 ×5（battle.xlsx Stats），保持装备相对价值；百分比类词条不动
-    ['weapon', 'atk', 60],
-    ['weapon', 'critRate', 0.02],
-    ['helmet', 'hp', 200],
-    ['helmet', 'def', 2],
-    ['chest', 'hp', 300],
-    ['chest', 'def', 4],
-    ['chest', 'dmgReduce', 0.02],
-    ['pants', 'hp', 225],
-    ['pants', 'dodgeRate', 0.015],
-    ['shoes', 'range', 20],
-    ['shoes', 'attackSpeed', 0.08],
-];
+const SLOT_BONUSES_ROWS: (string | number)[][] = TPL.slotBonuses.map(r => [...r]);
 
 // 高品质装备额外抽取的词条池；实际加成同样吃品质倍率和随机 roll。
 const AFFIXES_HEADER = ['stat', 'value'];
-const AFFIXES_ROWS: (string | number)[][] = [
-    ['hp', 140],
-    ['atk', 25],
-    ['def', 1.5],
-    ['range', 10],
-    ['attackSpeed', 0.03],
-    ['critRate', 0.012],
-    ['critDmg', 0.04],
-    ['dodgeRate', 0.01],
-    ['blockRate', 0.012],
-    ['dmgBonus', 0.012],
-    ['dmgReduce', 0.01],
-];
+const AFFIXES_ROWS: (string | number)[][] = TPL.affixes.map(r => [...r]);
 
 // 装备等级 → 属性系数：levelCoefficient = 1 + (level-1) × growthPerLevel。
 const LEVEL_SCALING_HEADER = ['key', 'value'];
@@ -63,9 +52,13 @@ function addSheet(name: string, header: string[], rows: (string | number)[][]) {
     XLSX.utils.book_append_sheet(wb, ws, name);
 }
 
+// 一级平铺经框架缩放后落表（手填值 × primaryScale；二级词条原样）
+const SLOT_BONUSES_SCALED = SLOT_BONUSES_ROWS.map(([slot, stat, value]) => [slot, stat, scaled(stat as string, value as number)]);
+const AFFIXES_SCALED = AFFIXES_ROWS.map(([stat, value]) => [stat, scaled(stat as string, value as number)]);
+
 addSheet('Qualities', QUALITIES_HEADER, QUALITIES_ROWS);
-addSheet('SlotBonuses', SLOT_BONUSES_HEADER, SLOT_BONUSES_ROWS);
-addSheet('Affixes', AFFIXES_HEADER, AFFIXES_ROWS);
+addSheet('SlotBonuses', SLOT_BONUSES_HEADER, SLOT_BONUSES_SCALED);
+addSheet('Affixes', AFFIXES_HEADER, AFFIXES_SCALED);
 addSheet('LevelScaling', LEVEL_SCALING_HEADER, LEVEL_SCALING_ROWS);
 
 mkdirSync(dirname(OUT), { recursive: true });

@@ -72,11 +72,17 @@ export function createSoldierUnit(id: number, cls: SoldierClass, stats: CombatSt
     };
 }
 
-// 敌人工厂：字段映射自原 BattleManager._spawnEnemyOfType
-export function createEnemyUnit(id: number, type: string, hpOverride: number | undefined, x: number, y: number): CombatUnit | null {
+// 敌人工厂：字段映射自原 BattleManager._spawnEnemyOfType。
+// scale：关卡难度统一缩放（Levels.enemyScale，2026-07-12）——hp/atk/hp覆盖 全部 ×scale
+// （spawn 行 hp 覆盖编码的是"该行怪的基准血量"，缩放照乘，保持旧难度形状整体平移）；
+// scale=1 时保持 stats===配置引用（ConfigPanel 实时调参依赖）。
+export function createEnemyUnit(id: number, type: string, hpOverride: number | undefined, x: number, y: number, scale = 1): CombatUnit | null {
     const t = BattleConfig.enemyTypes[type];
     if (!t) return null;
-    const hp = hpOverride ?? t.stats.hp;
+    const scaled = scale !== 1
+        ? { ...t.stats, hp: Math.round(t.stats.hp * scale), atk: Math.round(t.stats.atk * scale) }
+        : t.stats;
+    const hp = hpOverride !== undefined ? Math.round(hpOverride * scale) : scaled.hp;
     return {
         id,
         side: 'enemy',
@@ -85,8 +91,8 @@ export function createEnemyUnit(id: number, type: string, hpOverride: number | u
         archetype: 'melee',
         x, y,
         homeX: x, homeY: y,
-        baseStats: t.stats,
-        stats: t.stats,
+        baseStats: scaled,
+        stats: scaled,
         hp, maxHp: hp,
         attackInterval: t.attackInterval,
         advanceLimit: 0,

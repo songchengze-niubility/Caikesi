@@ -3,7 +3,7 @@
 // 普攻、子弹命中、敌人攻击、技能、Boss 招式、场地效果一律走这里；加内容 = 加 Effect 数据，不改管线。
 // 周期跳伤/跳疗（DoT）不走本入口——语义不同（按 srcAtk 快照、无闪避暴击），见 BattleManager._onBuffPeriodic。
 
-import { calcDamage, DamageResult } from './CombatFormula';
+import { calcDamage, DamageResult, DamageTags } from './CombatFormula';
 import type { CombatStats } from '../config/BattleConfig';
 import type { Effect } from '../config/EffectTypes';
 import { getBuffDef } from '../config/BuffConfig';
@@ -37,10 +37,10 @@ function resolveAttacker(source: EffectSource): CombatUnit | null {
 export interface EffectOutcome { damage: number; crit: boolean; dodged: boolean; }
 const NONE: EffectOutcome = { damage: 0, crit: false, dodged: false };
 
-export function applyEffect(source: EffectSource, target: CombatUnit, effect: Effect, hooks: EffectHooks, floatKind?: FloatKind): EffectOutcome {
+export function applyEffect(source: EffectSource, target: CombatUnit, effect: Effect, hooks: EffectHooks, floatKind?: FloatKind, tags?: DamageTags): EffectOutcome {
     switch (effect.kind) {
         case 'damage': {
-            const r = calcDamage(source.stats, target.stats);
+            const r = calcDamage(source.stats, target.stats, tags);
             const damage = r.dodged ? 0 : Math.max(1, Math.round(r.damage * effect.mult));
             target.hp -= damage;
             // mult=1 时 damage===r.damage，直接透传 r（普攻热路径零分配）；倍率伤害才拷贝改写
@@ -63,7 +63,9 @@ export function applyEffect(source: EffectSource, target: CombatUnit, effect: Ef
         case 'applyBuff': {
             const def = getBuffDef(effect.buffId);
             if (!def) return NONE;   // 配置缺失：no-op（导表校验兜底，运行时不炸）
-            if (applyBuffStack(target.buffs, def, source.stats.atk, effect.stacks)) recomputeDerived(target);
+            // DoT 属技能伤害：快照 1+全伤害+技能伤害（不吃单体/群体——周期伤害无目标数概念）
+            const srcMult = 1 + source.stats.dmgBonus + source.stats.skillDmgBonus;
+            if (applyBuffStack(target.buffs, def, source.stats.atk, effect.stacks, srcMult)) recomputeDerived(target);
             hooks.onBuffChanged(target, effect.buffId, true, effect.stacks);
             return NONE;
         }

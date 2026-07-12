@@ -4,7 +4,7 @@
 // 只算数据，怎么画交给 BattleEntry。
 
 import { BattleConfig, SoldierClass, CombatStats } from '../config/BattleConfig';
-import { DamageResult } from './CombatFormula';
+import { DamageResult, DamageTags } from './CombatFormula';
 import type { EffectiveStatsMap } from './EffectiveStats';
 import { CombatUnit, createSoldierUnit, createEnemyUnit, recomputeDerived, UnitAction, UnitSide } from './CombatUnit';
 import { applyEffect, EffectHooks } from './Effects';
@@ -29,6 +29,12 @@ const MAX_ZONES = 8;
 
 // 一枚弹道体（原 Bullet 泛化）：携带开火者属性引用 + 命中效果列表；
 // gravity>0 为抛物（y 轴向上、重力向下拉），pierce 为剩余穿透数，hitIds 防穿透二次结算。
+// 伤害标签常量（模块级复用，热路径零分配）：
+// 普攻/敌方普攻/普攻弹道=basic+single；瞬发技能按目标数定 single/aoe；技能弹道穿透或抛物=aoe，否则 single；场地=aoe。
+const TAG_BASIC: DamageTags = { source: 'basic', scope: 'single' };
+const TAG_SKILL_SINGLE: DamageTags = { source: 'skill', scope: 'single' };
+const TAG_SKILL_AOE: DamageTags = { source: 'skill', scope: 'aoe' };
+
 export interface Projectile {
     x: number;
     y: number;
@@ -41,6 +47,7 @@ export interface Projectile {
     hitIds: number[];     // 已命中单位 id（穿透去重）
     owner: CombatUnit | null;    // 开火者（onHit/onKill 被动溯源；可能已阵亡）
     isBasicAttack: boolean;      // 普攻弹道才触发 onHit 被动（技能投递弹道不算普攻）
+    tags: DamageTags;            // 伤害标签（生成时按弹道形态定死）
     alive: boolean;
 }
 
@@ -176,9 +183,10 @@ export class BattleManager {
         const u = this._buffUnit!;
         if (!u.alive || !def.periodicEffect) return;
         const eff = def.periodicEffect;
-        // DoT/HoT 语义：按施加时的 srcAtk 快照 × 层数直接结算，不走 calcDamage（无闪避暴击，可预期）
+        // DoT/HoT 语义：按施加时的 srcAtk 快照 × 层数直接结算，不走 calcDamage（无闪避暴击，可预期）；
+        // DoT 属技能伤害，乘施加时的 srcMult 快照（1+全伤害+技能伤害）；HoT 不乘
         if (eff.kind === 'damage') {
-            const dmg = Math.max(1, Math.round(inst.srcAtk * eff.mult * inst.stacks));
+            const dmg = Math.max(1, Math.round(inst.srcAtk * eff.mult * inst.stacks * inst.srcMult));
             u.hp -= dmg;
             this._spawnFloat(u.x, u.y, { damage: dmg, crit: false, blocked: false, dodged: false }, 'skill');
             if (u.hp <= 0) this._markDead(u);
@@ -338,7 +346,8 @@ export class BattleManager {
     }
 
     private _spawnEnemyOfType(type: string, hpOverride?: number) {
-        const u = createEnemyUnit(this._unitSeq++, type, hpOverride, this.halfW, 0);
+        // 关卡难度缩放（Levels.enemyScale，balance:derive 产出）：本关全部怪 hp/atk 统一缩放
+        const u = createEnemyUnit(this._unitSeq++, type, hpOverride, this.halfW, 0, this.level.enemyScale ?? 1);
         if (u) this.enemies.push(u);
     }
 
@@ -494,7 +503,7 @@ export class BattleManager {
 
             if (s.archetype === 'melee') {
                 this._setAction(s, 'attack', ATTACK_ACTION_HOLD);
-                applyEffect(s, target, DMG1, this._effectHooks);   // 近战：走完整公式
+                applyEffect(s, target, DMG1, this._effectHooks, undefined, TAG_BASIC);   // 近战：走完整公式
                 this._firePassives(s, 'onHit', target);            // 普攻命中被动
             } else {
                 this._setAction(s, 'attack', ATTACK_ACTION_HOLD);
@@ -508,6 +517,7 @@ export class BattleManager {
     private _updateSkills(dt: number) {
         for (const s of this.soldiers) {
             if (!s.alive || !s.skills || !s.gate.canAct) continue;   // 眩晕期间技能进度也暂停
+            s.skills.haste = s.stats.skillHaste;   // 每帧用当前面板刷新（装备/Buff 急速即时生效）
             s.skills.tick(dt);
             if (!s.gate.canCast) continue;   // 沉默：进度照走，禁释放（就绪保留待放）
             const currentTarget = s.archetype === 'melee'
@@ -542,12 +552,14 @@ export class BattleManager {
                     continue;
                 }
                 const hits: SkillCastEvent['hits'] = [];
+                // 瞬发技能按本次投递目标数定单体/群体
+                const castTags = cast.targets.length > 1 ? TAG_SKILL_AOE : TAG_SKILL_SINGLE;
                 for (const target of cast.targets) {
                     if (!target.alive) continue;
                     // 逐效果结算；hits 聚合口径：damage 累加、crit 任一、dodged 取首个伤害效果（单效果时与旧行为等价）
                     let damage = 0, crit = false, dodged = false, hasDamage = false;
                     for (const eff of cast.def.effects) {
-                        const out = applyEffect(s, target, eff, this._effectHooks, 'skill');
+                        const out = applyEffect(s, target, eff, this._effectHooks, 'skill', castTags);
                         if (eff.kind === 'damage') {
                             if (!hasDamage) { dodged = out.dodged; hasDamage = true; }
                             damage += out.damage;
@@ -600,13 +612,15 @@ export class BattleManager {
         const dx = target.x - fromX, dy = target.y - fromY;
         const dist = Math.hypot(dx, dy) || 1;
         const t = dist / speed;
+        // 标签在生成时定死：普攻弹道=basic+single；技能弹道穿透/抛物视为群体投递，其余单体
+        const tags = isBasicAttack ? TAG_BASIC : (pierce > 0 || gravity !== 0 ? TAG_SKILL_AOE : TAG_SKILL_SINGLE);
         this.projectiles.push({
             x: fromX, y: fromY,
             vx: dx / t,
             vy: dy / t + 0.5 * gravity * t,
             stats, effects, pierce, gravity,
             hitIds: [],
-            owner, isBasicAttack,
+            owner, isBasicAttack, tags,
             alive: true,
         });
     }
@@ -638,7 +652,7 @@ export class BattleManager {
                     if (!e.alive) continue;
                     const dx = e.x - z.x, dy = e.y - z.y;
                     if (dx * dx + dy * dy > r2) continue;
-                    for (const eff of z.effects) applyEffect(z, e, eff, this._effectHooks);   // zone 自身满足 EffectSource
+                    for (const eff of z.effects) applyEffect(z, e, eff, this._effectHooks, undefined, TAG_SKILL_AOE);   // zone 自身满足 EffectSource
                 }
             }
             if (z.remaining <= 0) {
@@ -672,7 +686,7 @@ export class BattleManager {
                 const hit = br + e.radius;   // 命中半径随怪体型
                 const dx = e.x - p.x, dy = e.y - p.y;
                 if (dx * dx + dy * dy <= hit * hit) {
-                    for (const eff of p.effects) applyEffect(p, e, eff, this._effectHooks);
+                    for (const eff of p.effects) applyEffect(p, e, eff, this._effectHooks, undefined, p.tags);
                     if (p.isBasicAttack && p.owner) this._firePassives(p.owner, 'onHit', e);   // 普攻命中被动
                     p.hitIds.push(e.id);
                     if (p.pierce <= 0) { p.alive = false; break; }
@@ -731,7 +745,7 @@ export class BattleManager {
             }
         }
         if (!target) return;
-        applyEffect(e, target, DMG1, this._effectHooks);   // 走完整公式（统一状态变更入口）
+        applyEffect(e, target, DMG1, this._effectHooks, undefined, TAG_BASIC);   // 走完整公式（统一状态变更入口）
     }
 
     // 生成一条战斗飘字

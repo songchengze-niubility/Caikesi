@@ -25,9 +25,14 @@ export interface CombatStats {
     dodgeRate: number;   // 闪避率（防御方，完全免伤）
     blockRate: number;   // 格挡率（防御方）
     blockRatio: number;  // 格挡减伤比例
-    dmgBonus: number;    // 伤害加成（攻击方，最终伤害 ×(1+dmgBonus)）
+    dmgBonus: number;    // 全伤害加成（无条件生效，攻击方，最终伤害 ×(1+合计加成)，见 CombatFormula 同乘区加算）
     dmgReduce: number;   // 伤害减免（防御方，最终伤害 ×(1-dmgReduce)）
     moveSpeed: number;   // 移动速度（像素/秒）：近战冲锋/怪物推进/全队行军共用，可被装备/Buff 加减速
+    skillHaste: number;     // 技能急速：计时型技能计时 ×(1+急速)；计数型所需普攻次数 ÷(1+急速)（向上取整，保底 1）
+    basicDmgBonus: number;  // 普攻伤害加成（只吃普攻及普攻弹道）
+    skillDmgBonus: number;  // 技能伤害加成（技能效果/技能弹道/场地/DoT）
+    singleDmgBonus: number; // 单体伤害加成（本次结算目标数=1）
+    aoeDmgBonus: number;    // 群体伤害加成（本次结算为 aoe/多目标）
 }
 
 // —— 一种怪物类型（图鉴）：自己的属性 + 移动/体型/外观 ——
@@ -54,6 +59,7 @@ export interface Wave {
 export interface Level {
     name: string;
     dropGroup: string;     // 胜利奖励掉落组 id；具体权重见 drop.xlsx
+    enemyScale?: number;   // 本关怪物 hp/atk 统一缩放（难度导出列，balance:derive 产出；缺省 1）
     waves: Wave[];
 }
 
@@ -69,9 +75,14 @@ export interface BattleConfigData {
     squadCap: number;
     charGrowth: {
         expBase: number;
-        expGrowthPerLevel: number;
+        expGrowthPerLevel: number;   // 第 1 段每级增长率（升到 lv < expSeg2Start 的步）
         statGrowthPerLevel: number;
         maxLevel: number;
+        // 经验曲线分段（2026-07-11，防纯几何到 100 级爆炸；缺省 = 单段旧公式）
+        expSeg2Start?: number;   // 第 2 段起始等级（升到该级那步起用 expSeg2Growth）
+        expSeg2Growth?: number;
+        expSeg3Start?: number;
+        expSeg3Growth?: number;
     };
     combat: { minDamageRate: number };
     classes: Record<SoldierClass, {
