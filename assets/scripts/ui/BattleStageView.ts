@@ -1,17 +1,12 @@
-import { Color, EventTouch, Graphics, Label, Mask, Node, Sprite, SpriteFrame, UITransform, Vec3 } from 'cc';
+import { Color, Graphics, Label, Mask, Node, Sprite, SpriteFrame, UITransform } from 'cc';
 import { Background } from '../combat/Background';
 import type { BattleManager, SkillCastEvent, UnitAction } from '../combat/BattleManager';
 import { BattleConfig, SoldierClass } from '../config/BattleConfig';
-import { CHARACTERS } from '../inventory/EquipDefs';
+import { CHARACTERS, CharacterId } from '../inventory/EquipDefs';
 import type { ArtRegistry } from '../art/ArtRegistry';
 import { FrameAnimPlayer } from '../art/FrameAnim';
-
-interface UiRect {
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-}
+import { MAIN_UI_ART_KEYS, MAIN_UI_RECTS, MainScreenView, MainUiSnapshot } from './MainScreenView';
+import { PARALLAX_BACKGROUND_KEYS, ParallaxBackgroundView } from './ParallaxBackgroundView';
 
 export interface FrameClip {
     frames: SpriteFrame[];
@@ -58,51 +53,16 @@ export interface BattleStageViewOptions {
     halfH: number;
     styleScale: number;
     art: ArtRegistry<SpriteFrame>;
+    getMainUiData: (character: CharacterId) => MainUiSnapshot;
     onHeroes: () => void;
     onInventory: () => void;
     onCraft: () => void;
     onChests: () => void;
+    onTalent: () => void;   // 心法（全局天赋树）面板
 }
 
 const UI_REF_W = 941;
 const UI_REF_H = 1672;
-const PRESS_SCALE = 0.94;
-
-const UI_RECTS = {
-    profile: { x: 8, y: 6, w: 326, h: 142 },
-    gold: { x: 349, y: 36, w: 205, h: 52 },
-    jade: { x: 568, y: 39, w: 160, h: 51 },
-    energy: { x: 745, y: 34, w: 190, h: 59 },
-    chapter: { x: 312, y: 94, w: 310, h: 62 },
-    wave: { x: 315, y: 160, w: 314, h: 75 },
-    reward: { x: 780, y: 104, w: 161, h: 140 },
-    skill1: { x: 256, y: 1302, w: 142, h: 154 },
-    skill2: { x: 404, y: 1296, w: 128, h: 149 },
-    skill3: { x: 535, y: 1278, w: 156, h: 172 },
-    navBar: { x: -2, y: 1440, w: 944, h: 270 },
-    navHome: { x: 6, y: 1491, w: 163, h: 158 },
-    navHeroes: { x: 174, y: 1491, w: 161, h: 161 },
-    navBattle: { x: 363, y: 1484, w: 205, h: 171 },
-    navEquipment: { x: 578, y: 1490, w: 118, h: 161 },
-    navBag: { x: 702, y: 1493, w: 101, h: 164 },
-    navSect: { x: 807, y: 1482, w: 128, h: 176 },
-};
-
-const STYLED_UI_SPRITES: { key: string; rect: UiRect; name: string }[] = [
-    { key: 'ui/battle/hud/profile', rect: UI_RECTS.profile, name: 'HudProfile' },
-    { key: 'ui/battle/hud/gold', rect: UI_RECTS.gold, name: 'HudGold' },
-    { key: 'ui/battle/hud/jade', rect: UI_RECTS.jade, name: 'HudJade' },
-    { key: 'ui/battle/hud/energy', rect: UI_RECTS.energy, name: 'HudEnergy' },
-    { key: 'ui/battle/stage/chapter', rect: UI_RECTS.chapter, name: 'StageChapter' },
-    { key: 'ui/battle/stage/wave', rect: UI_RECTS.wave, name: 'StageWave' },
-    { key: 'ui/battle/stage/reward', rect: UI_RECTS.reward, name: 'StageReward' },
-    { key: 'ui/battle/skills/skill_01', rect: UI_RECTS.skill1, name: 'Skill01' },
-    { key: 'ui/battle/skills/skill_02', rect: UI_RECTS.skill2, name: 'Skill02' },
-    { key: 'ui/battle/skills/skill_03', rect: UI_RECTS.skill3, name: 'Skill03' },
-    { key: 'ui/battle/nav/bar', rect: UI_RECTS.navBar, name: 'BottomNav' },
-];
-
-const STYLED_UI_KEYS = STYLED_UI_SPRITES.map(sprite => sprite.key);
 const SOLDIER_ACTION_ORDER: UnitAction[] = ['idle', 'run', 'attack', 'death'];
 const SOLDIER_ACTION_ART: Record<SoldierClass, Record<UnitAction, string>> = {
     tank: {
@@ -133,22 +93,17 @@ export class BattleStageView {
     private readonly root: Node;
     private readonly gfx: Graphics;
     private readonly portraitFrameGfx: Graphics;
-    private readonly uiRoot: Node;
     private readonly skillGfx: Graphics;
     private readonly background: Background;
-    private readonly backgroundSprite: Sprite;
-    private readonly backgroundSpriteNode: Node;
-    private readonly waveLabel: Label;
-    private readonly hpLabel: Label;
+    private readonly parallax: ParallaxBackgroundView;
+    private readonly mainScreen: MainScreenView;
     private readonly statusLabel: Label;
     private readonly rewardLabel: Label;
     private readonly soldierSprites: Partial<Record<SoldierClass, SoldierVisual>> = {};
-    private readonly styledUiNodes: Record<string, Node> = {};
-    private readonly pressBaseScale = new Map<Node, Vec3>();
     private readonly floats: Label[] = [];
     private readonly skillFlash: number[] = [0, 0, 0];
     private readonly tempColor = new Color();
-    private shownWaveKey = -1;
+    private usingParallax = false;
 
     private readonly classColors: Record<SoldierClass, Color> = {
         tank: new Color(52, 66, 72, 235),
@@ -185,13 +140,7 @@ export class BattleStageView {
         this.root.addChild(backgroundNode);
         this.background = new Background(backgroundGfx, options.halfW, options.halfH);
 
-        this.backgroundSpriteNode = new Node('BgSprite');
-        this.backgroundSpriteNode.layer = this.root.layer;
-        this.backgroundSpriteNode.addComponent(UITransform).setContentSize(options.halfW * 2, options.halfH * 2);
-        this.backgroundSprite = this.backgroundSpriteNode.addComponent(Sprite);
-        this.backgroundSprite.sizeMode = Sprite.SizeMode.CUSTOM;
-        this.backgroundSpriteNode.active = false;
-        this.root.addChild(this.backgroundSpriteNode);
+        this.parallax = new ParallaxBackgroundView(this.root, stageW, options.art);
 
         const gfxNode = new Node('Gfx');
         gfxNode.layer = this.root.layer;
@@ -206,10 +155,18 @@ export class BattleStageView {
         this.root.addChild(frameNode);
         this.drawPortraitFrame(stageW, stageH);
 
-        this.uiRoot = new Node('StyledUi');
-        this.uiRoot.layer = this.root.layer;
-        this.uiRoot.addComponent(UITransform).setContentSize(stageW, stageH);
-        this.root.addChild(this.uiRoot);
+        this.mainScreen = new MainScreenView({
+            host: this.root,
+            styleScale: options.styleScale,
+            art: options.art,
+            getSnapshot: options.getMainUiData,
+            onSquad: options.onHeroes,
+            onBag: options.onInventory,
+            onCharacter: options.onInventory,
+            onRune: options.onCraft,
+            onChests: options.onChests,
+            onTalent: options.onTalent,
+        });
 
         const skillGfxNode = new Node('SkillStatusGfx');
         skillGfxNode.layer = this.root.layer;
@@ -217,25 +174,10 @@ export class BattleStageView {
         this.skillGfx = skillGfxNode.addComponent(Graphics);
         this.root.addChild(skillGfxNode);
 
-        this.waveLabel = this.makeLabel('', 0, options.halfH - 80, 40);
-        this.hpLabel = this.makeLabel('', 0, options.halfH - 130, 30);
         this.statusLabel = this.makeLabel('', 0, 0, 56);
         this.statusLabel.color = new Color(255, 230, 120);
         this.rewardLabel = this.makeLabel('', 0, -70, 28);
         this.rewardLabel.color = new Color(255, 235, 170);
-        this.positionStyledLabels();
-
-        const noop = () => {};
-        this.makeHotZone('Skill01Hot', UI_RECTS.skill1, noop, 'Skill01');
-        this.makeHotZone('Skill02Hot', UI_RECTS.skill2, noop, 'Skill02');
-        this.makeHotZone('Skill03Hot', UI_RECTS.skill3, noop, 'Skill03');
-        this.makeHotZone('NavHomeHot', UI_RECTS.navHome, noop, 'BottomNav');
-        this.makeHotZone('NavHeroesHot', UI_RECTS.navHeroes, options.onHeroes, 'BottomNav');
-        this.makeHotZone('NavBattleHot', UI_RECTS.navBattle, noop, 'BottomNav');
-        this.makeHotZone('NavEquipmentHot', UI_RECTS.navEquipment, options.onInventory, 'BottomNav');
-        this.makeHotZone('NavBagHot', UI_RECTS.navBag, options.onInventory, 'BottomNav');
-        this.makeHotZone('NavSectHot', UI_RECTS.navSect, options.onCraft, 'BottomNav');
-        this.makeHotZone('RewardCardHot', UI_RECTS.reward, options.onChests, 'StageReward');
     }
 
     setActive(active: boolean): void {
@@ -247,31 +189,27 @@ export class BattleStageView {
     }
 
     async loadArt(initialRoster: SoldierClass[], extraKeys: string[] = []): Promise<void> {
-        await this.options.art.preload(['bg/main', ...SOLDIER_ACTION_KEYS, ...STYLED_UI_KEYS, ...extraKeys]);
-        const backgroundFrame = this.options.art.getSprite('bg/main');
-        if (backgroundFrame) {
-            this.backgroundSprite.spriteFrame = backgroundFrame;
-            this.backgroundSpriteNode.active = true;
-            this.background.setUsingSprite(true);
-        }
+        await this.options.art.preload([...PARALLAX_BACKGROUND_KEYS, ...SOLDIER_ACTION_KEYS, ...MAIN_UI_ART_KEYS, ...extraKeys]);
+        this.usingParallax = this.parallax.build();
+        this.background.setUsingSprite(this.usingParallax);
+        this.mainScreen.build();
         this.syncRoster(initialRoster);
-        this.buildStyledUi();
-        this.positionStyledLabels();
 
         const missing = this.options.art.missingKeys();
         if (missing.length) this.makeLabel('缺图: ' + missing.join(', '), 0, -this.options.halfH + 110, 18);
     }
 
     beginBattle(roster: SoldierClass[]): void {
-        this.shownWaveKey = -1;
+        this.parallax.reset();
         this.syncRoster(roster);
         this.statusLabel.string = '';
         this.rewardLabel.string = '';
     }
 
     render(manager: BattleManager, dt: number, noticeText: string, noticeTtl: number, winRewardText: string): void {
-        // 行军中背景卷动提速（表现假象：队伍原地跑，世界向后退）
-        this.background.update(manager.phase === 'marching' ? dt * 3 : dt);
+        this.background.update(this.usingParallax ? 0 : (manager.phase === 'marching' ? dt * 3 : dt));
+        this.parallax.update(dt, manager.phase === 'marching');
+        this.mainScreen.update(manager, dt);
         this.updateSoldierVisualActions(manager);
         this.renderUnits(manager);
         this.renderFloats(manager);
@@ -344,7 +282,7 @@ export class BattleStageView {
         blendSprite.sizeMode = Sprite.SizeMode.CUSTOM;
         node.addChild(blendNode);
         this.root.addChild(node);
-        node.setSiblingIndex(this.uiRoot.getSiblingIndex());
+        node.setSiblingIndex(this.mainScreen.root.getSiblingIndex());
         this.soldierSprites[cls] = {
             node,
             anim: new FrameAnimPlayer(sprite, clip.frames, clip.fps, clip.loop, clip.pingpong, blendSprite, clip.blend),
@@ -515,12 +453,6 @@ export class BattleStageView {
     }
 
     private updateLabels(manager: BattleManager, noticeText: string, noticeTtl: number, winRewardText: string): void {
-        if (this.waveLabel.node.active) this.waveLabel.string = manager.levelName;
-        const waveKey = manager.levelIndex * 1000 + manager.waveIndex;
-        if (this.hpLabel.node.active && this.shownWaveKey !== waveKey) {
-            this.shownWaveKey = waveKey;
-            this.hpLabel.string = `${manager.waveIndex + 1}/${manager.totalWaves}波`;
-        }
         if (manager.phase === 'won') {
             this.statusLabel.string = '通关！';
             this.rewardLabel.string = winRewardText;
@@ -548,9 +480,9 @@ export class BattleStageView {
         this.skillGfx.clear();
         const skills = this.skillSource(manager);
         if (!skills) return;
-        const rects = [UI_RECTS.skill1, UI_RECTS.skill2, UI_RECTS.skill3];
+        const rects = [MAIN_UI_RECTS.skill1, MAIN_UI_RECTS.skill2, MAIN_UI_RECTS.skill3];
         for (let i = 0; i < Math.min(3, skills.count); i++) {
-            const box = this.sourceRect(rects[i]);
+            const box = this.mainScreen.sourceRect(rects[i]);
             const progress = skills.progress(i);
             if (progress < 1) {
                 this.skillGfx.fillColor = this.tempColor.set(0, 0, 0, 140);
@@ -595,41 +527,6 @@ export class BattleStageView {
         g.stroke();
     }
 
-    private buildStyledUi(): void {
-        this.uiRoot.removeAllChildren();
-        for (const key of Object.keys(this.styledUiNodes)) delete this.styledUiNodes[key];
-        for (const sprite of STYLED_UI_SPRITES) this.addStyledSprite(sprite.name, sprite.key, sprite.rect);
-    }
-
-    private addStyledSprite(name: string, key: string, rect: UiRect): void {
-        const frame = this.options.art.getSprite(key);
-        if (!frame) return;
-        const node = new Node(name);
-        node.layer = this.root.layer;
-        const box = this.sourceRect(rect);
-        node.setPosition(box.x, box.y, 0);
-        node.addComponent(UITransform).setContentSize(box.w, box.h);
-        const sprite = node.addComponent(Sprite);
-        sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-        sprite.spriteFrame = frame;
-        this.uiRoot.addChild(node);
-        this.styledUiNodes[name] = node;
-    }
-
-    private positionStyledLabels(): void {
-        this.waveLabel.node.active = false;
-        this.hpLabel.node.active = false;
-    }
-
-    private sourceRect(rect: UiRect): { x: number; y: number; w: number; h: number } {
-        return {
-            x: (rect.x + rect.w / 2 - UI_REF_W / 2) * this.options.styleScale,
-            y: (UI_REF_H / 2 - rect.y - rect.h / 2) * this.options.styleScale,
-            w: rect.w * this.options.styleScale,
-            h: rect.h * this.options.styleScale,
-        };
-    }
-
     private makeLabel(text: string, x: number, y: number, size: number): Label {
         const node = new Node('Label');
         node.layer = this.root.layer;
@@ -645,50 +542,4 @@ export class BattleStageView {
         return label;
     }
 
-    private makeHotZone(name: string, rect: UiRect, onClick: () => void, feedbackName?: string): void {
-        const node = new Node(name);
-        node.layer = this.root.layer;
-        const box = this.sourceRect(rect);
-        node.addComponent(UITransform).setContentSize(box.w, box.h);
-        this.root.addChild(node);
-        node.setPosition(box.x, box.y, 0);
-        this.bindPressFeedback(node, () => feedbackName ? this.styledUiNodes[feedbackName] : node, onClick);
-    }
-
-    private bindPressFeedback(hitNode: Node, feedback: () => Node | null | undefined, onClick: () => void): void {
-        let pressed: Node | null = null;
-        hitNode.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
-            event.propagationStopped = true;
-            pressed = feedback() ?? null;
-            this.pressNode(pressed);
-        }, this);
-        hitNode.on(Node.EventType.TOUCH_END, (event: EventTouch) => {
-            event.propagationStopped = true;
-            this.releaseNode(pressed);
-            pressed = null;
-            onClick();
-        }, this);
-        hitNode.on(Node.EventType.TOUCH_CANCEL, () => {
-            this.releaseNode(pressed);
-            pressed = null;
-        }, this);
-    }
-
-    private pressNode(node: Node | null | undefined): void {
-        if (!node) return;
-        if (!this.pressBaseScale.has(node)) {
-            const scale = node.scale;
-            this.pressBaseScale.set(node, new Vec3(scale.x, scale.y, scale.z));
-        }
-        const base = this.pressBaseScale.get(node)!;
-        node.setScale(base.x * PRESS_SCALE, base.y * PRESS_SCALE, base.z);
-    }
-
-    private releaseNode(node: Node | null | undefined): void {
-        if (!node) return;
-        const base = this.pressBaseScale.get(node);
-        if (!base) return;
-        node.setScale(base.x, base.y, base.z);
-        this.pressBaseScale.delete(node);
-    }
 }

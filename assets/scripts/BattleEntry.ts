@@ -17,7 +17,7 @@ import { loadInventory, saveInventory } from './inventory/InventoryPersistence';
 import { buildEffectiveStatsMap } from './combat/EffectiveStats';
 import { generateStageReward } from './loot/LootService';
 import { claimOfflineReward } from './offline/OfflineClaimService';
-import { ChestInventoryModel } from './chest/ChestModel';
+import { ChestInventoryModel, MAX_CHEST_COUNT } from './chest/ChestModel';
 import { loadChests, saveChests } from './chest/ChestPersistence';
 import { rollChestDrop } from './chest/ChestDropService';
 import { ProgressModel } from './progression/ProgressModel';
@@ -28,18 +28,24 @@ import { SquadModel } from './squad/SquadModel';
 import { loadSquad, saveSquad } from './squad/SquadPersistence';
 import { CharacterGrowthModel } from './growth/CharacterGrowthModel';
 import { loadGrowth, saveGrowth } from './growth/CharacterGrowthPersistence';
-import { QUALITY_LABEL, CHARACTERS } from './inventory/EquipDefs';
+import { QUALITY_LABEL, CHARACTERS, CharacterId, EquipSlot, SLOTS } from './inventory/EquipDefs';
 import type { EquipItem } from './inventory/EquipDefs';
-import type { MaterialSave } from './services/RewardTypes';
+import type { MaterialItem, MaterialSave } from './services/RewardTypes';
+import { talentAggregate, emptyTalentAggregate, type TalentAggregate } from './talent/TalentStats';
+import type { TalentSave } from './talent/TalentModel';
+import { firstClearPages } from './talent/TalentConfig';
 import { SettlementPanel } from './ui/panels/SettlementPanel';
 import { SquadPanel } from './ui/panels/SquadPanel';
 import { InlayPanel } from './ui/panels/InlayPanel';
+import { TalentPanel } from './ui/panels/TalentPanel';
 import { CraftPanel } from './ui/panels/CraftPanel';
 import { ChestPanel } from './ui/panels/ChestPanel';
 import { AccountPanel } from './ui/panels/AccountPanel';
 import { BootView, BOOT_LOADING_UI_KEYS, BOOT_UI_KEYS } from './ui/BootView';
 import { BattleStageView, frameClipVisualBox } from './ui/BattleStageView';
+import type { MainUiSnapshot } from './ui/MainScreenView';
 import type { RewardEntry } from './ui/UiTypes';
+import { expToNext } from './growth/CharGrowthConfig';
 
 const { ccclass } = _decorator;
 
@@ -59,6 +65,7 @@ export class BattleEntry extends Component {
     private _settlementPanel: SettlementPanel = null!;
     private _squadPanel: SquadPanel = null!;
     private _inlayPanel: InlayPanel = null!;
+    private _talentPanel: TalentPanel = null!;
     private _craftPanel: CraftPanel = null!;
     private _chestPanel: ChestPanel = null!;
     private _accountPanel: AccountPanel = null!;
@@ -69,6 +76,10 @@ export class BattleEntry extends Component {
     private _halfH = 0;
     private _gameStarted = false;
     private _materials: MaterialSave = {};
+    private _gold = 0;
+    private _talents: TalentSave = {};
+    private _talentAgg: TalentAggregate = emptyTalentAggregate();
+    private _autoSellOn = false;
     private _offlineNoticeText = '';
     private _offlineNoticeTtl = 0;
     private _battleSeed = '';
@@ -119,10 +130,12 @@ export class BattleEntry extends Component {
             halfH: this._halfH,
             styleScale,
             art: this._art,
+            getMainUiData: (character) => this._mainUiData(character),
             onHeroes: () => this._squadPanel.toggle(),
             onInventory: () => this._invView.toggle(),
             onCraft: () => this._craftPanel.toggle(),
             onChests: () => this._chestPanel.toggle(),
+            onTalent: () => { void this._refreshTalentCache().then(() => this._talentPanel.toggle()); },
         });
 
         // 点击重开
@@ -206,6 +219,7 @@ export class BattleEntry extends Component {
                 this._settlementPanel.hide();
                 this._craftPanel.hide();
             },
+            qualityBonus: () => this._talentAgg.drop.equipQuality,
         });
         this._craftPanel = new CraftPanel({
             host: this.node,
@@ -263,6 +277,23 @@ export class BattleEntry extends Component {
                 this._invView.refresh();
             },
         });
+        this._talentPanel = new TalentPanel({
+            host: this.node,
+            halfW: this._halfW,
+            halfH: this._halfH,
+            getTalents: () => this._talents,
+            getMaterials: () => this._materials,
+            getGold: () => this._gold,
+            getAutoSellOn: () => this._autoSellOn,
+            setAutoSellOn: (on) => { void this._persistAutoSell(on); },
+            beforeShow: () => {
+                this._settlementPanel.hide();
+                this._chestPanel.hide();
+                this._craftPanel.hide();
+                this._squadPanel.hide();
+            },
+            persist: (spentGold) => { void this._persistTalents(spentGold); },
+        });
 
         // 挂载游戏内实时调参面板（仅网页预览生效；点「重开战斗」重置局内数值）
         mountConfigPanel(() => this._startBattle());
@@ -287,9 +318,10 @@ export class BattleEntry extends Component {
         return loadInventory(this._inv)
             .then(() => loadProgress(this._progress))
             .then(() => this._claimOfflineRewards())
+            .then(() => this._refreshTalentCache())
             .then(() => loadChests(this._chests))
             .then(() => this._refreshMaterialsCache())
-            .then(() => loadSquad())
+            .then(() => loadSquad(this._talentAgg.unlocks.squadSlot3 ? 1 : 0))
             .then((squad) => { this._squad = squad; })
             .then(() => loadGrowth())
             .then((growth) => { this._growth = growth; })
@@ -308,7 +340,9 @@ export class BattleEntry extends Component {
         if (this._growth) {
             for (const c of CHARACTERS) levels[c] = this._growth.levelOf(c);
         }
-        const effective = this._inv ? buildEffectiveStatsMap(this._inv.equipped, levels) : buildEffectiveStatsMap(undefined, levels);
+        const effective = this._inv
+            ? buildEffectiveStatsMap(this._inv.equipped, levels, this._talentAgg.stats)
+            : buildEffectiveStatsMap(undefined, levels, this._talentAgg.stats);
         const levelIndex = this._progress ? this._progress.currentLevel : BattleConfig.startLevel;
         const roster = this._squad ? (this._squad.deployedList() as SoldierClass[]) : BattleConfig.roster;
         this._battleSeed = `${Date.now()}|${Math.random()}|${levelIndex}`;
@@ -326,6 +360,7 @@ export class BattleEntry extends Component {
         }
         const data = await loadPlayerData();
         if (payload?.gold && payload.gold > 0) data.gold = (data.gold ?? 0) + payload.gold;
+        this._gold = data.gold ?? 0;
         // 出售返还材料（宝石退回+打造石返还，2026-07-11 改名 returnedMaterials）经此落到 materials
         const returned = (payload as any)?.returnedMaterials as { id: string; count: number }[] | undefined;
         if (returned && returned.length) {
@@ -375,6 +410,48 @@ export class BattleEntry extends Component {
         this._materials = { ...(data.materials ?? {}) };
     }
 
+    // 心法缓存：已点档/聚合值/金币/自动卖开关；宝箱容量按解锁扩容（须在 loadChests 之前跑）
+    private async _refreshTalentCache(): Promise<void> {
+        const data = await loadPlayerData();
+        this._talents = { ...(data.talents ?? {}) };
+        this._talentAgg = talentAggregate(this._talents);
+        this._gold = data.gold ?? 0;
+        this._autoSellOn = !!data.autoSellLowQuality;
+        this._chests.maxChests = MAX_CHEST_COUNT + this._talentAgg.unlocks.chestCapacity;
+    }
+
+    // 点节点后落盘：金币按 delta 扣（防与卖装/离线并发覆盖）；聚合值重算并即时应用容量/上阵位
+    private async _persistTalents(spentGold: number): Promise<void> {
+        const data = await loadPlayerData();
+        data.gold = Math.max(0, (data.gold ?? 0) - spentGold);
+        this._gold = data.gold;
+        data.talents = { ...this._talents };
+        data.materials = { ...this._materials };
+        const hadSquad3 = this._talentAgg.unlocks.squadSlot3;
+        this._talentAgg = talentAggregate(this._talents);
+        this._chests.maxChests = MAX_CHEST_COUNT + this._talentAgg.unlocks.chestCapacity;
+        await savePlayerData();
+        if (!hadSquad3 && this._talentAgg.unlocks.squadSlot3) {
+            this._squad = await loadSquad(1);   // 第 3 位解锁：按新 cap 重灌小队（保留已上阵）
+        }
+    }
+
+    private async _persistAutoSell(on: boolean): Promise<void> {
+        const data = await loadPlayerData();
+        data.autoSellLowQuality = on;
+        this._autoSellOn = on;
+        await savePlayerData();
+    }
+
+    // 关卡首通发放秘笈残页（心法大节点材料）
+    private async _grantTalentPages(count: number): Promise<void> {
+        const data = await loadPlayerData();
+        data.materials = data.materials ?? {};
+        data.materials['talent_page'] = (data.materials['talent_page'] ?? 0) + count;
+        this._materials = { ...data.materials };
+        await savePlayerData();
+    }
+
     update(dt: number) {
         this._actionPreviewAnim?.update(Math.min(dt, 0.05));
         if (!this._mgr) return;
@@ -395,11 +472,12 @@ export class BattleEntry extends Component {
         this._invView.update(dt);
     }
 
-    // 战斗结束（胜或负）都提交本场累计经验：每个上阵角色各得全额。
+    // 战斗结束（胜或负）都提交本场累计经验：每个上阵角色各得全额（心法经济支放大）。
     private _commitBattleExp() {
         if (!this._growth || !this._squad || this._battleExpGained <= 0) return;
+        const exp = Math.round(this._battleExpGained * (1 + this._talentAgg.econ.exp));
         for (const cls of this._squad.deployedList()) {
-            this._growth.gainExp(cls, this._battleExpGained);
+            this._growth.gainExp(cls, exp);
         }
         void saveGrowth(this._growth);
         this._battleExpGained = 0;
@@ -418,6 +496,13 @@ export class BattleEntry extends Component {
             this._invView.refresh();
         } else {
             this._winRewardText = `奖励未领取：背包/仓库已满${chestText}`;
+        }
+        if (complete.firstClear) {
+            const pages = firstClearPages(complete.completedLevel);
+            if (pages > 0) {
+                void this._grantTalentPages(pages);
+                this._winRewardText += `；秘笈残页 +${pages}`;
+            }
         }
         this._settlementPanel.show(result.received, result.failed, complete);
     }
@@ -489,6 +574,7 @@ export class BattleEntry extends Component {
             levelIndex,
             source: 'StageClear',
             seed: `stage-clear|${levelIndex}|${Date.now()}|${Math.random()}`,
+            qualityBonus: this._talentAgg.drop.equipQuality,
         });
         return this._addRewardEquipments(reward.equipments);
     }
@@ -499,9 +585,44 @@ export class BattleEntry extends Component {
             + Math.max(0, this._inv.maxWarehouse - this._inv.warehouse.length);
     }
 
+    private _mainUiData(character: CharacterId): MainUiSnapshot {
+        const levels: Partial<Record<SoldierClass, number>> = {};
+        for (const id of CHARACTERS) levels[id] = this._growth?.levelOf(id) ?? 1;
+        const effective = buildEffectiveStatsMap(this._inv?.equipped, levels, this._talentAgg.stats);
+        const stats = effective[character] ?? BattleConfig.stats[character];
+        const level = this._growth?.levelOf(character) ?? 1;
+        const exp = this._growth?.expOf(character) ?? 0;
+        const dps = Math.max(1, stats.atk * stats.attackSpeed);
+        const ehp = Math.max(1, stats.hp * (1 + stats.def / 100));
+        const power = Math.max(1, Math.round(Math.sqrt(dps * ehp)));
+        let gems = 0;
+        for (const key of Object.keys(this._materials)) {
+            if (key.startsWith('gem_')) gems += this._materials[key as keyof MaterialSave] ?? 0;
+        }
+        const equipment: Partial<Record<EquipSlot, string>> = {};
+        const equipped = this._inv?.equipped[character];
+        for (const slot of SLOTS) {
+            const item = equipped?.[slot];
+            if (item) equipment[slot] = `Lv.${item.level ?? 1} ${item.name}`;
+        }
+        return {
+            gold: this._gold,
+            gems,
+            power,
+            level,
+            exp,
+            expNext: expToNext(level),
+            stats,
+            equipment,
+        };
+    }
+
     private _addRewardEquipments(drops: EquipItem[]): { received: RewardEntry[]; failed: number } {
         const received: RewardEntry[] = [];
         let failed = 0;
+        let autoSold = 0, autoGold = 0;
+        const autoMaterials: MaterialItem[] = [];
+        const autoSell = this._talentAgg.unlocks.autoSell && this._autoSellOn;
 
         for (const item of drops) {
             let r = this._inv.addItemToBackpack(item);
@@ -511,12 +632,38 @@ export class BattleEntry extends Component {
                 target = '仓库';
             }
             if (r.ok && r.item) {
+                // 心法「拂尘」：白/绿装入包即时出售（含返石），不进奖励列表
+                if (autoSell && (r.item.quality === 'common' || r.item.quality === 'fine') && !r.item.locked) {
+                    const s = this._inv.sellItem(r.item.id);
+                    if (s.ok) {
+                        autoSold++;
+                        autoGold += s.gold ?? 0;
+                        if (s.returnedMaterials) autoMaterials.push(...s.returnedMaterials);
+                        continue;
+                    }
+                }
                 received.push({ item: r.item, target });
             } else {
                 failed++;
             }
         }
+        if (autoSold > 0) {
+            void this._commitAutoSell(autoGold, autoMaterials);
+            this._offlineNoticeText = `自动出售 ${autoSold} 件白/绿装 +${autoGold} 金币`;
+            this._offlineNoticeTtl = 5;
+        }
         return { received, failed };
+    }
+
+    private async _commitAutoSell(gold: number, materials: MaterialItem[]): Promise<void> {
+        const data = await loadPlayerData();
+        data.gold = (data.gold ?? 0) + gold;
+        this._gold = data.gold;
+        data.materials = data.materials ?? {};
+        for (const m of materials) data.materials[m.id] = (data.materials[m.id] ?? 0) + m.count;
+        this._materials = { ...data.materials };
+        data.inventory = this._inv.serialize();
+        await savePlayerData();
     }
 
     private _formatDropSummary(received: RewardEntry[], failed: number): string {
@@ -663,6 +810,7 @@ export class BattleEntry extends Component {
         this._settlementPanel?.destroy();
         this._squadPanel?.destroy();
         this._inlayPanel?.destroy();
+        this._talentPanel?.destroy();
         this._craftPanel?.destroy();
         this._chestPanel?.destroy();
         this._accountPanel?.destroy();

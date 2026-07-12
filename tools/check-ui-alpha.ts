@@ -21,6 +21,7 @@ const OPAQUE_OK: Record<string, string> = {
     'battle/stage/chapter_banner.png': '章节标题纸条，纸面本身就是组件。',
     'battle/stage/reward_card.png': '右上奖励卡，卡片纸面本身就是组件。',
     'boot/background.png': '启动流完整背景底图，本身就是全屏画面。',
+    'main/equipment-panel-background.png': '主界面下半装备区完整宣纸面板，本身就是全矩形组件。',
 };
 
 function readUInt(buffer: Buffer, offset: number): number {
@@ -145,6 +146,26 @@ const checks = [
     'boot/title.png',
     'boot/start_button.png',
     'boot/age_rating.png',
+    'main/hud-avatar-frame.png',
+    'main/hud-power-plaque.png',
+    'main/hud-chapter-wave.png',
+    'main/hud-currency-gold.png',
+    'main/hud-currency-gem.png',
+    'main/skill-sword.png',
+    'main/skill-bow.png',
+    'main/skill-heal.png',
+    'main/equipment-panel-background.png',
+    'main/captain-card.png',
+    'main/equipment-slot.png',
+    'main/character-switch-tray.png',
+    'main/stats-strip.png',
+    'main/change-equipment-button.png',
+    'main/nav-bar.png',
+    'main/nav-button-main-selected.png',
+    'main/nav-button-squad-normal.png',
+    'main/nav-button-bag-normal.png',
+    'main/nav-button-character-normal.png',
+    'main/nav-button-rune-normal.png',
 ];
 
 let failed = false;
