@@ -38,7 +38,7 @@ function addMaterial(reward: RewardBundle, id: MaterialId, count: number): void 
     else reward.materials.push({ id, count });
 }
 
-export function openChest(chest: ChestItem): OpenChestResult {
+export function openChest(chest: ChestItem, qualityBonus = 0): OpenChestResult {
     if (!chest) return { ok: false, reason: '宝箱不存在' };
     const profile: ChestRewardConfig | undefined = ChestConfig.rewards[chest.type];
     if (!profile) return { ok: false, reason: '宝箱类型非法' };
@@ -54,7 +54,7 @@ export function openChest(chest: ChestItem): OpenChestResult {
 
     for (let i = 0; i < profile.equipmentRolls; i++) {
         const rng = createSeededRng(`${chest.seed}|open|${chest.type}|${i}`);
-        const items = rollDropItems(dropGroup, rng);
+        const items = rollDropItems(dropGroup, rng, qualityBonus);
         for (const item of items) {
             reward.equipments.push({
                 ...item,

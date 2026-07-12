@@ -83,5 +83,28 @@ test('Boss 掉落组一次掉两件', () => {
     assert.equal(items.length, 2);
 });
 
+test('qualityBonus：蓝+权重放大后高品质占比上升（同 rng 序列对比统计）', () => {
+    const mkRng = () => { let s = 42; return () => { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; }; };
+    const count = (bonus: number) => {
+        const rng = mkRng();
+        let high = 0;
+        for (let i = 0; i < 200; i++) {
+            for (const it of rollDropItems('c1_early', rng, bonus)) {
+                if (it.quality === 'rare' || it.quality === 'epic' || it.quality === 'legend') high++;
+            }
+        }
+        return high;
+    };
+    const base = count(0), boosted = count(10);
+    assert.ok(boosted > base, `boosted=${boosted} 应 > base=${base}`);
+});
+
+test('qualityBonus=0：与不传参数逐位一致（默认行为不变）', () => {
+    const mkRng = (seed: number) => { let s = seed; return () => { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; }; };
+    const a = rollDropItems('c1_early', mkRng(7));
+    const b = rollDropItems('c1_early', mkRng(7), 0);
+    assert.deepEqual(a.map(i => [i.slot, i.quality, i.level]), b.map(i => [i.slot, i.quality, i.level]));
+});
+
 console.log(`\n掉落配置测试：${pass} 通过，${fail} 失败`);
 process.exit(fail ? 1 : 0);

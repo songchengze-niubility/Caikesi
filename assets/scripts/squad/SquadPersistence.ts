@@ -5,9 +5,10 @@ import { loadPlayerData, savePlayerData } from '../core/data/PlayerDataStore';
 import { BattleConfig } from '../config/BattleConfig';
 import { SquadModel } from './SquadModel';
 
-export async function loadSquad(): Promise<SquadModel> {
+// extraCap：心法「三才阵」解锁第 3 上阵位时组合根传 1
+export async function loadSquad(extraCap = 0): Promise<SquadModel> {
     const data = await loadPlayerData();
-    return SquadModel.deserialize(data.squad, BattleConfig.squadCap);
+    return SquadModel.deserialize(data.squad, BattleConfig.squadCap + Math.max(0, Math.floor(extraCap)));
 }
 
 export async function saveSquad(model: SquadModel): Promise<void> {

@@ -4,11 +4,19 @@ import { rollChestDrop } from '../chest/ChestDropService';
 import { createSeededRng, rollChance } from '../core/Random';
 import { emptyRewardBundle, type RewardBundle } from '../services/RewardTypes';
 
+export interface OfflineTalentEcon {
+    gold: number;          // 金币获取加成（心法经济支）
+    exp: number;           // 经验获取加成
+    offlineRate: number;   // 离线收益整体加成（大节点「入定」）
+    offlineCapSeconds: number;   // 离线时长上限追加（秒）
+}
+
 export interface OfflineRewardInput {
     lastOnlineAt: number;
     now: number;
     levelIndex: number;
     seed: string | number;
+    talentEcon?: OfflineTalentEcon;   // 缺省 = 无加成（旧行为）
 }
 
 export interface OfflineRewardPreview extends RewardBundle {
@@ -41,9 +49,9 @@ function maxOfflineSeconds(): number {
     return Math.max(0, OfflineConfig.global.maxHours) * 3600;
 }
 
-function calcSeconds(lastOnlineAt: number, now: number): number {
+function calcSeconds(lastOnlineAt: number, now: number, extraCapSeconds = 0): number {
     const raw = Math.floor((now - lastOnlineAt) / 1000);
-    return Math.max(0, Math.min(raw, maxOfflineSeconds()));
+    return Math.max(0, Math.min(raw, maxOfflineSeconds() + Math.max(0, extraCapSeconds)));
 }
 
 function levelMonsterCount(levelIndex: number): number {
@@ -59,7 +67,8 @@ export function calculateOfflineReward(input: OfflineRewardInput): OfflineReward
     const levelIndex = clampLevelIndex(input.levelIndex);
     const level = BattleConfig.levels[levelIndex];
     const cfg = offlineLevelConfig(levelIndex);
-    const seconds = calcSeconds(input.lastOnlineAt, input.now);
+    const econ = input.talentEcon ?? { gold: 0, exp: 0, offlineRate: 0, offlineCapSeconds: 0 };
+    const seconds = calcSeconds(input.lastOnlineAt, input.now, econ.offlineCapSeconds);
     const avgClearSeconds = Math.max(1, cfg.avgClearSeconds);
     const efficiency = Math.max(0, OfflineConfig.global.efficiency);
     const rawBattles = Math.floor(seconds / avgClearSeconds);
@@ -77,8 +86,8 @@ export function calculateOfflineReward(input: OfflineRewardInput): OfflineReward
     for (let i = 0; i < battles; i++) {
         if (!rollChance(cfg.winRate, rng)) continue;
         reward.wins++;
-        reward.gold += Math.floor(cfg.goldPerWin);
-        reward.exp += Math.floor(cfg.expPerWin);
+        reward.gold += Math.floor(cfg.goldPerWin * (1 + econ.gold) * (1 + econ.offlineRate));
+        reward.exp += Math.floor(cfg.expPerWin * (1 + econ.exp) * (1 + econ.offlineRate));
 
         for (let kill = 0; kill < monsterCount; kill++) {
             const chestReward = rollChestDrop({

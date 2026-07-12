@@ -71,5 +71,12 @@ test('serialize/deserialize 往返一致', () => {
     assert.deepEqual(back.deployedList(), ['dps', 'tank']);
 });
 
+test('squadCap 注入：cap=3 时可上 3 人（心法第 3 上阵位）', () => {
+    const m = new SquadModel(['tank', 'dps'], 3);
+    assert.equal(m.squadCap, 3);
+    assert.equal(m.deploy('healer'), true);
+    assert.deepEqual(m.deployedList(), ['tank', 'dps', 'healer']);
+});
+
 console.log(`\nSquadModel：${pass} 通过，${fail} 失败`);
 process.exit(fail ? 1 : 0);

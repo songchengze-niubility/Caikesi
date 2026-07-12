@@ -8,6 +8,7 @@ export interface StageRewardInput {
     source: RewardSource;
     seed: string | number;
     rng?: Rng;
+    qualityBonus?: number;   // 心法掉落支：蓝+品质权重放大（缺省 0 = 旧行为）
 }
 
 function clampLevelIndex(index: number): number {
@@ -20,7 +21,7 @@ export function generateStageReward(input: StageRewardInput): RewardBundle {
     const level = BattleConfig.levels[levelIndex];
     const rng = input.rng ?? createSeededRng(`${input.seed}|${levelIndex}|${input.source}`);
     const reward = emptyRewardBundle();
-    reward.equipments = rollDropItems(level.dropGroup, rng).map((item, i) => ({
+    reward.equipments = rollDropItems(level.dropGroup, rng, input.qualityBonus ?? 0).map((item, i) => ({
         ...item,
         id: `eq_${hashSeed(`${input.seed}|${levelIndex}|${input.source}|${i}`).toString(36)}`,
     }));

@@ -4,6 +4,7 @@ import { loadPlayerData, savePlayerData } from '../core/data/PlayerDataStore';
 import { calculateOfflineReward, type OfflineClaimResult, type OfflineRewardInput } from './OfflineCombatService';
 import { CharacterGrowthModel } from '../growth/CharacterGrowthModel';
 import { SquadModel } from '../squad/SquadModel';
+import { talentAggregate } from '../talent/TalentStats';
 
 export async function claimOfflineReward(input: Partial<OfflineRewardInput> = {}): Promise<OfflineClaimResult> {
     const data = await loadPlayerData();
@@ -11,7 +12,11 @@ export async function claimOfflineReward(input: Partial<OfflineRewardInput> = {}
     const levelIndex = input.levelIndex ?? data.progress?.currentLevel ?? BattleConfig.startLevel;
     const lastOnlineAt = input.lastOnlineAt ?? data.lastSaveTime ?? now;
     const seed = input.seed ?? `${lastOnlineAt}|${now}|${levelIndex}`;
-    const reward = calculateOfflineReward({ lastOnlineAt, now, levelIndex, seed });
+    const agg = talentAggregate(data.talents);
+    const reward = calculateOfflineReward({
+        lastOnlineAt, now, levelIndex, seed,
+        talentEcon: { gold: agg.econ.gold, exp: agg.econ.exp, offlineRate: agg.econ.offlineRate, offlineCapSeconds: agg.unlocks.offlineCap },
+    });
 
     data.gold = (data.gold ?? 0) + reward.gold;
     if (reward.exp > 0) {

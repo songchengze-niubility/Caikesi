@@ -6,7 +6,7 @@ export type RewardSource = 'Monster' | 'StageClear' | 'Boss' | 'Offline';
 // 宝石按"类型_等级"拆细；铭文卷轴用于铭文系统；打造石保留。
 // ⚠️ 等级范围 1~6 与 inlay.xlsx/Gems.maxLevel 耦合（2026-07-11 由 4 扩到 6，改上限必须同步这里的联合类型）。
 export type GemMaterialId = `gem_${GemType}_${1 | 2 | 3 | 4 | 5 | 6}`;
-export type MaterialId = 'forge_stone' | 'rune_scroll' | GemMaterialId;
+export type MaterialId = 'forge_stone' | 'rune_scroll' | 'talent_page' | GemMaterialId;
 
 export interface MaterialItem {
     id: MaterialId;
@@ -24,6 +24,7 @@ function buildMaterialLabels(): Record<MaterialId, string> {
     const out: Record<string, string> = {
         forge_stone: '打造石',
         rune_scroll: '铭文卷轴',
+        talent_page: '秘笈残页',
     };
     const types: GemType[] = ['atk', 'hp', 'def', 'crit', 'dmg'];
     for (const t of types) {

@@ -247,6 +247,7 @@ function buildBattleConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
         return { name: lvl.name, dropGroup: lvl.dropGroup, enemyScale: lvl.enemyScale, waves };
     });
     if (levels.length === 0) err('Levels: 没有任何关卡');
+    knownLevelCount = levels.length;
 
     // —— Misc（点分 key → 嵌套）——
     const { rows: miscRows } = sheetToRows(wb, 'Misc');
@@ -736,6 +737,9 @@ function buildCraftConfig(wb: XLSX.WorkBook): { config: unknown; summary: string
 // Buffs: id, name, duration, maxStacks, stackRule, period, periodicEffect, statMods, flags, dispelTag
 const knownBuffIds = new Set<string>();
 
+// battle 源的关卡数，供 talent 源校验 FirstClearPages.levelIndex（SOURCES 里 battle 排在 talent 前）
+let knownLevelCount = 0;
+
 function buildBuffConfig(wb: XLSX.WorkBook): { config: unknown; summary: string } {
     const VALID_STACK_RULES = new Set(['refresh', 'add']);
     const VALID_FLAGS = new Set(['stun', 'taunt', 'silence']);
@@ -967,6 +971,101 @@ function buildBalanceConfig(wb: XLSX.WorkBook): { config: unknown; summary: stri
     return { config, summary };
 }
 
+// ============ talent 模块解析器 ============
+// 读 talent.xlsx 的 2 sheet → 心法（全局天赋树）配置。
+// Nodes: id,label,branch,tier,prereq,maxLevel,effectKind,effectKey,valuePerLevel,goldBase,goldGrowth,pageCost
+// FirstClearPages: levelIndex, pages（关卡首通发放秘笈残页）
+function buildTalentConfig(wb: XLSX.WorkBook): { config: unknown; summary: string } {
+    const VALID_BRANCHES = new Set(['trunk', 'combat', 'economy', 'drop']);
+    const KIND_KEYS: Record<string, Set<string> | null> = {
+        stat: null,   // null = 用 EQUIP_STAT_KEY_SET
+        econ: new Set(['gold', 'exp', 'offlineRate']),
+        drop: new Set(['equipQuality']),
+        unlock: new Set(['squadSlot3', 'chestCapacity', 'autoSell', 'offlineCap']),
+    };
+
+    const { rows } = sheetToRows(wb, 'Nodes');
+    interface RawNode {
+        id: string; label: string; branch: string; tier: number; prereq: string[];
+        maxLevel: number; effectKind: string; effectKey: string; valuePerLevel: number;
+        goldBase: number; goldGrowth: number; pageCost: number;
+    }
+    const nodes: RawNode[] = [];
+    const ids = new Set<string>();
+    for (const r of rows) {
+        const id = reqStr(r['id'], 'Nodes.id');
+        if (ids.has(id)) err(`Nodes: id "${id}" 重复定义`);
+        ids.add(id);
+        const branch = reqStr(r['branch'], `Nodes[${id}].branch`);
+        if (!VALID_BRANCHES.has(branch)) err(`Nodes[${id}].branch "${branch}" 非法（trunk/combat/economy/drop）`);
+        const tier = reqNum(r['tier'], `Nodes[${id}].tier`);
+        if (tier < 1) err(`Nodes[${id}].tier 必须 >= 1`);
+        const prereq = String(r['prereq'] ?? '').split(',').map(s => s.trim()).filter(Boolean);
+        const maxLevel = reqNum(r['maxLevel'], `Nodes[${id}].maxLevel`);
+        if (maxLevel < 1) err(`Nodes[${id}].maxLevel 必须 >= 1`);
+        const effectKind = reqStr(r['effectKind'], `Nodes[${id}].effectKind`);
+        const effectKey = reqStr(r['effectKey'], `Nodes[${id}].effectKey`);
+        const validKeys = KIND_KEYS[effectKind];
+        if (validKeys === undefined) err(`Nodes[${id}].effectKind "${effectKind}" 非法（stat/econ/drop/unlock）`);
+        else if (validKeys === null) {
+            if (!EQUIP_STAT_KEY_SET.has(effectKey)) err(`Nodes[${id}].effectKey "${effectKey}" 不是合法装备属性键`);
+        } else if (!validKeys.has(effectKey)) {
+            err(`Nodes[${id}].effectKey "${effectKey}" 与 effectKind "${effectKind}" 不匹配`);
+        }
+        const valuePerLevel = reqNum(r['valuePerLevel'], `Nodes[${id}].valuePerLevel`);
+        if (valuePerLevel <= 0) warn(`Nodes[${id}].valuePerLevel = ${valuePerLevel} 应 > 0`);
+        const goldBase = reqNum(r['goldBase'], `Nodes[${id}].goldBase`);
+        if (goldBase < 0) err(`Nodes[${id}].goldBase 不可为负`);
+        const goldGrowth = reqNum(r['goldGrowth'], `Nodes[${id}].goldGrowth`);
+        if (goldGrowth < 1) warn(`Nodes[${id}].goldGrowth = ${goldGrowth} 应 >= 1`);
+        const pageCost = reqNum(r['pageCost'], `Nodes[${id}].pageCost`);
+        if (pageCost < 0) err(`Nodes[${id}].pageCost 不可为负`);
+        if (pageCost > 0 && maxLevel !== 1) err(`Nodes[${id}]: pageCost>0 仅限一次性大节点（maxLevel=1）`);
+        nodes.push({ id, label: reqStr(r['label'], `Nodes[${id}].label`), branch, tier, prereq, maxLevel, effectKind, effectKey, valuePerLevel, goldBase, goldGrowth, pageCost });
+    }
+    if (nodes.length === 0) err('Nodes: 至少需要 1 个节点');
+
+    // 前置引用存在 + 无环（DFS 染色：0 访问中 / 1 完成）
+    const byId = new Map(nodes.map(n => [n.id, n]));
+    for (const n of nodes) {
+        for (const p of n.prereq) {
+            if (p === n.id) err(`Nodes[${n.id}].prereq 引用了自身`);
+            else if (!byId.has(p)) err(`Nodes[${n.id}].prereq 引用了不存在的节点 "${p}"`);
+        }
+    }
+    const state = new Map<string, number>();
+    const visit = (id: string, stack: string[]): void => {
+        const st = state.get(id);
+        if (st === 1) return;
+        if (st === 0) { err(`Nodes: prereq 成环（${[...stack, id].join(' → ')}）`); return; }
+        state.set(id, 0);
+        for (const p of byId.get(id)?.prereq ?? []) if (byId.has(p)) visit(p, [...stack, id]);
+        state.set(id, 1);
+    };
+    for (const n of nodes) visit(n.id, []);
+
+    // FirstClearPages → 按 levelIndex 的稠密数组（缺行补 0）
+    const { rows: pageRows } = sheetToRows(wb, 'FirstClearPages');
+    const pageMap = new Map<number, number>();
+    for (const r of pageRows) {
+        const li = reqNum(r['levelIndex'], 'FirstClearPages.levelIndex');
+        if (pageMap.has(li)) err(`FirstClearPages: levelIndex ${li} 重复定义`);
+        const pages = reqNum(r['pages'], `FirstClearPages[${li}].pages`);
+        if (pages < 0) err(`FirstClearPages[${li}].pages 不可为负`);
+        if (knownLevelCount > 0 && (li < 0 || li >= knownLevelCount)) {
+            err(`FirstClearPages: levelIndex ${li} 超出 battle 关卡范围 [0, ${knownLevelCount - 1}]`);
+        }
+        pageMap.set(li, pages);
+    }
+    const maxLi = pageMap.size > 0 ? Math.max(...pageMap.keys()) : -1;
+    const firstClearPages: number[] = [];
+    for (let i = 0; i <= maxLi; i++) firstClearPages.push(pageMap.get(i) ?? 0);
+
+    const config = { nodes, firstClearPages };
+    const summary = `nodes=${nodes.length} firstClearLevels=${pageMap.size}`;
+    return { config, summary };
+}
+
 // ============ 源清单（加模块就在这里加一行）============
 interface ConfigSource {
     name: string;        // 模块名（日志/报错用）
@@ -1047,6 +1146,13 @@ const SOURCES: ConfigSource[] = [
         outRel: '../assets/scripts/config/balance.config.generated.ts',
         exportVar: 'generatedBalanceConfig',
         build: buildBalanceConfig,
+    },
+    {
+        name: 'talent',
+        xlsxRel: 'config-xlsx/talent.xlsx',
+        outRel: '../assets/scripts/config/talent.config.generated.ts',
+        exportVar: 'generatedTalentConfig',
+        build: buildTalentConfig,
     },
 ];
 

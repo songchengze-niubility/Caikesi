@@ -3,6 +3,7 @@
 
 import { BattleConfig, CombatStats, SoldierClass } from '../config/BattleConfig';
 import { CHARACTERS, EquipItem, SLOTS } from '../inventory/EquipDefs';
+import type { EquipStats } from '../inventory/EquipDefs';
 import type { CharEquipped } from '../inventory/InventoryModel';
 import { charLevelCoef } from '../growth/CharGrowthConfig';
 import { itemInlayStats } from '../inlay/InlayStats';
@@ -44,7 +45,8 @@ type PctKey = keyof typeof PCT_MAP;
 const PCT_KEYS = Object.keys(PCT_MAP) as PctKey[];
 
 // levelPct：角色等级的三围百分比（乘全池——白板+装备+宝石一起放大；不作用 moveSpeed）
-export function calcEffectiveStats(base: CombatStats, items: (EquipItem | null | undefined)[], levelPct = 0): CombatStats {
+// extraStats：心法等全局加成，与装备词条同池同路径（平铺加算 / 百分比进双层公式）
+export function calcEffectiveStats(base: CombatStats, items: (EquipItem | null | undefined)[], levelPct = 0, extraStats?: EquipStats): CombatStats {
     const out: CombatStats = { ...base };
     const pct = { hp: levelPct, atk: levelPct, def: levelPct, moveSpeed: 0 };
     for (const item of items) {
@@ -59,6 +61,16 @@ export function calcEffectiveStats(base: CombatStats, items: (EquipItem | null |
             if (bonus) pct[PCT_MAP[pk]] += bonus;
         }
     }
+    if (extraStats) {
+        for (const k of STAT_KEYS) {
+            const bonus = extraStats[k] ?? 0;
+            if (bonus) out[k] += bonus;
+        }
+        for (const pk of PCT_KEYS) {
+            const bonus = extraStats[pk] ?? 0;
+            if (bonus) pct[PCT_MAP[pk]] += bonus;
+        }
+    }
     out.hp = Math.round(out.hp * (1 + pct.hp));
     out.atk = Math.round(out.atk * (1 + pct.atk));
     out.def = Math.round(out.def * (1 + pct.def));
@@ -70,6 +82,7 @@ export function calcEffectiveStats(base: CombatStats, items: (EquipItem | null |
 export function buildEffectiveStatsMap(
     equipped: CharEquipped | undefined,
     levels: Partial<Record<SoldierClass, number>> = {},
+    extraStats?: EquipStats,
 ): EffectiveStatsMap {
     const map: EffectiveStatsMap = {};
     for (const c of CHARACTERS) {
@@ -79,7 +92,7 @@ export function buildEffectiveStatsMap(
         const level = levels[cls];
         const slots = equipped?.[c];
         // 等级 = 三围百分比乘全池（旧行为只放大白板 hp/atk；2026-07-11 双层公式改此，含 def）
-        map[cls] = calcEffectiveStats(base, slots ? SLOTS.map(s => slots[s]) : [], level ? charLevelCoef(level) - 1 : 0);
+        map[cls] = calcEffectiveStats(base, slots ? SLOTS.map(s => slots[s]) : [], level ? charLevelCoef(level) - 1 : 0, extraStats);
     }
     return map;
 }

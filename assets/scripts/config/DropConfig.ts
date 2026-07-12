@@ -36,19 +36,29 @@ function pickWeighted<T extends string>(keys: readonly T[], weights: Record<T, n
     return keys[keys.length - 1];
 }
 
+// 心法掉落支：蓝及以上品质权重 ×(1+bonus)，pickWeighted 按总权重天然重新归一
+const HIGH_QUALITIES: Quality[] = ['rare', 'epic', 'legend'];
+function boostQualityWeights(weights: Record<Quality, number>, bonus: number): Record<Quality, number> {
+    if (bonus <= 0) return weights;
+    const out = { ...weights };
+    for (const q of HIGH_QUALITIES) out[q] = (out[q] ?? 0) * (1 + bonus);
+    return out;
+}
+
 export function getDropGroup(groupId: string): DropGroupConfig {
     const group = DropConfig.groups[groupId];
     if (group) return group;
     throw new Error(`drop group "${groupId}" 不存在，请检查 battle.xlsx 的 Levels.dropGroup 与 drop.xlsx 的 DropGroups.group`);
 }
 
-export function rollDropItems(groupId: string, rng: () => number = Math.random): EquipItem[] {
+export function rollDropItems(groupId: string, rng: () => number = Math.random, qualityBonus = 0): EquipItem[] {
     const group = getDropGroup(groupId);
+    const qualityWeights = boostQualityWeights(group.qualityWeights, qualityBonus);
     const count = Math.max(0, Math.floor(group.itemCount));
     const items: EquipItem[] = [];
     for (let i = 0; i < count; i++) {
         const slot = pickWeighted(SLOTS, group.slotWeights, rng);
-        const quality = pickWeighted(QUALITIES, group.qualityWeights, rng);
+        const quality = pickWeighted(QUALITIES, qualityWeights, rng);
         const level = group.levelMin + Math.floor(rng() * (group.levelMax - group.levelMin + 1));
         items.push(createEquipItem(slot, quality, rng, level));
     }

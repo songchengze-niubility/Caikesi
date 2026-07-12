@@ -13,6 +13,7 @@ import type { ChestSave } from '../../chest/ChestModel';
 import type { MaterialSave } from '../../services/RewardTypes';
 import type { SquadSave } from '../../squad/SquadModel';
 import type { CharGrowthSave } from '../../growth/CharacterGrowthModel';
+import type { TalentSave } from '../../talent/TalentModel';
 
 // 玩家存档的数据结构（数据模型）。以后加背包、关卡进度等就往这里加字段。
 export interface PlayerData {
@@ -26,6 +27,8 @@ export interface PlayerData {
     materials?: MaterialSave;   // 材料库存；开箱产打造/宝石/铭文等材料
     squad?: SquadSave;          // 出战小队（有序出战角色）；老存档缺它，由默认组合兜底
     charGrowth?: CharGrowthSave; // 每角色成长（等级/经验）；老存档缺它，全角色按 Lv.1 兜底
+    talents?: TalentSave;        // 心法（全局天赋树）已点等级；老存档缺它 = 一点未点
+    autoSellLowQuality?: boolean; // 心法「拂尘」解锁后的自动卖白/绿装开关（默认关）
 }
 
 function defaultData(): PlayerData {

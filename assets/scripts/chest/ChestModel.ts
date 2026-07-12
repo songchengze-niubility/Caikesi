@@ -59,7 +59,8 @@ function isChestType(value: unknown): value is ChestType {
 export class ChestInventoryModel {
     chests: ChestItem[] = [];
 
-    constructor(public readonly maxChests = MAX_CHEST_COUNT) {}
+    // 可变容量：心法「乾坤袋」解锁后由组合根改写；deserializeChests/addChest 读的都是实时值
+    constructor(public maxChests = MAX_CHEST_COUNT) {}
 
     remainingSlots(): number {
         return Math.max(0, this.maxChests - this.chests.length);

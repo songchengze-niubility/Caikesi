@@ -33,6 +33,7 @@ export interface ChestPanelOptions {
     commitOpen: (chest: ChestItem, materials: MaterialItem[]) => Promise<void>;
     onNotice: (message: string) => void;
     beforeShow: () => void;
+    qualityBonus?: () => number;   // 心法掉落支加成（组合根注入；缺省 0）
 }
 
 const PRESS_SCALE = 0.94;
@@ -232,7 +233,7 @@ export class ChestPanel {
             return;
         }
         const levelName = BattleConfig.levels[chest.sourceLevelIndex]?.name ?? `第 ${chest.sourceLevelIndex + 1} 关`;
-        const preview = openChest(chest);
+        const preview = openChest(chest, this.options.qualityBonus?.() ?? 0);
         const equipmentCount = preview.reward?.equipments.length ?? 0;
         const materials = this.formatMaterials(preview.reward?.materials ?? []);
         lbl(x + w / 2, topY - 62, `${chestTypeLabel(chest.type)} · ${levelName}`, 20, new Color(255, 226, 126));
@@ -318,7 +319,7 @@ export class ChestPanel {
             this.render();
             return;
         }
-        const result = openChest(chest);
+        const result = openChest(chest, this.options.qualityBonus?.() ?? 0);
         if (!result.ok || !result.reward) {
             this.message = result.reason ?? '开箱失败';
             this.render();

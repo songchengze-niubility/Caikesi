@@ -26,5 +26,9 @@ test('MATERIAL_LABEL：覆盖全部宝石键(类型×1~6) + rune_scroll + forge_
     assert.ok(MATERIAL_LABEL['forge_stone']);
 });
 
+test('talent_page：材料标签为秘笈残页', () => {
+    assert.equal(MATERIAL_LABEL['talent_page'], '秘笈残页');
+});
+
 console.log(`\nRewardTypes：${pass} 通过，${fail} 失败`);
 process.exit(fail ? 1 : 0);

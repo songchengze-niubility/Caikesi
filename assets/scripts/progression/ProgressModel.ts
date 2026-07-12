@@ -1,8 +1,9 @@
-// 关卡进度模型（纯逻辑，不依赖 cc）：当前关、最高解锁、胜利解锁下一关。
+// 关卡进度模型（纯逻辑，不依赖 cc）：当前关、最高解锁、胜利解锁下一关、首通判定。
 
 export interface ProgressSave {
     currentLevel: number;
     maxUnlockedLevel: number;
+    maxClearedLevel?: number;   // 已实际通关的最高关（-1=未通任何关）；老档缺省 = maxUnlockedLevel-1
 }
 
 export interface CompleteLevelResult {
@@ -10,6 +11,7 @@ export interface CompleteLevelResult {
     nextLevel: number;
     hasNext: boolean;
     unlockedNext: boolean;
+    firstClear: boolean;   // 本次是否首通（心法秘笈残页发放依据）
 }
 
 function clampLevel(index: number, levelCount: number): number {
@@ -20,6 +22,7 @@ function clampLevel(index: number, levelCount: number): number {
 export class ProgressModel {
     currentLevel = 0;
     maxUnlockedLevel = 0;
+    maxClearedLevel = -1;
 
     constructor(
         private levelCount: number,
@@ -41,12 +44,17 @@ export class ProgressModel {
         const maxUnlocked = clampLevel(savedMax ?? current, this.levelCount);
         this.currentLevel = current;
         this.maxUnlockedLevel = Math.max(current, maxUnlocked);
+        const savedCleared = save?.maxClearedLevel;
+        this.maxClearedLevel = Number.isFinite(savedCleared as number)
+            ? Math.max(-1, Math.min(Math.floor(savedCleared as number), this.lastLevel))
+            : this.maxUnlockedLevel - 1;   // 老档兜底：解锁之下视为已通（末关可能多判一次首通，占位期接受）
     }
 
     serialize(): ProgressSave {
         return {
             currentLevel: clampLevel(this.currentLevel, this.levelCount),
             maxUnlockedLevel: clampLevel(this.maxUnlockedLevel, this.levelCount),
+            maxClearedLevel: Math.max(-1, Math.min(this.maxClearedLevel, this.lastLevel)),
         };
     }
 
@@ -64,11 +72,14 @@ export class ProgressModel {
         if (completedLevel >= this.maxUnlockedLevel) {
             this.maxUnlockedLevel = Math.max(this.maxUnlockedLevel, nextLevel);
         }
+        const firstClear = completedLevel > this.maxClearedLevel;
+        if (firstClear) this.maxClearedLevel = completedLevel;
         return {
             completedLevel,
             nextLevel,
             hasNext: completedLevel < this.lastLevel,
             unlockedNext: this.maxUnlockedLevel > before,
+            firstClear,
         };
     }
 

@@ -181,5 +181,25 @@ test('calcEffectiveStats：叠加装备词条 + 镶嵌加成', () => {
     assert.equal(out.atk, base.atk + 100 + gemAtkL1);   // 基础10 + 词条100 + 宝石atk Lv.1
 });
 
+test('extraStats（心法）：平铺键累加、百分比键进双层公式', () => {
+    const base = baseStats();
+    const noTalent = calcEffectiveStats(base, []);
+    const withTalent = calcEffectiveStats(baseStats(), [], 0, { atk: 10, atkPct: 0.10, critRate: 0.05 });
+    assert.equal(withTalent.atk, Math.round((base.atk + 10) * 1.10));
+    assert.ok(Math.abs(withTalent.critRate - (noTalent.critRate + 0.05)) < 1e-9);
+});
+
+test('extraStats 缺省：行为与旧签名逐位一致', () => {
+    assert.deepEqual(calcEffectiveStats(baseStats(), []), calcEffectiveStats(baseStats(), [], 0, undefined));
+});
+
+test('buildEffectiveStatsMap：extraStats 叠给每个职业', () => {
+    const plain = buildEffectiveStatsMap(undefined, {});
+    const boosted = buildEffectiveStatsMap(undefined, {}, { hpPct: 0.10 });
+    for (const cls of ['tank', 'dps', 'healer'] as const) {
+        assert.equal(boosted[cls]!.hp, Math.round(plain[cls]!.hp * 1.10), `${cls} hp 应放大 10%`);
+    }
+});
+
 console.log(`\n有效属性测试：${pass} 通过，${fail} 失败`);
 process.exit(fail ? 1 : 0);
