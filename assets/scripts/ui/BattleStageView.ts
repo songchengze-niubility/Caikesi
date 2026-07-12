@@ -1,4 +1,4 @@
-import { Color, Graphics, Label, Mask, Node, Sprite, SpriteFrame, UITransform } from 'cc';
+import { Color, Graphics, Label, Mask, Node, Sprite, SpriteFrame, TTFFont, UITransform } from 'cc';
 import { Background } from '../combat/Background';
 import type { BattleManager, SkillCastEvent, UnitAction } from '../combat/BattleManager';
 import { BattleConfig, SoldierClass } from '../config/BattleConfig';
@@ -7,6 +7,7 @@ import type { ArtRegistry } from '../art/ArtRegistry';
 import { FrameAnimPlayer } from '../art/FrameAnim';
 import { MAIN_UI_ART_KEYS, MAIN_UI_RECTS, MainScreenView, MainUiSnapshot } from './MainScreenView';
 import { PARALLAX_BACKGROUND_KEYS, ParallaxBackgroundView } from './ParallaxBackgroundView';
+import { loadUiFonts } from './UiTypography';
 
 export interface FrameClip {
     frames: SpriteFrame[];
@@ -59,6 +60,7 @@ export interface BattleStageViewOptions {
     onCraft: () => void;
     onChests: () => void;
     onTalent: () => void;   // 心法（全局天赋树）面板
+    onCharTalent: () => void;   // 角色天赋面板
 }
 
 const UI_REF_W = 941;
@@ -104,6 +106,8 @@ export class BattleStageView {
     private readonly skillFlash: number[] = [0, 0, 0];
     private readonly tempColor = new Color();
     private usingParallax = false;
+    private uiFont: TTFFont | null = null;
+    private numberFont: TTFFont | null = null;
 
     private readonly classColors: Record<SoldierClass, Color> = {
         tank: new Color(52, 66, 72, 235),
@@ -166,6 +170,7 @@ export class BattleStageView {
             onRune: options.onCraft,
             onChests: options.onChests,
             onTalent: options.onTalent,
+            onCharTalent: options.onCharTalent,
         });
 
         const skillGfxNode = new Node('SkillStatusGfx');
@@ -189,7 +194,17 @@ export class BattleStageView {
     }
 
     async loadArt(initialRoster: SoldierClass[], extraKeys: string[] = []): Promise<void> {
-        await this.options.art.preload([...PARALLAX_BACKGROUND_KEYS, ...SOLDIER_ACTION_KEYS, ...MAIN_UI_ART_KEYS, ...extraKeys]);
+        const [, font] = await Promise.all([
+            this.options.art.preload([...PARALLAX_BACKGROUND_KEYS, ...SOLDIER_ACTION_KEYS, ...MAIN_UI_ART_KEYS, ...extraKeys]),
+            loadUiFonts(),
+        ]);
+        this.uiFont = font.text;
+        this.numberFont = font.number;
+        this.mainScreen.setFonts(font.text, font.number);
+        if (font.text) {
+            this.statusLabel.font = font.text;
+            this.rewardLabel.font = font.text;
+        }
         this.usingParallax = this.parallax.build();
         this.background.setUsingSprite(this.usingParallax);
         this.mainScreen.build();
@@ -325,6 +340,7 @@ export class BattleStageView {
             node.layer = this.root.layer;
             node.addComponent(UITransform);
             const label = node.addComponent(Label);
+            label.font = this.numberFont ?? this.uiFont;
             label.cacheMode = Label.CacheMode.CHAR;
             this.root.addChild(node);
             this.floats.push(label);
@@ -339,6 +355,9 @@ export class BattleStageView {
             const label = this.floatAt(i);
             label.node.active = true;
             label.node.setPosition(item.x, item.y, 0);
+            label.font = /^[-+]?\d+(?:\.\d+)?$/.test(item.text)
+                ? (this.numberFont ?? this.uiFont)
+                : this.uiFont;
             label.string = item.text;
             const alpha = Math.max(0, Math.min(1, item.ttl / item.maxTtl)) * 255;
             switch (item.kind) {
@@ -532,6 +551,7 @@ export class BattleStageView {
         node.layer = this.root.layer;
         node.addComponent(UITransform);
         const label = node.addComponent(Label);
+        label.font = this.uiFont;
         label.string = text;
         label.fontSize = size;
         label.lineHeight = size + 4;

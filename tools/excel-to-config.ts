@@ -1066,6 +1066,95 @@ function buildTalentConfig(wb: XLSX.WorkBook): { config: unknown; summary: strin
     return { config, summary };
 }
 
+// ============ chartalent 模块解析器 ============
+// 读 chartalent.xlsx 的 2 sheet → 角色天赋树（职业专属、等级门槛分层、无连线）。
+// Nodes: cls,id,label,tier,levelReq,maxLevel,kind,statKey,valuePerLevel
+// Passives: nodeId,level,name,trigger,chance,targetMode,effects（被动节点每级一条完整 PassiveDef）
+function buildCharTalentConfig(wb: XLSX.WorkBook): { config: unknown; summary: string } {
+    const VALID_CLASSES = new Set(['tank', 'dps', 'healer']);
+    const VALID_KINDS = new Set(['stat', 'passive']);
+    const VALID_PASSIVE_TRIGGERS = new Set(['always', 'onHit', 'onHurt', 'onKill', 'onCast']);
+    const VALID_TARGET_MODES = new Set(['trigger', 'self', 'team']);
+
+    const { rows } = sheetToRows(wb, 'Nodes');
+    interface RawNode {
+        id: string; label: string; cls: string; tier: number; levelReq: number;
+        maxLevel: number; kind: string; statKey: string; valuePerLevel: number;
+    }
+    const nodes: RawNode[] = [];
+    const ids = new Set<string>();
+    for (const r of rows) {
+        const id = reqStr(r['id'], 'Nodes.id');
+        if (ids.has(id)) err(`Nodes: id "${id}" 重复定义`);
+        ids.add(id);
+        const cls = reqStr(r['cls'], `Nodes[${id}].cls`);
+        if (!VALID_CLASSES.has(cls)) err(`Nodes[${id}].cls "${cls}" 非法（tank/dps/healer）`);
+        const tier = reqNum(r['tier'], `Nodes[${id}].tier`);
+        if (tier < 1) err(`Nodes[${id}].tier 必须 >= 1`);
+        const levelReq = reqNum(r['levelReq'], `Nodes[${id}].levelReq`);
+        if (levelReq < 1 || levelReq > 100) err(`Nodes[${id}].levelReq 必须在 [1,100]`);
+        const maxLevel = reqNum(r['maxLevel'], `Nodes[${id}].maxLevel`);
+        if (maxLevel < 1) err(`Nodes[${id}].maxLevel 必须 >= 1`);
+        const kind = reqStr(r['kind'], `Nodes[${id}].kind`);
+        if (!VALID_KINDS.has(kind)) err(`Nodes[${id}].kind "${kind}" 非法（stat/passive）`);
+        const statKey = String(r['statKey'] ?? '').trim();
+        const valuePerLevel = Number(r['valuePerLevel'] ?? 0);
+        if (kind === 'stat') {
+            if (!EQUIP_STAT_KEY_SET.has(statKey)) err(`Nodes[${id}].statKey "${statKey}" 不是合法装备属性键`);
+            if (!(valuePerLevel > 0)) err(`Nodes[${id}].valuePerLevel 必须 > 0`);
+        } else if (statKey !== '' || valuePerLevel !== 0) {
+            err(`Nodes[${id}]: passive 节点的 statKey/valuePerLevel 必须为空`);
+        }
+        nodes.push({ id, label: reqStr(r['label'], `Nodes[${id}].label`), cls, tier, levelReq, maxLevel, kind, statKey, valuePerLevel });
+    }
+    if (nodes.length === 0) err('Nodes: 至少需要 1 个节点');
+
+    // Passives：被动节点 1..maxLevel 每级恰好一条；stat 节点不得有行
+    const byId = new Map(nodes.map(n => [n.id, n]));
+    const { rows: pRows } = sheetToRows(wb, 'Passives');
+    const passives: unknown[] = [];
+    const seenLv = new Set<string>();
+    for (const r of pRows) {
+        const nodeId = reqStr(r['nodeId'], 'Passives.nodeId');
+        const node = byId.get(nodeId);
+        if (!node) { err(`Passives: nodeId "${nodeId}" 不存在于 Nodes`); continue; }
+        if (node.kind !== 'passive') err(`Passives[${nodeId}]: 对应节点 kind 不是 passive`);
+        const level = reqNum(r['level'], `Passives[${nodeId}].level`);
+        if (level < 1 || level > node.maxLevel) err(`Passives[${nodeId}].level ${level} 超出 [1,${node.maxLevel}]`);
+        const key = `${nodeId}|${level}`;
+        if (seenLv.has(key)) err(`Passives: ${nodeId} 第 ${level} 级重复定义`);
+        seenLv.add(key);
+        const trigger = reqStr(r['trigger'], `Passives[${nodeId}].trigger`);
+        if (!VALID_PASSIVE_TRIGGERS.has(trigger)) err(`Passives[${nodeId}].trigger "${trigger}" 非法（always/onHit/onHurt/onKill/onCast）`);
+        const chance = reqNum(r['chance'], `Passives[${nodeId}].chance`);
+        if (chance < 0 || chance > 1) err(`Passives[${nodeId}].chance 必须在 [0,1]`);
+        if (trigger === 'always' && chance !== 1) err(`Passives[${nodeId}]: always 被动的 chance 必须为 1`);
+        const targetMode = reqStr(r['targetMode'], `Passives[${nodeId}].targetMode`);
+        if (!VALID_TARGET_MODES.has(targetMode)) err(`Passives[${nodeId}].targetMode "${targetMode}" 非法（trigger/self/team）`);
+        if (trigger === 'onKill' && targetMode === 'trigger') err(`Passives[${nodeId}]: onKill 被动不可用 targetMode=trigger（被杀者已死）`);
+        const effects = parseEffectList(String(r['effects'] ?? ''), m => err(`Passives[${nodeId}].effects: ${m}`));
+        if (effects.length === 0) err(`Passives[${nodeId}].effects 至少需要一个效果`);
+        for (const eff of effects) {
+            if (eff.kind === 'applyBuff' && !knownBuffIds.has(eff.buffId)) {
+                err(`Passives[${nodeId}].effects: applyBuff 引用了不存在的 buff "${eff.buffId}"（见 buff.xlsx）`);
+            }
+            if (eff.kind === 'damage' && eff.mult <= 0) err(`Passives[${nodeId}].effects: damage 倍率必须 > 0`);
+        }
+        const name = reqStr(r['name'], `Passives[${nodeId}].name`);
+        passives.push({ nodeId, level, def: { id: `${nodeId}_l${level}`, name, cls: node.cls, trigger, chance, targetMode, effects } });
+    }
+    for (const n of nodes) {
+        if (n.kind !== 'passive') continue;
+        for (let lv = 1; lv <= n.maxLevel; lv++) {
+            if (!seenLv.has(`${n.id}|${lv}`)) err(`Passives: 被动节点 ${n.id} 缺第 ${lv} 级定义`);
+        }
+    }
+
+    const config = { nodes, passives };
+    const summary = `nodes=${nodes.length} passiveRows=${passives.length}`;
+    return { config, summary };
+}
+
 // ============ 源清单（加模块就在这里加一行）============
 interface ConfigSource {
     name: string;        // 模块名（日志/报错用）
@@ -1153,6 +1242,13 @@ const SOURCES: ConfigSource[] = [
         outRel: '../assets/scripts/config/talent.config.generated.ts',
         exportVar: 'generatedTalentConfig',
         build: buildTalentConfig,
+    },
+    {
+        name: 'chartalent',
+        xlsxRel: 'config-xlsx/chartalent.xlsx',
+        outRel: '../assets/scripts/config/chartalent.config.generated.ts',
+        exportVar: 'generatedCharTalentConfig',
+        build: buildCharTalentConfig,
     },
 ];
 

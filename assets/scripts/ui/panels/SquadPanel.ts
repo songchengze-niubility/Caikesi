@@ -17,6 +17,7 @@ export interface SquadPanelOptions {
     getGrowth: () => CharacterGrowthModel | null;
     beforeShow: () => void;
     onChanged: () => void;
+    onCharTalent: (cls: SoldierClass) => void;   // 行内「天赋」按钮 → 打开角色天赋面板
 }
 
 export class SquadPanel {
@@ -108,31 +109,37 @@ export class SquadPanel {
         const rowH = 96;
         const x0 = -300;
         const rowW = 600;
-        const pushRow = (name: string, y: number, tag: string, onRow: () => void, upBtn?: () => void) => {
-            g.fillColor = new Color(48, 58, 72, 255);
-            g.roundRect(x0, y - rowH / 2, rowW, rowH - 12, 10);
-            g.fill();
-            label(`${tag}  ${name}`, x0 + 20, y, 24);
-            this.hots.push({ rect: { x: x0, y: y - rowH / 2, w: rowW - 96, h: rowH - 12 }, act: onRow });
-            if (upBtn) {
-                g.fillColor = new Color(80, 120, 160, 255);
-                g.roundRect(x0 + rowW - 84, y - rowH / 2, 72, rowH - 12, 10);
-                g.fill();
-                label('↑', x0 + rowW - 56, y, 30);
-                this.hots.push({ rect: { x: x0 + rowW - 84, y: y - rowH / 2, w: 72, h: rowH - 12 }, act: upBtn });
-            }
-        };
-
         const nameWithLevel = (cls: SoldierClass): string => {
             const level = this.options.getGrowth()?.levelOf(cls) ?? 1;
             const maxLevel = BattleConfig.charGrowth?.maxLevel ?? 30;
             return `${CHARACTER_LABEL[cls]}  Lv.${level}${level >= maxLevel ? '·满' : ''}`;
         };
 
+        // 行主体让出右侧两钮位：天赋钮常驻最右，↑ 钮（仅出战非首位）在其左
+        const pushRow = (cls: SoldierClass, y: number, tag: string, onRow: () => void, upBtn?: () => void) => {
+            g.fillColor = new Color(48, 58, 72, 255);
+            g.roundRect(x0, y - rowH / 2, rowW, rowH - 12, 10);
+            g.fill();
+            label(`${tag}  ${nameWithLevel(cls)}`, x0 + 20, y, 24);
+            this.hots.push({ rect: { x: x0, y: y - rowH / 2, w: rowW - 180, h: rowH - 12 }, act: onRow });
+            g.fillColor = new Color(146, 116, 44, 255);
+            g.roundRect(x0 + rowW - 84, y - rowH / 2, 72, rowH - 12, 10);
+            g.fill();
+            label('天赋', x0 + rowW - 48, y, 20);
+            this.hots.push({ rect: { x: x0 + rowW - 84, y: y - rowH / 2, w: 72, h: rowH - 12 }, act: () => this.options.onCharTalent(cls) });
+            if (upBtn) {
+                g.fillColor = new Color(80, 120, 160, 255);
+                g.roundRect(x0 + rowW - 168, y - rowH / 2, 72, rowH - 12, 10);
+                g.fill();
+                label('↑', x0 + rowW - 132, y, 30);
+                this.hots.push({ rect: { x: x0 + rowW - 168, y: y - rowH / 2, w: 72, h: rowH - 12 }, act: upBtn });
+            }
+        };
+
         let y = 420;
         deployed.forEach((cls, index) => {
             pushRow(
-                nameWithLevel(cls),
+                cls,
                 y,
                 `出战${index + 1}`,
                 () => this.undeploy(cls),
@@ -142,7 +149,7 @@ export class SquadPanel {
         });
         y -= 24;
         for (const cls of squad.benchList()) {
-            pushRow(nameWithLevel(cls), y, '板凳', () => this.deploy(cls));
+            pushRow(cls, y, '板凳', () => this.deploy(cls));
             y -= rowH;
         }
 

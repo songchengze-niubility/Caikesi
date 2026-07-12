@@ -78,11 +78,22 @@ export function calcEffectiveStats(base: CombatStats, items: (EquipItem | null |
     return normalizeStats(out);
 }
 
+// 全局与按职业加成合并（键求和）；都缺省时返回 undefined 走旧路径
+function mergeExtraStats(a?: EquipStats, b?: EquipStats): EquipStats | undefined {
+    if (!a) return b;
+    if (!b) return a;
+    const out: EquipStats = { ...a };
+    for (const k of Object.keys(b) as (keyof EquipStats)[]) out[k] = (out[k] ?? 0) + (b[k] ?? 0);
+    return out;
+}
+
 // levels 缺省/角色缺项 = 不做等级缩放（向后兼容，pacing-sim 不传即纯装备档位）。
+// extraStats：心法等全局加成（全队同值）；perClassStats：角色天赋等按职业加成（只作用本角色）。
 export function buildEffectiveStatsMap(
     equipped: CharEquipped | undefined,
     levels: Partial<Record<SoldierClass, number>> = {},
     extraStats?: EquipStats,
+    perClassStats?: Partial<Record<SoldierClass, EquipStats>>,
 ): EffectiveStatsMap {
     const map: EffectiveStatsMap = {};
     for (const c of CHARACTERS) {
@@ -91,8 +102,9 @@ export function buildEffectiveStatsMap(
         if (!base) continue;
         const level = levels[cls];
         const slots = equipped?.[c];
+        const merged = mergeExtraStats(extraStats, perClassStats?.[cls]);
         // 等级 = 三围百分比乘全池（旧行为只放大白板 hp/atk；2026-07-11 双层公式改此，含 def）
-        map[cls] = calcEffectiveStats(base, slots ? SLOTS.map(s => slots[s]) : [], level ? charLevelCoef(level) - 1 : 0, extraStats);
+        map[cls] = calcEffectiveStats(base, slots ? SLOTS.map(s => slots[s]) : [], level ? charLevelCoef(level) - 1 : 0, merged);
     }
     return map;
 }

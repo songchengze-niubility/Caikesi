@@ -12,6 +12,7 @@ import { tickBuffs, BuffInstance } from './BuffSystem';
 import { firePassives, applyAlwaysPassives, PassiveHook } from './PassiveSystem';
 import { getBuffDef, BuffDef } from '../config/BuffConfig';
 import type { Effect } from '../config/EffectTypes';
+import type { PassiveDef } from '../config/SkillConfig';
 
 // 统一单位模型定义迁到 CombatUnit.ts；这里 re-export 保住既有消费端 import 路径。
 export type { UnitAction, UnitSide, CombatUnit } from './CombatUnit';
@@ -143,6 +144,7 @@ export class BattleManager {
     marchRemaining = 0;
     private effectiveStats: EffectiveStatsMap;
     private _roster: SoldierClass[];
+    private _extraPassives: Partial<Record<SoldierClass, PassiveDef[]>>;
 
     // Effect 管线回调（构造时建一次，不每帧建闭包）
     private _effectHooks: EffectHooks = {
@@ -205,11 +207,12 @@ export class BattleManager {
     // 当前波每个刷怪组的运行时状态
     private _groups: { type: string; count: number; interval: number; hp?: number; spawned: number; timer: number }[] = [];
 
-    constructor(halfW: number, halfH: number, levelIndex = BattleConfig.startLevel, effectiveStats: EffectiveStatsMap = {}, roster: SoldierClass[] = BattleConfig.roster) {
+    constructor(halfW: number, halfH: number, levelIndex = BattleConfig.startLevel, effectiveStats: EffectiveStatsMap = {}, roster: SoldierClass[] = BattleConfig.roster, extraPassives: Partial<Record<SoldierClass, PassiveDef[]>> = {}) {
         this.halfW = halfW;
         this.halfH = halfH;
         this.effectiveStats = effectiveStats;
         this._roster = roster;
+        this._extraPassives = extraPassives;
         this.levelIndex = Math.max(0, Math.min(levelIndex, BattleConfig.levels.length - 1));
         this._setupSquad();
         this._startWave(0);
@@ -233,7 +236,10 @@ export class BattleManager {
         this._roster.forEach((cls, i) => {
             const st = this.effectiveStats[cls] ?? BattleConfig.stats[cls]; // 职业战斗属性（统一表）
             const hx = frontX - i * L.spacing;   // 越靠后（i 越大）越靠左
-            this.soldiers.push(createSoldierUnit(this._unitSeq++, cls, st, hx, 0));
+            const unit = createSoldierUnit(this._unitSeq++, cls, st, hx, 0);
+            const extra = this._extraPassives[cls];   // 角色天赋已学被动（每节点取当前级一条）
+            if (extra && extra.length > 0) unit.passives = [...unit.passives, ...extra];
+            this.soldiers.push(unit);
         });
         // 开战：常驻/光环被动立即生效（永久 Buff 上身；防递归 guard 同样生效）
         this._procGuard = true;

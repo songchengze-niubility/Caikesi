@@ -34,8 +34,13 @@ import type { MaterialItem, MaterialSave } from './services/RewardTypes';
 import { talentAggregate, emptyTalentAggregate, type TalentAggregate } from './talent/TalentStats';
 import type { TalentSave } from './talent/TalentModel';
 import { firstClearPages } from './talent/TalentConfig';
+import { sanitizeCharTalents, type CharTalentSave } from './chartalent/CharTalentModel';
+import { charTalentAggregate } from './chartalent/CharTalentStats';
+import type { PassiveDef } from './config/SkillConfig';
+import type { EquipStats } from './inventory/EquipDefs';
 import { SettlementPanel } from './ui/panels/SettlementPanel';
 import { SquadPanel } from './ui/panels/SquadPanel';
+import { CharTalentPanel } from './ui/panels/CharTalentPanel';
 import { InlayPanel } from './ui/panels/InlayPanel';
 import { TalentPanel } from './ui/panels/TalentPanel';
 import { CraftPanel } from './ui/panels/CraftPanel';
@@ -66,6 +71,7 @@ export class BattleEntry extends Component {
     private _squadPanel: SquadPanel = null!;
     private _inlayPanel: InlayPanel = null!;
     private _talentPanel: TalentPanel = null!;
+    private _charTalentPanel: CharTalentPanel = null!;
     private _craftPanel: CraftPanel = null!;
     private _chestPanel: ChestPanel = null!;
     private _accountPanel: AccountPanel = null!;
@@ -79,6 +85,7 @@ export class BattleEntry extends Component {
     private _gold = 0;
     private _talents: TalentSave = {};
     private _talentAgg: TalentAggregate = emptyTalentAggregate();
+    private _charTalents: CharTalentSave = {};
     private _autoSellOn = false;
     private _offlineNoticeText = '';
     private _offlineNoticeTtl = 0;
@@ -136,6 +143,7 @@ export class BattleEntry extends Component {
             onCraft: () => this._craftPanel.toggle(),
             onChests: () => this._chestPanel.toggle(),
             onTalent: () => { void this._refreshTalentCache().then(() => this._talentPanel.toggle()); },
+            onCharTalent: () => this._charTalentPanel.toggle(),
         });
 
         // 点击重开
@@ -256,6 +264,7 @@ export class BattleEntry extends Component {
                 void saveSquad(this._squad);
                 if (this._gameStarted && !this._settlementPanel.isOpen()) this._startBattle();
             },
+            onCharTalent: (cls) => this._charTalentPanel.show(cls),
         });
         this._inlayPanel = new InlayPanel({
             host: this.node,
@@ -294,6 +303,21 @@ export class BattleEntry extends Component {
             },
             persist: (spentGold) => { void this._persistTalents(spentGold); },
         });
+        this._charTalentPanel = new CharTalentPanel({
+            host: this.node,
+            halfW: this._halfW,
+            halfH: this._halfH,
+            getSave: () => this._charTalents,
+            getGrowth: () => this._growth,
+            beforeShow: () => {
+                this._settlementPanel.hide();
+                this._chestPanel.hide();
+                this._craftPanel.hide();
+                this._squadPanel.hide();
+                this._talentPanel.hide();
+            },
+            persist: () => { void this._persistCharTalents(); },
+        });
 
         // 挂载游戏内实时调参面板（仅网页预览生效；点「重开战斗」重置局内数值）
         mountConfigPanel(() => this._startBattle());
@@ -325,6 +349,7 @@ export class BattleEntry extends Component {
             .then((squad) => { this._squad = squad; })
             .then(() => loadGrowth())
             .then((growth) => { this._growth = growth; })
+            .then(() => this._refreshCharTalentCache())
             .then(() => { this._invView.refresh(); })
             .catch(() => {
                 // 读档失败时仍允许进游戏，掉落会从空背包开始存。
@@ -340,15 +365,16 @@ export class BattleEntry extends Component {
         if (this._growth) {
             for (const c of CHARACTERS) levels[c] = this._growth.levelOf(c);
         }
+        const talentInj = this._charTalentInjection();
         const effective = this._inv
-            ? buildEffectiveStatsMap(this._inv.equipped, levels, this._talentAgg.stats)
-            : buildEffectiveStatsMap(undefined, levels, this._talentAgg.stats);
+            ? buildEffectiveStatsMap(this._inv.equipped, levels, this._talentAgg.stats, talentInj.perClassStats)
+            : buildEffectiveStatsMap(undefined, levels, this._talentAgg.stats, talentInj.perClassStats);
         const levelIndex = this._progress ? this._progress.currentLevel : BattleConfig.startLevel;
         const roster = this._squad ? (this._squad.deployedList() as SoldierClass[]) : BattleConfig.roster;
         this._battleSeed = `${Date.now()}|${Math.random()}|${levelIndex}`;
         this._battleChestDropCount = 0;
         this._battleExpGained = 0;
-        this._mgr = new BattleManager(this._halfW, this._halfH, levelIndex, effective, roster);
+        this._mgr = new BattleManager(this._halfW, this._halfH, levelIndex, effective, roster, talentInj.extraPassives);
         this._winRewardText = '';
         this._stageView.beginBattle(roster);
     }
@@ -434,6 +460,33 @@ export class BattleEntry extends Component {
         if (!hadSquad3 && this._talentAgg.unlocks.squadSlot3) {
             this._squad = await loadSquad(1);   // 第 3 位解锁：按新 cap 重灌小队（保留已上阵）
         }
+    }
+
+    // 角色天赋缓存：读档 + 自愈（未知节点丢弃/级数钳制/超发按配置序截断）。须在 loadGrowth 之后跑。
+    private async _refreshCharTalentCache(): Promise<void> {
+        const data = await loadPlayerData();
+        this._charTalents = sanitizeCharTalents(data.charTalents, (cls) => this._growth?.levelOf(cls as SoldierClass) ?? 1);
+    }
+
+    // 投点/洗点后落盘：面板经 CharTalentModel 就地改 _charTalents，这里整体深拷贝写档
+    private async _persistCharTalents(): Promise<void> {
+        const data = await loadPlayerData();
+        const copy: CharTalentSave = {};
+        for (const cls of Object.keys(this._charTalents)) copy[cls] = { ...this._charTalents[cls] };
+        data.charTalents = copy;
+        await savePlayerData();
+    }
+
+    // 开战/面板注入值：每职业聚合一次（属性 → perClassStats；被动 → extraPassives）
+    private _charTalentInjection(): { perClassStats: Partial<Record<SoldierClass, EquipStats>>; extraPassives: Partial<Record<SoldierClass, PassiveDef[]>> } {
+        const perClassStats: Partial<Record<SoldierClass, EquipStats>> = {};
+        const extraPassives: Partial<Record<SoldierClass, PassiveDef[]>> = {};
+        for (const c of CHARACTERS) {
+            const agg = charTalentAggregate(this._charTalents, c);
+            if (Object.keys(agg.stats).length > 0) perClassStats[c as SoldierClass] = agg.stats;
+            if (agg.passives.length > 0) extraPassives[c as SoldierClass] = agg.passives;
+        }
+        return { perClassStats, extraPassives };
     }
 
     private async _persistAutoSell(on: boolean): Promise<void> {
@@ -588,7 +641,7 @@ export class BattleEntry extends Component {
     private _mainUiData(character: CharacterId): MainUiSnapshot {
         const levels: Partial<Record<SoldierClass, number>> = {};
         for (const id of CHARACTERS) levels[id] = this._growth?.levelOf(id) ?? 1;
-        const effective = buildEffectiveStatsMap(this._inv?.equipped, levels, this._talentAgg.stats);
+        const effective = buildEffectiveStatsMap(this._inv?.equipped, levels, this._talentAgg.stats, this._charTalentInjection().perClassStats);
         const stats = effective[character] ?? BattleConfig.stats[character];
         const level = this._growth?.levelOf(character) ?? 1;
         const exp = this._growth?.expOf(character) ?? 0;
@@ -811,6 +864,7 @@ export class BattleEntry extends Component {
         this._squadPanel?.destroy();
         this._inlayPanel?.destroy();
         this._talentPanel?.destroy();
+        this._charTalentPanel?.destroy();
         this._craftPanel?.destroy();
         this._chestPanel?.destroy();
         this._accountPanel?.destroy();

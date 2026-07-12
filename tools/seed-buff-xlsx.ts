@@ -20,6 +20,11 @@ const BUFFS_ROWS: (string | number)[][] = [
     ['frost',        '冰缓', 3, 1, 'refresh', 0, '',            'moveSpeed%:-0.3',       '',        'debuff'],
     // duration=-1 永久（常驻/光环被动承载体，2026-07-11 Plan A）
     ['war_banner',   '战旗', -1, 1, 'refresh', 0, '',           'atk%:0.05',             '',        ''],
+    // duration=-1 永久：角色天赋被动承载体，层数=天赋级数（2026-07-12 chartalent）
+    ['ct_bulwark', '坚韧', -1, 5, 'add', 0, '', 'dmgReduce:+0.01', '', ''],
+    ['ct_shadow',  '残影', -1, 5, 'add', 0, '', 'dodgeRate:+0.01', '', ''],
+    ['ct_inspire', '鼓舞', -1, 5, 'add', 0, '', 'atk%:0.01',       '', ''],
+    ['ct_po_jun',  '破军', 6,  5, 'add', 0, '', 'dmgBonus:+0.05',  '', ''],
 ];
 
 const wb = XLSX.utils.book_new();
